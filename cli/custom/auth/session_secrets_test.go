@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -16,6 +17,74 @@ func (s *memStore) Load(host string) (string, bool, error) { v, ok := s.m[host];
 func (s *memStore) Save(host, secret string) error         { s.m[host] = secret; return nil }
 func (s *memStore) Delete(host string) error               { delete(s.m, host); return nil }
 func (s *memStore) Name() string                           { return "test store" }
+
+// flakyStore can be made to fail Save or Load, to exercise the inline fallback
+// (Save failure keeps the login working) and the error path (Load failure must
+// not read as a blank session).
+type flakyStore struct {
+	m        map[string]string
+	failSave bool
+	failLoad bool
+}
+
+func (s *flakyStore) Load(host string) (string, bool, error) {
+	if s.failLoad {
+		return "", false, fmt.Errorf("credential store unreachable")
+	}
+	v, ok := s.m[host]
+	return v, ok, nil
+}
+
+func (s *flakyStore) Save(host, secret string) error {
+	if s.failSave {
+		return fmt.Errorf("credential store write failed")
+	}
+	s.m[host] = secret
+	return nil
+}
+
+func (s *flakyStore) Delete(host string) error { delete(s.m, host); return nil }
+func (s *flakyStore) Name() string             { return "flaky store" }
+
+func TestSaveFallsBackToInlineWhenStoreFails(t *testing.T) {
+	isolateHome(t)
+	withStore(t, &flakyStore{m: map[string]string{}, failSave: true})
+
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatalf("SaveSession should still succeed via the inline fallback: %v", err)
+	}
+	// The login must be preserved: secrets written inline rather than lost.
+	if !strings.Contains(sessionFileText(t), "refresh-abc") {
+		t.Fatal("store write failed but the refresh token was not written inline; login would be lost")
+	}
+	// And it still reads back (migration retries, fails, keeps the inline secrets).
+	got, err := ReadSession()
+	if err != nil || got == nil || got.RefreshToken != "refresh-abc" {
+		t.Fatalf("ReadSession after fallback: err=%v session=%+v", err, got)
+	}
+}
+
+func TestReadSurfacesStoreLoadErrorNotMissingToken(t *testing.T) {
+	isolateHome(t)
+	fs := &flakyStore{m: map[string]string{}}
+	withStore(t, fs)
+
+	// Save with a working store: the file becomes secret-free, secret in store.
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+	if strings.Contains(sessionFileText(t), "refresh-abc") {
+		t.Fatal("precondition: the file should be secret-free when the store works")
+	}
+
+	// Now the store cannot answer: the read must error, not report a blank login.
+	fs.failLoad = true
+	if _, err := ReadSession(); err == nil {
+		t.Fatal("a store Load failure must surface as an error, not a usable-looking blank session")
+	} else if strings.Contains(err.Error(), "missing refresh token") {
+		t.Fatalf("Load failure was reported as a missing token: %v", err)
+	}
+}
 
 func withStore(t *testing.T, st SecretStore) {
 	t.Helper()

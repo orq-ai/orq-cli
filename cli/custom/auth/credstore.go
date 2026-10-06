@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -20,7 +21,10 @@ import (
 // non-secret state in the JSON so it stays inspectable.
 //
 // Shelling out to the platform tool is deliberate: it needs no cgo and no new
-// dependency, and it is the same approach Braintrust's bt CLI takes.
+// dependency. The one cost is that the write must not pass the secret in argv,
+// where a same-user process could read it from the process table — the very
+// threat the file permissions already fail against. macOS takes the command on
+// stdin via `security -i`; Linux feeds the secret to `secret-tool` on stdin.
 
 // keychainService is the service name every orq-cli secret is filed under. The
 // account is the session host, so each server's login is a separate entry.
@@ -32,8 +36,10 @@ const keychainService = "orq-cli"
 const CredentialStoreEnv = "ORQ_CREDENTIAL_STORE"
 
 // SecretStore persists the secret blob for one login, keyed by session host.
-// Load reports ok=false (with a nil error) when nothing is stored for the host,
-// so a missing entry reads the same as a never-written one.
+// Load reports ok=false (with a nil error) only when the store positively holds
+// nothing for the host. A store that cannot answer (locked keyring, unreachable
+// service) returns an error, so a transient failure never reads as a missing
+// login.
 type SecretStore interface {
 	Load(host string) (secret string, ok bool, err error)
 	Save(host, secret string) error
@@ -43,10 +49,10 @@ type SecretStore interface {
 }
 
 // runSecretTool is the single hook tests replace to stand in for the platform
-// binary without a real keychain. stdin is fed to the command; stdout is
-// returned. A command that exits non-zero comes back as an *exec.ExitError,
-// which the stores read to tell "not found" from a real failure.
-var runSecretTool = func(stdin string, name string, args ...string) (string, error) {
+// binary without a real keychain. stdin is fed to the command; stdout and the
+// trimmed stderr come back alongside the error, so a store can tell a positive
+// "not found" (quiet non-zero exit) from a real failure (exit with a message).
+var runSecretTool = func(stdin string, name string, args ...string) (stdout, stderr string, err error) {
 	cmd := exec.Command(name, args...)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
@@ -54,19 +60,8 @@ var runSecretTool = func(stdin string, name string, args ...string) (string, err
 	var out, errBuf strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
-	err := cmd.Run()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			// Preserve the exit code (stores interpret it) but attach stderr so
-			// a real failure is not an opaque "exit status 1".
-			if msg := strings.TrimSpace(errBuf.String()); msg != "" {
-				return out.String(), fmt.Errorf("%s: %w: %s", name, err, msg)
-			}
-		}
-		return out.String(), err
-	}
-	return out.String(), nil
+	err = cmd.Run()
+	return out.String(), strings.TrimSpace(errBuf.String()), err
 }
 
 // exitCoder is satisfied by *exec.ExitError (ExitCode() int) and by the fake a
@@ -126,31 +121,45 @@ func (macKeychainStore) Name() string { return "macOS Keychain" }
 
 func (macKeychainStore) Load(host string) (string, bool, error) {
 	// -w prints only the password; exit 44 is errSecItemNotFound.
-	out, err := runSecretTool("", "security", "find-generic-password",
+	out, stderr, err := runSecretTool("", "security", "find-generic-password",
 		"-s", keychainService, "-a", host, "-w")
 	if err != nil {
 		if exitCode(err) == 44 {
 			return "", false, nil
 		}
-		return "", false, err
+		return "", false, fmt.Errorf("security find-generic-password: %w: %s", err, stderr)
 	}
-	return strings.TrimRight(out, "\n"), true, nil
+	// The stored value is base64 (see Save). Decode before handing it back.
+	dec, derr := base64.StdEncoding.DecodeString(strings.TrimRight(out, "\n"))
+	if derr != nil {
+		return "", false, fmt.Errorf("keychain secret is not valid base64: %w", derr)
+	}
+	return string(dec), true, nil
 }
 
 func (macKeychainStore) Save(host, secret string) error {
-	// -U updates the item in place when it already exists instead of erroring.
-	_, err := runSecretTool("", "security", "add-generic-password",
-		"-U", "-s", keychainService, "-a", host, "-w", secret)
-	return err
+	// base64 so the blob carries no spaces or quotes to break the interactive
+	// parser, and the command goes in on stdin via `security -i`, not argv, so
+	// the token never appears in the process table. -U updates in place.
+	enc := base64.StdEncoding.EncodeToString([]byte(secret))
+	cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", keychainService, host, enc)
+	_, stderr, err := runSecretTool(cmd, "security", "-i")
+	if err != nil {
+		return fmt.Errorf("security -i add-generic-password: %w: %s", err, stderr)
+	}
+	return nil
 }
 
 func (macKeychainStore) Delete(host string) error {
-	_, err := runSecretTool("", "security", "delete-generic-password",
+	_, stderr, err := runSecretTool("", "security", "delete-generic-password",
 		"-s", keychainService, "-a", host)
-	if err != nil && exitCode(err) == 44 {
-		return nil // already gone
+	if err != nil {
+		if exitCode(err) == 44 {
+			return nil // already gone
+		}
+		return fmt.Errorf("security delete-generic-password: %w: %s", err, stderr)
 	}
-	return err
+	return nil
 }
 
 // ---- Linux: secret-tool(1) / libsecret ----
@@ -160,41 +169,50 @@ type secretToolStore struct{}
 func (secretToolStore) Name() string { return "Linux secret-tool (libsecret)" }
 
 func (secretToolStore) Load(host string) (string, bool, error) {
-	// lookup prints the secret with no trailing newline, exit 0; a missing
-	// item is exit 1 with empty output.
-	out, err := runSecretTool("", "secret-tool", "lookup",
+	out, stderr, err := runSecretTool("", "secret-tool", "lookup",
 		"service", keychainService, "account", host)
 	if err != nil {
-		if exitCode(err) >= 1 {
+		// secret-tool exits 1 for a missing item (quiet) and also when it cannot
+		// reach the Secret Service (stderr set). Only the quiet exit 1 is "not
+		// found"; anything with a message is a real error the caller must see,
+		// not a blank session.
+		if exitCode(err) == 1 && stderr == "" {
 			return "", false, nil
 		}
-		return "", false, err
+		return "", false, fmt.Errorf("secret-tool lookup: %w: %s", err, stderr)
 	}
 	return out, true, nil
 }
 
 func (secretToolStore) Save(host, secret string) error {
 	// The secret is fed on stdin, never argv.
-	_, err := runSecretTool(secret, "secret-tool", "store",
+	_, stderr, err := runSecretTool(secret, "secret-tool", "store",
 		"--label", "orq-cli "+host,
 		"service", keychainService, "account", host)
-	return err
+	if err != nil {
+		return fmt.Errorf("secret-tool store: %w: %s", err, stderr)
+	}
+	return nil
 }
 
 func (secretToolStore) Delete(host string) error {
-	_, err := runSecretTool("", "secret-tool", "clear",
+	_, stderr, err := runSecretTool("", "secret-tool", "clear",
 		"service", keychainService, "account", host)
-	return err
+	if err != nil {
+		return fmt.Errorf("secret-tool clear: %w: %s", err, stderr)
+	}
+	return nil
 }
 
-// secretToolReady confirms a Secret Service is actually answering, not just
-// that the binary exists: on a headless box the daemon is often absent, and a
-// lookup then blocks or errors. A lookup for a name nothing stores returns
-// quickly — exit 1 (not found) means the service is up and reachable.
+// secretToolReady confirms a Secret Service is actually answering, not just that
+// the binary exists: on a headless box the daemon is often absent, and a lookup
+// then errors. A lookup for a name nothing stores returns a quiet exit 1 when
+// the service is up ("no such item"); an exit 1 with stderr, or any other code,
+// means it could not be reached, so the file store is the safer pick.
 func secretToolReady() bool {
-	_, err := runSecretTool("", "secret-tool", "lookup", "service", keychainService, "account", "__orq_probe__")
+	_, stderr, err := runSecretTool("", "secret-tool", "lookup", "service", keychainService, "account", "__orq_probe__")
 	if err == nil {
 		return true // the (empty) probe somehow exists; service is up
 	}
-	return exitCode(err) == 1
+	return exitCode(err) == 1 && stderr == ""
 }

@@ -148,7 +148,15 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 		return err
 	}
 	if err := store.Save(host, string(blob)); err != nil {
-		return fmt.Errorf("writing credential store: %w", err)
+		// Could not move the secrets into the store. The file keeps them inline
+		// and the in-memory session already holds them, so the login still works;
+		// warn and leave the file untouched rather than failing the command. A
+		// Load failure (secrets only in an unreachable store) is different and
+		// does surface as an error in hydrateSecrets.
+		fmt.Fprintf(os.Stderr,
+			"orq: could not move %s session secrets into the %s (%v); they remain in %s. Run orq doctor.\n",
+			host, store.Name(), err, path)
+		return nil
 	}
 	stripped := *s
 	stripped.stripSecrets()
@@ -163,11 +171,22 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 	return nil
 }
 
-// ActiveStoreDescription names the store in use for `orq doctor`. getenv is
-// injected so the diagnostic reports what this invocation would actually use.
-func ActiveStoreDescription(getenv func(string) string) string {
-	if s := ResolveSecretStore(getenv); s != nil {
-		return s.Name()
+// SecretsLocation reports where this login's secrets actually sit, for `orq
+// doctor`. It reads the session file as stored, without hydrating: inline token
+// material means the secrets are in the file whatever store resolves, so a
+// failed store write or a not-yet-migrated file is reported honestly instead of
+// as the store. degraded is true only when a store is available but the secrets
+// are still in plaintext, the one state worth a warning.
+func SecretsLocation(getenv func(string) string) (desc string, degraded bool) {
+	store := ResolveSecretStore(getenv)
+	if store == nil {
+		return "plaintext session file (0600)", false
 	}
-	return "plaintext file (0600)"
+	if data, err := os.ReadFile(SessionFilePath()); err == nil {
+		var s Session
+		if json.Unmarshal(data, &s) == nil && s.hasInlineSecrets() {
+			return "plaintext session file (0600); " + store.Name() + " available but unused, a store write may have failed", true
+		}
+	}
+	return store.Name(), false
 }

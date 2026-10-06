@@ -318,6 +318,13 @@ func saveSessionTo(path string, s *Session) error {
 	if store := activeStore(); store != nil {
 		if err := store.Save(hostFromSessionPath(path), marshalSecrets(written.extractSecrets())); err == nil {
 			written.stripSecrets()
+		} else {
+			// The fallback (secrets inline in the file) keeps the login working,
+			// but silence would leave a user believing the store holds the token
+			// when it does not. Say so; orq doctor reports the same location.
+			fmt.Fprintf(os.Stderr,
+				"orq: could not write the %s (%v); session secrets saved to %s in plaintext. Run orq doctor.\n",
+				store.Name(), err, path)
 		}
 	}
 
@@ -345,7 +352,11 @@ func ClearSession() error {
 	// Drop the store entry too, so logging out leaves no token behind. Best
 	// effort: a store that is now unreachable must not block removing the file.
 	if store := activeStore(); store != nil {
-		_ = store.Delete(hostFromSessionPath(path))
+		if err := store.Delete(hostFromSessionPath(path)); err != nil {
+			fmt.Fprintf(os.Stderr,
+				"orq: logged out, but could not remove the stored secret for %s (%v); it may remain in the %s.\n",
+				hostFromSessionPath(path), err, store.Name())
+		}
 	}
 	err := os.Remove(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
