@@ -31,7 +31,7 @@ type TraceAPI struct {
 	GetResponse func(responseID string, params *viper.Viper) (map[string]any, error)
 }
 
-// NewTracesThreadCommand builds `orq traces thread`, rendering the newest
+// NewTracesThreadCommand builds `orq traces conversation`, rendering the newest
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
@@ -42,10 +42,11 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	maxChars, toolChars := defaultThreadMaxChars, 0
 	params := viper.New()
 	cmd := &cobra.Command{
-		Use:   "thread trace-id [span-id]",
-		Short: "Render a trace conversation as a thread",
+		Use:     "conversation trace-id [span-id]",
+		Aliases: []string{"conv"},
+		Short:   "Render a trace's conversation",
 		Long: strings.Join([]string{
-			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
+			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable conversation.",
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
@@ -66,25 +67,25 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"--tool-max-chars is the same cap for what tool calls returned, and only that, following --max-chars when not given. The arguments of a call stay as --max-chars cuts them.",
 			"",
-			"json, yaml and toon emit the thread uncut unless --max-chars or --tool-max-chars is given; a cut there is marked in the text and counted in truncated_chars.",
+			"json, yaml and toon emit the conversation uncut unless --max-chars or --tool-max-chars is given; a cut there is marked in the text and counted in truncated_chars.",
 		}, "\n"),
 		Example: strings.Join([]string{
-			"  orq traces thread tr_123                           # the newest conversational span",
-			"  orq traces thread tr_123 --spans                   # which span that is, and the alternatives",
-			"  orq traces thread tr_123 span_456                  # read one of them yourself",
+			"  orq traces conv tr_123                             # the newest conversational span",
+			"  orq traces conv tr_123 --spans                     # which span that is, and the alternatives",
+			"  orq traces conv tr_123 span_456                    # read one of them yourself",
 			"",
-			"  orq traces thread tr_123 -o markdown               # to paste into a ticket or chat",
-			"  orq traces thread tr_123 -o json                   # the canonical thread, for scripts",
+			"  orq traces conv tr_123 -o markdown                 # to paste into a ticket or chat",
+			"  orq traces conv tr_123 -o json                     # the canonical conversation, for scripts",
 			"",
-			"  orq traces thread tr_123 --slice -4:               # the last four messages",
-			"  orq traces thread tr_123 --match search_docs       # the turns that mention a tool",
-			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
-			"  orq traces thread tr_123 -i reasoning              # the thinking, each turn's body a stub",
-			"  orq traces thread tr_123 -x reasoning              # every turn, without the thinking",
-			"  orq traces thread tr_123 -x tool                   # the conversation without the tool payloads",
-			"  orq traces thread tr_123 --tool-max-chars 200 -o json   # short tool results, for another agent's context",
+			"  orq traces conv tr_123 --slice -4:                 # the last four messages",
+			"  orq traces conv tr_123 --match search_docs         # the turns that mention a tool",
+			"  orq traces conv tr_123 -i user,assistant           # the conversation without the thinking",
+			"  orq traces conv tr_123 -i reasoning                # the thinking, each turn's body a stub",
+			"  orq traces conv tr_123 -x reasoning                # every turn, without the thinking",
+			"  orq traces conv tr_123 -x tool                     # the conversation without the tool payloads",
+			"  orq traces conv tr_123 --tool-max-chars 200 -o json     # short tool results, for another agent's context",
 			"",
-			"  orq traces thread tr_123 --match error -i tool --max-chars 0",
+			"  orq traces conv tr_123 --match error -i tool --max-chars 0",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -162,7 +163,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
-	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering a thread")
+	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering the conversation")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().StringSliceVarP(&exclude, "exclude", "x", nil, fmt.Sprintf("Render everything but these parts of the conversation [%s]; a left-out turn keeps its place as an omitted stub, and left-out reasoning goes quietly from a turn that still shows its body", strings.Join(ThreadKinds, ", ")))
@@ -180,6 +181,34 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// Registered as 0 so pflag prints no numeric default: unset, it follows
 	// --max-chars, which RunE resolves through Changed.
 	cmd.Flags().IntVar(&toolChars, "tool-max-chars", 0, "Cut what each tool call returned to this many characters, and nothing else; unset, it follows --max-chars (0 for no cap)")
+	return cmd
+}
+
+// DeprecatedTracesThreadWarning is the stderr notice `orq traces thread`
+// prints before it runs.
+const DeprecatedTracesThreadWarning = "`orq traces thread` is deprecated and will be removed in a future release; use `orq traces conversation` (or `orq traces conv`) instead"
+
+// NewDeprecatedTracesThreadCommand builds `orq traces thread`, the name
+// `orq traces conversation` had until it was renamed. CHANGELOG's stability
+// contract gives a renamed command one release in which the old spelling keeps
+// working, hidden and warning, so this is the same command, under the old
+// name and with the same flags, and its output is identical.
+//
+// It warns on stderr through Warn rather than cobra's Deprecated field: cobra
+// prints that notice through the command's own writer, which can land on
+// stdout and corrupt `-o json`. It is a separate hidden command rather than an
+// alias because cobra lists every alias in help. Remove it after one release.
+func NewDeprecatedTracesThreadCommand(api TraceAPI) *cobra.Command {
+	cmd := NewTracesThreadCommand(api)
+	cmd.Use = "thread trace-id [span-id]"
+	cmd.Aliases = nil
+	cmd.Hidden = true
+	cmd.Short = "Deprecated: use `orq traces conversation`"
+	run := cmd.RunE
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		Warn("%s", DeprecatedTracesThreadWarning)
+		return run(c, args)
+	}
 	return cmd
 }
 
@@ -717,7 +746,7 @@ type ThreadSpan struct {
 	// Absent on one that was not: --spans reads what it must to answer, not
 	// every span it lists.
 	Messages *int `json:"messages,omitempty"`
-	// Selected marks the span a plain `orq traces thread trace-id` reads. It
+	// Selected marks the span a plain `orq traces conversation trace-id` reads. It
 	// is the answer selection actually reached, not the first in the try
 	// order: a span that hydrates with content dropped loses to a later one
 	// that kept more.

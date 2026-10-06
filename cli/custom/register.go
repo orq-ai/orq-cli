@@ -1056,6 +1056,7 @@ func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
 	for _, c := range root.Commands() {
 		if c.Name() == "traces" {
 			c.AddCommand(commands.NewTracesThreadCommand(api))
+			c.AddCommand(commands.NewDeprecatedTracesThreadCommand(api))
 			return
 		}
 	}
@@ -1231,7 +1232,7 @@ func explainAPIErrors(cmd *cobra.Command) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			err := commands.ExplainAPIError(run(c, args))
 			hint := commands.NotFoundScopeHint(err)
-			// A command that already named the scope itself — `traces thread`
+			// A command that already named the scope itself — `traces conversation`
 			// names the project holding the trace — needs no second copy.
 			if hint == "" || strings.Contains(err.Error(), "orq projects use") {
 				return err

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/commands"
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -666,7 +667,7 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	}
 }
 
-// threadSpanServer answers the two calls `orq traces thread tr_x span-1`
+// threadSpanServer answers the two calls `orq traces conversation tr_x span-1`
 // makes, so a binary-level run reaches a render instead of the network.
 func threadSpanServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -703,7 +704,7 @@ func threadHome(t *testing.T, format string) string {
 	return home
 }
 
-// `orq traces thread` takes its format from -o alone. Both standing sources —
+// `orq traces conversation` takes its format from -o alone. Both standing sources —
 // the exported variable and the config file — answer for every command in a
 // shell or a tree, and neither may swap the render a person came to read.
 // Only the real binary has those tiers populated at all.
@@ -719,14 +720,14 @@ func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 			} else {
 				env[0] = "HOME=" + threadHome(t, "json")
 			}
-			cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
+			cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1")
 			cmd.Dir = t.TempDir()
 			cmd.Env = append(os.Environ(), env...)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatalf("traces thread: %v\n%s", err, out)
+				t.Fatalf("traces conversation: %v\n%s", err, out)
 			}
-			if !strings.Contains(string(out), "<thread ") || strings.Contains(string(out), `"messages"`) {
+			if !strings.Contains(string(out), "<conversation ") || strings.Contains(string(out), `"messages"`) {
 				t.Fatalf("a standing %s format decided the render: %s", source, out)
 			}
 		})
@@ -740,7 +741,7 @@ func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
 	server := threadSpanServer(t)
-	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1", "-o", "markdown")
+	cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1", "-o", "markdown")
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(),
 		"HOME="+threadHome(t, ""),
@@ -751,15 +752,62 @@ func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("traces thread -o markdown: %v\n%s", err, out)
+		t.Fatalf("traces conversation -o markdown: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "## USER") {
 		t.Fatalf("output = %s, want the markdown render", out)
 	}
 }
 
+// `orq traces thread`, the old spelling, still runs for one release: hidden,
+// with a deprecation warning on stderr naming its replacement, and stdout
+// byte-identical to `orq traces conversation`, so `-o json` stays clean.
+func TestDeprecatedTracesThreadWarnsOnStderrOnlyInTheRealBinary(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := threadSpanServer(t)
+	run := func(args ...string) (string, string) {
+		t.Helper()
+		cmd := exec.Command(binPath, append([]string{"traces"}, args...)...)
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(),
+			"HOME="+threadHome(t, ""),
+			"NO_COLOR=1",
+			"ORQ_API_KEY=stub-key",
+			"ORQ_SERVER="+server.URL,
+			"ORQ_OUTPUT_FORMAT=",
+		)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("orq traces %v: %v\nstdout: %s\nstderr: %s", args, err, stdout.String(), stderr.String())
+		}
+		return stdout.String(), stderr.String()
+	}
+	for _, format := range []string{"json", "xml"} {
+		t.Run(format, func(t *testing.T) {
+			wantOut, convErr := run("conversation", "tr_x", "span-1", "-o", format)
+			gotOut, threadErr := run("thread", "tr_x", "span-1", "-o", format)
+			if gotOut != wantOut {
+				t.Errorf("thread stdout differs from conversation:\nthread: %s\nconversation: %s", gotOut, wantOut)
+			}
+			if !strings.Contains(threadErr, commands.DeprecatedTracesThreadWarning) {
+				t.Errorf("thread stderr = %q, want the deprecation warning", threadErr)
+			}
+			if strings.Contains(convErr, "deprecated") {
+				t.Errorf("conversation stderr = %q, want no deprecation warning", convErr)
+			}
+			if strings.Contains(gotOut, "deprecated") {
+				t.Errorf("deprecation warning reached stdout: %s", gotOut)
+			}
+		})
+	}
+	if out, _ := run("conversation", "tr_x", "span-1", "-o", "json"); !json.Valid([]byte(out)) {
+		t.Errorf("conversation -o json stdout is not JSON: %s", out)
+	}
+}
+
 // A standing value bartolo does not know is refused before any command runs.
-// `orq traces thread` used to be exempted from that check, so a config file
+// `orq traces conversation` used to be exempted from that check, so a config file
 // naming `markdown` — a value every other command rejects — worked there and
 // nowhere else. One answer for the whole CLI is the point: the same value
 // fails the same way whichever command it is handed to.
@@ -771,7 +819,7 @@ func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
 	const want = `--output-format: "markdown" is not one of`
 	for _, source := range []string{"environment", "config"} {
 		t.Run(source, func(t *testing.T) {
-			for _, args := range [][]string{{"version"}, {"traces", "thread", "tr_x", "span-1"}} {
+			for _, args := range [][]string{{"version"}, {"traces", "conversation", "tr_x", "span-1"}} {
 				cmd := exec.Command(binPath, args...)
 				cmd.Dir = t.TempDir()
 				home, format := threadHome(t, ""), ""

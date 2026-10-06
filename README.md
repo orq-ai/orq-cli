@@ -273,9 +273,9 @@ including credentials, are excluded. Archive write failures stop teardown before
 cleanup. Try the scripts in a disposable git worktree; invoking teardown directly
 does not verify that Superset runs the hook during workspace deletion.
 
-`orq traces thread` is the one command where `-o` takes a different set of
-formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
-and `toon`. It refuses `-o table` — a conversation is nested (messages holding
+`orq traces conversation` (alias `conv`) is the one command where `-o` takes
+a different set of formats: `xml` (the default, a readable render),
+`markdown`, `json`, `yaml` and `toon`. It refuses `-o table` — a conversation is nested (messages holding
 content parts, tool calls, reasoning) and has no columns to lay out.
 
 `-o` is also the only way to ask it for a format. Neither `ORQ_OUTPUT_FORMAT`
