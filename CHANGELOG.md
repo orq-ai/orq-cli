@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
+
 - **Changed: the command is `orq traces conversation` again,** with the short
   alias `orq traces conv`, so the CLI matches the orq docs. Every flag
   (including `-x`/`--exclude` and `--tool-max-chars`) and the `-o json` schema
