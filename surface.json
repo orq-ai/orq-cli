@@ -8369,6 +8369,50 @@
       ]
     },
     {
+      "path": "orq traces conversation",
+      "use": "conversation trace-id [span-id]",
+      "aliases": [
+        "conv"
+      ],
+      "flags": [
+        {
+          "name": "exclude",
+          "shorthand": "x",
+          "type": "stringSlice"
+        },
+        {
+          "name": "include",
+          "shorthand": "i",
+          "type": "stringSlice"
+        },
+        {
+          "name": "match",
+          "type": "string"
+        },
+        {
+          "name": "max-chars",
+          "type": "int"
+        },
+        {
+          "name": "output-format",
+          "shorthand": "o",
+          "type": "string"
+        },
+        {
+          "name": "slice",
+          "type": "string"
+        },
+        {
+          "name": "spans",
+          "type": "bool"
+        },
+        {
+          "name": "tool-max-chars",
+          "type": "int"
+        }
+      ]
+    },
+    {
       "path": "orq traces create",
       "use": "create trace-id span-id",
       "flags": [
@@ -8925,6 +8969,7 @@
     {
       "path": "orq traces thread",
       "use": "thread trace-id [span-id]",
+      "hidden": true,
       "flags": [
         {
           "name": "exclude",
