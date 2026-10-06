@@ -32,7 +32,7 @@ func registerwebsearchCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search the web with a selected provider",
-			Long:    bartolocli.Markdown("Search with Exa, Ceramic, Linkup, Tavily, or Serper and return page URLs, titles, and descriptions in one response format. Authenticate with an API key that grants **websearch.execute** and send **Content-Type: application/json**.\n\n### Provider and credentials\n\nEach request uses the selected provider. Exa uses **auto** search, Linkup uses **standard** depth, and Tavily uses **basic** depth.\n\nCredentials are selected from the authenticated workspace. A configured provider integration takes precedence over ORQ-managed credentials: the default integration is used, or the first configured integration if no default is set. Configure BYOK in the workspace integrations settings. Invalid integration credentials cause an error.\n\n### Billing\n\nManaged searches use the same credits as the **AI Gateway** and charge the provider cost plus **US$0.001 per search** (US$1 per 1,000 searches). BYOK searches consume no ORQ credits and add no ORQ markup; the provider bills the integration owner directly.\n\nExa's published auto rate is **US$7 per 1,000 requests** for up to 10 results, or **US$8 per 1,000** including the ORQ markup. Exa charges use the actual cost reported by the provider.\n\nA successful managed search is billable even if an output guardrail or output redaction failure prevents the results from being returned.\n\n### Policies and observability\n\nPII Redaction is the only supported request plugin. Workspace PII settings and matching guardrail rules also apply. Query redaction runs before input guardrails and the provider call; result redaction runs before output guardrails and the response.\n\nSearch spans and metrics record the provider, latency, result count, and cost. Use the **x-orq-trace-id** response header to find the trace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `identity` (object)\n- `limit` (integer)\n- `plugins` (array)\n- `provider` (string, required)\n- `query` (string, required)\n\nRequired fields: `provider`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Search with Exa, Ceramic, Linkup, Tavily, Serper, OpenAI, or Perplexity and return page URLs, titles, and descriptions in one response format. Authenticate with an API key that grants **websearch.execute** and send **Content-Type: application/json**.\n\n### Provider and credentials\n\nEach request uses the selected provider. Exa uses **auto** search, Linkup uses **standard** depth, Tavily uses **basic** depth, and Perplexity uses its standard Search API. OpenAI runs one forced **web_search** tool call on gpt-5.6-luna through the Responses API and returns the raw search results.\n\nCredentials are selected from the authenticated workspace. A configured provider integration takes precedence over ORQ-managed credentials: the default integration is used, or the first configured integration if no default is set. Configure BYOK in the workspace integrations settings. Invalid integration credentials cause an error.\n\n### Billing\n\nManaged searches use the same credits as the **AI Gateway** and charge the provider cost plus **US$0.001 per search** (US$1 per 1,000 searches). BYOK searches consume no ORQ credits and add no ORQ markup; the provider bills the integration owner directly.\n\nExa's published auto rate is **US$7 per 1,000 requests** for up to 10 results, or **US$8 per 1,000** including the ORQ markup. Exa charges use the actual cost reported by the provider.\n\nPerplexity's published Search API rate is **US$5 per 1,000 requests**. OpenAI web search costs **US$10 per 1,000 tool calls** plus the gpt-5.6-luna tokens of the Responses call, computed from the usage reported by OpenAI, so each search is typically US$0.012 to US$0.015 before the ORQ markup.\n\nA successful managed search is billable even if an output guardrail or output redaction failure prevents the results from being returned.\n\n### Policies and observability\n\nPII Redaction is the only supported request plugin. Workspace PII settings and matching guardrail rules also apply. Query redaction runs before input guardrails and the provider call; result redaction runs before output guardrails and the response.\n\nSearch spans and metrics record the provider, latency, result count, and cost. Use the **x-orq-trace-id** response header to find the trace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `identity` (object)\n- `limit` (integer)\n- `plugins` (array)\n- `provider` (string, required)\n- `query` (string, required)\n\nRequired fields: `provider`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,13 +65,15 @@ func registerwebsearchCommands(root *cobra.Command) {
 							Name:        "provider",
 							FlagName:    "provider",
 							Type:        "enum-string",
-							Description: "Provider to run this search. Exa uses auto, Linkup uses standard depth, and Tavily uses basic depth. Workspace credentials are selected automatically for this provider.",
+							Description: "Provider to run this search. Exa uses auto, Linkup uses standard depth, Tavily uses basic depth, and OpenAI runs one web_search tool call on gpt-5.6-luna. Workspace credentials are selected automatically for this provider.",
 							Enum: []string{
 								"exa",
 								"ceramic",
 								"linkup",
 								"tavily",
 								"serper",
+								"openai",
+								"perplexity",
 							},
 						},
 						{
@@ -126,13 +128,15 @@ func registerwebsearchCommands(root *cobra.Command) {
 					Name:        "provider",
 					FlagName:    "provider",
 					Type:        "enum-string",
-					Description: "Provider to run this search. Exa uses auto, Linkup uses standard depth, and Tavily uses basic depth. Workspace credentials are selected automatically for this provider.",
+					Description: "Provider to run this search. Exa uses auto, Linkup uses standard depth, Tavily uses basic depth, and OpenAI runs one web_search tool call on gpt-5.6-luna. Workspace credentials are selected automatically for this provider.",
 					Enum: []string{
 						"exa",
 						"ceramic",
 						"linkup",
 						"tavily",
 						"serper",
+						"openai",
+						"perplexity",
 					},
 				},
 				{
