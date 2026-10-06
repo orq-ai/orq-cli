@@ -73,11 +73,11 @@ func TestOmpResolvePlan(t *testing.T) {
 
 	// omp is a sharedReader: session skills go to the real home, never the
 	// redirected config dir.
-	if got := strings.Join(dirEntries(t, dir), ","); got != "mcp.json,models.yml" {
-		t.Fatalf("temp dir holds %s, want only mcp.json and models.yml", got)
+	if got := strings.Join(dirEntries(t, dir), ","); got != ".mcp.json,models.yml" {
+		t.Fatalf("temp dir holds %s, want only .mcp.json and models.yml", got)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(dir, "mcp.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,16 +146,23 @@ func TestOmpResolveNoMCP(t *testing.T) {
 	}
 }
 
-// The session dir overlays the user's agent dir: their logins (agent.db,
-// where omp keys the MCP OAuth credential by URL), settings and sessions are
-// linked in, while models.yml and mcp.json are the session's own and the
-// user's copies are left byte-for-byte alone — including after cleanup.
-func TestOmpSessionOverlaysTheUsersAgentDir(t *testing.T) {
+// The session dir is the user's agent dir plus orq: their logins (agent.db,
+// where omp keys the MCP OAuth credential by URL), settings, mcp.json and
+// sessions are linked in; models.yml and .mcp.json are the session's own
+// copies of the user's with orq merged in. The user's files are byte-for-byte
+// unchanged, including after cleanup.
+func TestOmpSessionKeepsTheUsersConfigAndAddsOrq(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on windows")
 	}
 	user := t.TempDir()
-	files := map[string]string{"agent.db": "db", "config.yml": "theme: dark\n", "models.yml": "providers: {}\n", "mcp.json": `{"mcpServers":{"other":{}}}`}
+	files := map[string]string{
+		"agent.db":   "db",
+		"config.yml": "theme: dark\n",
+		"models.yml": "# mine\nproviders:\n  local:\n    baseUrl: http://localhost:11434\n",
+		"mcp.json":   `{"mcpServers":{"github":{"type":"http","url":"https://gh.example"}}}`,
+		".mcp.json":  `{"mcpServers":{"linear":{"type":"http","url":"https://linear.example"}}}`,
+	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(user, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
@@ -174,17 +181,40 @@ func TestOmpSessionOverlaysTheUsersAgentDir(t *testing.T) {
 	if dir == user {
 		t.Fatal("session runs in the user's own dir")
 	}
-	for _, name := range []string{"agent.db", "config.yml", "sessions"} {
+	for _, name := range []string{"agent.db", "config.yml", "mcp.json", "sessions"} {
 		if target, err := os.Readlink(filepath.Join(dir, name)); err != nil || target != filepath.Join(user, name) {
 			t.Errorf("%s: link %q, %v", name, target, err)
 		}
 	}
-	for _, name := range []string{"models.yml", "mcp.json"} {
-		info, err := os.Lstat(filepath.Join(dir, name))
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			t.Errorf("%s is not the session's own file: %v, %v", name, info, err)
-		}
+
+	models, err := os.ReadFile(filepath.Join(dir, "models.yml"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	var parsed struct {
+		Providers map[string]any `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(models, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Providers["local"] == nil || parsed.Providers[OmpProvider] == nil || !strings.Contains(string(models), "# mine") {
+		t.Errorf("session models.yml lost the user's provider or comment, or lacks orq:\n%s", models)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mcp struct {
+		MCPServers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(raw, &mcp); err != nil {
+		t.Fatal(err)
+	}
+	if mcp.MCPServers["linear"]["url"] != "https://linear.example" || mcp.MCPServers[MCPServerName]["url"] != mcpURL(ctx) {
+		t.Errorf("session .mcp.json = %s", raw)
+	}
+
 	plan.Cleanup()
 	for name, body := range files {
 		if got, err := os.ReadFile(filepath.Join(user, name)); err != nil || string(got) != body {
@@ -193,6 +223,23 @@ func TestOmpSessionOverlaysTheUsersAgentDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(user, "sessions")); err != nil {
 		t.Errorf("cleanup removed the user's sessions dir: %v", err)
+	}
+}
+
+// An orq-workspace entry the user already has (from `orq connect omp mcp`) is
+// theirs: the session adds none of its own over it.
+func TestOmpSessionMCPKeepsTheUsersOrqEntry(t *testing.T) {
+	user := t.TempDir()
+	mine := `{"mcpServers":{"` + MCPServerName + `":{"type":"http","url":"https://mine.example"}}}`
+	if err := os.WriteFile(filepath.Join(user, ".mcp.json"), []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := ompSessionMCP(user, "https://session.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "https://mine.example") || strings.Contains(string(raw), "session.example") {
+		t.Errorf("session .mcp.json = %s", raw)
 	}
 }
 

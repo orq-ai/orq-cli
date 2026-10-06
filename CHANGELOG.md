@@ -122,10 +122,10 @@ controls on surface changes, whichever side they originate from.
   MCP server, and links orq's skills for that session only. Connect persists
   the same three: the `orq` provider in `~/.omp/agent/models.yml`, the orq MCP
   server in `~/.omp/agent/mcp.json`, and the skills links. A launched omp
-  session keeps your own omp agent directory — logins, settings, extensions,
-  sessions — linked in, with its own `models.yml` and `mcp.json`, so the orq
-  MCP login made once with `/mcp` carries across launches. Override the
-  gateway URL with `ORQ_OMP_BASE_URL`.
+  session keeps your own omp setup — providers, MCP servers, logins,
+  settings, skills, extensions, sessions — and adds orq to it without
+  writing your files, so the orq MCP login made once with `/mcp` carries
+  across launches. Override the gateway URL with `ORQ_OMP_BASE_URL`.
 
 ## [11.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.3.0) — 2026-10-02
 
