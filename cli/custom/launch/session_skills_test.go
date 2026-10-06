@@ -49,6 +49,7 @@ func realHomeSkillAgents() map[string]string {
 		"codex":    filepath.Join(".agents", "skills"),
 		"opencode": filepath.Join(".agents", "skills"),
 		"pi":       filepath.Join(".agents", "skills"),
+		"omp":      filepath.Join(".agents", "skills"),
 	}
 }
 

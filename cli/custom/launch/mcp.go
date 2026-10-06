@@ -141,9 +141,11 @@ var PersistedMCPHook func(agent string) bool
 // it. Unset hook means "cannot tell", which has to answer false — writing the
 // session entry is the recoverable mistake, suppressing it is not.
 //
-// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
-// persisted file is on its search path and the session entry must always be
-// written. pi has no MCP support at all.
+// kimi never asks: launch points its config home at a fresh temp dir, so the
+// persisted file is never on the search path. omp never needs to: its
+// session .mcp.json sits behind the user's linked-in mcp.json, and omp keeps
+// the first same-named entry, so a persisted one wins anyway. pi has no MCP
+// support at all.
 func persistedMCPConfigured(agent string) bool {
 	if PersistedMCPHook == nil {
 		return false
@@ -153,8 +155,9 @@ func persistedMCPConfigured(agent string) bool {
 
 // httpMCPConfigJSON is the mcpServers payload for the agents that take the orq
 // MCP server as JSON: claude through --mcp-config, copilot through
-// --additional-mcp-config. Both authenticate the remote through their own OAuth
-// flow, so no credential appears in it.
+// --additional-mcp-config, omp through the session mcp.json in its agent dir.
+// All three authenticate the remote through their own OAuth flow, so no
+// credential appears in it.
 func httpMCPConfigJSON(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{

@@ -67,6 +67,10 @@ type agentSpec struct {
 	mcpPresent func(path string) bool
 	// removeMCP is writeMCP's inverse; required whenever writeMCP is set.
 	removeMCP func(path string) (bool, error)
+	// mcpLogin names the one manual step an entry leaves behind. The entry carries no
+	// credential, so the agent logs in to the server itself; one string per spec means
+	// connect and doctor cannot drift when an agent renames its subcommand.
+	mcpLogin string
 	// otelConfig returns the file recording which plugins the agent has enabled; nil when the agent cannot be instrumented.
 	otelConfig func(global bool) (string, error)
 	// installOtel installs and enables the orq-trace plugin through the agent's own CLI. No credential
@@ -99,6 +103,7 @@ func agentRegistry() []agentSpec {
 			writeMCP:   writeMCPJSON("mcpServers", claudeMCPEntry),
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			mcpLogin:   "run /mcp in Claude Code, or 'claude mcp login " + launch.MCPServerName + "'",
 			// claude is the only agent with a plugin mechanism to install the
 			// trace hooks into, the same reason it is the only Traceable agent
 			// in the launcher.
@@ -124,6 +129,7 @@ func agentRegistry() []agentSpec {
 			writeMCP:   writeCodexMCPTOML,
 			mcpPresent: tomlTablePresent("mcp_servers." + launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeTOMLTables(p, codexOwnedMCPTable) },
+			mcpLogin:   "run 'codex mcp login " + launch.MCPServerName + "'",
 		},
 		{
 			ID:     "opencode",
@@ -138,6 +144,7 @@ func agentRegistry() []agentSpec {
 			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
 			mcpPresent:      jsonProviderPresentAt("mcp", launch.MCPServerName),
 			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", launch.MCPServerName) },
+			mcpLogin:        "run 'opencode mcp auth " + launch.MCPServerName + "'",
 		},
 		{
 			ID:     "kimi",
@@ -155,6 +162,7 @@ func agentRegistry() []agentSpec {
 			writeMCP:   writeMCPJSON("mcpServers", kimiMCPEntry),
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			mcpLogin:   "run 'kimi mcp auth " + launch.MCPServerName + "'",
 		},
 		{
 			ID:     "kilo",
@@ -172,6 +180,7 @@ func agentRegistry() []agentSpec {
 			// otherwise be reported as wired forever and never removable.
 			mcpPresent: kiloMCPPresent,
 			removeMCP:  kiloRemoveMCP,
+			mcpLogin:   "run 'kilo mcp auth " + launch.MCPServerName + "'",
 		},
 		{
 			ID:     "pi",
@@ -183,6 +192,22 @@ func agentRegistry() []agentSpec {
 			removeProvider:  func(p string) (bool, error) { return removeJSONKeys(p, "providers", launch.PiProvider) },
 			providerPresent: jsonProviderPresentAt("providers", launch.PiProvider),
 		},
+		{
+			ID:     "omp",
+			Label:  "omp",
+			detect: ompDetect,
+			// omp reads models.yml and mcp.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.omp/agent) only,
+			// so both are global-only.
+			providerConfig:  ompPath("models.yml"),
+			writeProvider:   writeOmpProviderYAML,
+			removeProvider:  removeOmpProvider,
+			providerPresent: ompProviderPresent,
+			mcpConfig:       ompPath("mcp.json"),
+			writeMCP:        writeOmpMCP,
+			mcpPresent:      jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			mcpLogin:        "run /mcp in omp",
+		},
 	}
 }
 
@@ -193,6 +218,16 @@ func lookupAgent(id string) (agentSpec, bool) {
 		}
 	}
 	return agentSpec{}, false
+}
+
+// mcpLoginFor returns the manual login step an agent's MCP entry leaves
+// behind, or "" when the agent is unknown or has none.
+func mcpLoginFor(id string) string {
+	spec, ok := lookupAgent(id)
+	if !ok {
+		return ""
+	}
+	return spec.mcpLogin
 }
 
 func agentIDs() []string {
