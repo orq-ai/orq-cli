@@ -17,6 +17,11 @@ import (
 // against what it saw.
 func TestMain(m *testing.M) {
 	realHome, _ = os.UserHomeDir()
+	// Keep session reads off the real OS keychain. doctor and other commands
+	// read the session through auth, which would otherwise shell out to
+	// security/secret-tool on a dev box; the file store needs no daemon and
+	// prompts for nothing. Store behaviour is covered in the auth package.
+	os.Setenv("ORQ_CREDENTIAL_STORE", "file")
 	runAgentCommand = func(name string, args ...string) error {
 		return fakeTracePluginCommand(args...)
 	}

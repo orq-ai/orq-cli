@@ -163,21 +163,35 @@ func LegacySessionFilePath() string {
 	return legacySessionFilePath()
 }
 
-func validateSession(s *Session) error {
+// validateSessionStructure checks the non-secret shape of a session: version,
+// URLs, and the token-map invariant. It does not require the token strings,
+// which live in the store when one is active, so it is what a reader holding
+// only the file (ListSessions) can check.
+func validateSessionStructure(s *Session) error {
 	if s.Version != 1 {
 		return errors.New("unsupported session version")
 	}
 	if s.APIBaseURL == "" || s.AuthBaseURL == "" || s.V1BaseURL == "" || s.ProfileBaseURL == "" {
 		return errors.New("session is missing required URL fields")
 	}
+	if s.WorkspaceTokens == nil {
+		s.WorkspaceTokens = map[string]StoredAccessToken{}
+	}
+	return nil
+}
+
+// validateSession is the full check for a session about to authenticate: the
+// structure plus the secret tokens, which hydrateSecrets has already pulled in
+// from the store by the time this runs.
+func validateSession(s *Session) error {
+	if err := validateSessionStructure(s); err != nil {
+		return err
+	}
 	if s.RefreshToken == "" {
 		return errors.New("session is missing refresh token")
 	}
 	if s.BootstrapToken.Token == "" || s.BootstrapToken.ExpiresAt == "" {
 		return errors.New("session is missing bootstrap token")
-	}
-	if s.WorkspaceTokens == nil {
-		s.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
 	return nil
 }
@@ -203,6 +217,16 @@ func InspectSession() SessionInspectResult {
 			Path:    path,
 			Code:    "session_invalid",
 			Message: "Session file contains invalid JSON",
+		}
+	}
+	// Pull the token strings in from the store (or migrate a pre-store file into
+	// it) before validating, so a secret-free file on disk is whole in memory.
+	if err := hydrateSecrets(&session, path); err != nil {
+		return SessionInspectResult{
+			Status:  StatusUnreadable,
+			Path:    path,
+			Code:    "credential_store_error",
+			Message: err.Error(),
 		}
 	}
 	if err := validateSession(&session); err != nil {
@@ -286,6 +310,24 @@ func saveSessionTo(path string, s *Session) error {
 	written := *s
 	written.WorkspaceTokens = pruneExpiredWorkspaceTokens(s.WorkspaceTokens)
 	written.StaleTokens = pruneStaleTokens(s.StaleTokens)
+
+	// With a store active, the token strings go to the OS store and the file
+	// keeps only non-secret state. The store write comes first: if it fails we
+	// fall through and write the secrets inline (today's behaviour) rather than
+	// leave a secret-free file whose login no longer works.
+	if store := activeStore(); store != nil {
+		if err := store.Save(hostFromSessionPath(path), marshalSecrets(written.extractSecrets())); err == nil {
+			written.stripSecrets()
+		} else {
+			// The fallback (secrets inline in the file) keeps the login working,
+			// but silence would leave a user believing the store holds the token
+			// when it does not. Say so; orq doctor reports the same location.
+			fmt.Fprintf(os.Stderr,
+				"orq: could not write the %s (%v); session secrets saved to %s in plaintext. Run orq doctor.\n",
+				store.Name(), err, path)
+		}
+	}
+
 	data, err := json.MarshalIndent(written, "", "  ")
 	if err != nil {
 		return err
@@ -293,8 +335,30 @@ func saveSessionTo(path string, s *Session) error {
 	return WriteSecretFile(path, data)
 }
 
+// marshalSecrets encodes the secret bundle for the store. A marshal error here
+// is not possible for this fixed, string-only shape, so it degrades to an empty
+// object rather than widening every caller's signature for a branch that cannot
+// run.
+func marshalSecrets(sec sessionSecrets) string {
+	data, err := json.Marshal(sec)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
 func ClearSession() error {
-	err := os.Remove(SessionFilePath())
+	path := SessionFilePath()
+	// Drop the store entry too, so logging out leaves no token behind. Best
+	// effort: a store that is now unreachable must not block removing the file.
+	if store := activeStore(); store != nil {
+		if err := store.Delete(hostFromSessionPath(path)); err != nil {
+			fmt.Fprintf(os.Stderr,
+				"orq: logged out, but could not remove the stored secret for %s (%v); it may remain in the %s.\n",
+				hostFromSessionPath(path), err, store.Name())
+		}
+	}
+	err := os.Remove(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -395,6 +459,11 @@ func ListSessions() ([]SessionListEntry, error) {
 	}
 
 	activeHost := SessionHost(ResolveURLs("").APIBaseURL)
+	// With a store active, session files are secret-free by design, so a listing
+	// read straight from disk validates structure only. In file mode the tokens
+	// are inline and the full check still applies, so a corrupt file reads as
+	// invalid exactly as before.
+	structureOnly := activeStore() != nil
 
 	sessions := make([]SessionListEntry, 0, len(entries))
 	for _, e := range entries {
@@ -419,7 +488,11 @@ func ListSessions() ([]SessionListEntry, error) {
 			continue
 		}
 		// Keep listing validation consistent with InspectSession and doctor.
-		if err := validateSession(&session); err != nil {
+		validate := validateSession
+		if structureOnly {
+			validate = validateSessionStructure
+		}
+		if err := validate(&session); err != nil {
 			row.Status = SessionStatusInvalid
 			sessions = append(sessions, row)
 			continue
