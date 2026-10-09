@@ -444,7 +444,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-span trace-id span-id",
 			Short:   "Get trace span",
-			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id`\n- `span-id`"),
+			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id` — Optional: queue items predating trace_id capture only have the span.\n- `span-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

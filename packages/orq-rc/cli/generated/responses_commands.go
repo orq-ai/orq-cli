@@ -32,7 +32,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "compact",
 			Short:   "Compact response",
-			Long:    bartolocli.Markdown("Compacts a conversation by summarizing older items to free up context window space. Returns a compaction item containing the generated summary.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf)\n- `instructions` (string)\n- `model` (string)\n- `previous_response_id` (string)\n- `prompt_cache_key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Compacts a conversation by summarizing older items to free up context window space. Returns the next context window: a compaction item containing the generated summary, followed by the most recent items verbatim.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf)\n- `instructions` (string)\n- `model` (string)\n- `previous_response_id` (string)\n- `prompt_cache_key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,7 +65,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "previous_response_id",
 							FlagName:    "previous-response-id",
 							Type:        "string",
-							Description: "The ID of a previous response to continue from.",
+							Description: "The ID of a stored response whose conversation is compacted; input is appended after it.",
 						},
 						{
 							Name:        "prompt_cache_key",
@@ -119,7 +119,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "previous_response_id",
 					FlagName:    "previous-response-id",
 					Type:        "string",
-					Description: "The ID of a previous response to continue from.",
+					Description: "The ID of a stored response whose conversation is compacted; input is appended after it.",
 				},
 				{
 					Name:        "prompt_cache_key",
