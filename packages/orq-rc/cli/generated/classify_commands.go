@@ -25,20 +25,20 @@ func registerclassifyCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " create fallbacks[].model: openai/gpt-5.6-luna, identity{display_name: Sample customer, id: customer-demo}, model: openai/gpt-6-luna, questions{positive{criteria{false: The customer is unhappy., true: The customer is happy.}, instructions: Is the sentiment positive?, type: noul}, rating{criteria: Negative, Neutral, Positive, instructions: Rate sentiment., type: score}, sentiment{criteria{negative: Negative sentiment, neutral: null, positive: Positive sentiment}, instructions: Classify sentiment., type: choice}}, retry{count: 2, on_codes: 429, 502, 503, 504}, state: @file\n"
+		examples += "  " + parent.CommandPath() + " create fallbacks[].model: openai/gpt-5.6-luna, identity{display_name: Sample customer, id: customer-demo}, model: openai/gpt-6-luna, questions{positive{criteria{false: The customer is unhappy., true: The customer is happy.}, instructions: Is the sentiment positive?, type: noul}, rating{criteria: Negative, Neutral, Positive, instructions: Rate sentiment., type: score}, sentiment{criteria{negative: Negative sentiment, neutral: null, positive: Positive sentiment}, instructions: Classify sentiment., type: choice}}, retry{count: 2, on_codes: 429, 502, 503, 504}, state: @file, timeout.call_timeout: 2000\n"
 
 		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Classify",
-			Long:    bartolocli.Markdown("**Deprecated.** Use `POST /v3/router/decisions` and `orq.router.decisions.create()` for new integrations. This endpoint remains available for backward compatibility with the same request and response contract.\n\n**Beta.** Runs typed classification questions (`noul`, `choice`, `score`) against a native classify provider, including OpenAI Decisions with `openai/gpt-6-luna`, or a chat model that supports classify emulation. Emulated models answer through one structured-output call and their probabilities are model-reported rather than calibrated. Native providers can return `refusal` for individual questions; refused answers contain only `type`. The request and response follow the TypeSafe classification contract; `model` in the response identifies the primary or fallback model that answered and `usage` carries the computed cost like the Responses API. Both `/v3/router/classify` and `/v3/router/decisions` use this contract, including ordered `fallbacks`, request-level `retry`, and `identity` attribution. Both require `classify.execute`. This endpoint currently does not apply PII plugins or guardrails.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- `questions` (object, required)\n- `retry` (object)\n- `state` (anyOf, required)\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("**Deprecated.** Use `POST /v3/router/decisions` and `orq.router.decisions.create()` for new integrations. This endpoint remains available for backward compatibility with the same request and response contract.\n\n**Beta.** Evaluate content against named questions and receive structured answers, probabilities, and usage costs. Send the content as `state` and define each entry in `questions` as:\n\n- `noul`: estimate the probability that a statement is true.\n- `choice`: select an option from a set.\n- `score`: rate the content on an ordered scale.\n\nUse a native decision model or a supported chat model. Configure ordered `fallbacks`, optional `retry`, and `timeout.call_timeout` in milliseconds. Each retry and fallback gets a fresh timeout; omit `retry` to move directly to the next fallback on timeout. The response identifies the model that answered.\n\nRequires the `classify` API-key permission. PII plugins and guardrails are not applied. See the [Decisions guide](/ai-gateway/features/decisions) for supported models, probability interpretation, and refusals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- `questions` (object, required)\n- `retry` (object)\n- `state` (anyOf, required)\n- ... and 1 more fields\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"fallbacks\": [\n    {\n      \"model\": \"openai/gpt-5.6-luna\"\n    }\n  ],\n  \"identity\": {\n    \"display_name\": \"Sample customer\",\n    \"id\": \"customer-demo\"\n  },\n  \"model\": \"openai/gpt-6-luna\",\n  \"questions\": {\n    \"positive\": {\n      \"criteria\": {\n        \"false\": \"The customer is unhappy.\",\n        \"true\": \"The customer is happy.\"\n      },\n      \"instructions\": \"Is the sentiment positive?\",\n      \"type\": \"noul\"\n    },\n    \"rating\": {\n      \"criteria\": [\n        \"Negative\",\n        \"Neutral\",\n        \"Positive\"\n      ],\n      \"instructions\": \"Rate sentiment.\",\n      \"type\": \"score\"\n    },\n    \"sentiment\": {\n      \"criteria\": {\n        \"negative\": \"Negative sentiment\",\n        \"neutral\": null,\n        \"positive\": \"Positive sentiment\"\n      },\n      \"instructions\": \"Classify sentiment.\",\n      \"type\": \"choice\"\n    }\n  },\n  \"retry\": {\n    \"count\": 2,\n    \"on_codes\": [\n      429,\n      502,\n      503,\n      504\n    ]\n  },\n  \"state\": \"The customer says: I love this product. It is wonderful!\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"fallbacks\": [\n    {\n      \"model\": \"openai/gpt-5.6-luna\"\n    }\n  ],\n  \"identity\": {\n    \"display_name\": \"Sample customer\",\n    \"id\": \"customer-demo\"\n  },\n  \"model\": \"openai/gpt-6-luna\",\n  \"questions\": {\n    \"positive\": {\n      \"criteria\": {\n        \"false\": \"The customer is unhappy.\",\n        \"true\": \"The customer is happy.\"\n      },\n      \"instructions\": \"Is the sentiment positive?\",\n      \"type\": \"noul\"\n    },\n    \"rating\": {\n      \"criteria\": [\n        \"Negative\",\n        \"Neutral\",\n        \"Positive\"\n      ],\n      \"instructions\": \"Rate sentiment.\",\n      \"type\": \"score\"\n    },\n    \"sentiment\": {\n      \"criteria\": {\n        \"negative\": \"Negative sentiment\",\n        \"neutral\": null,\n        \"positive\": \"Positive sentiment\"\n      },\n      \"instructions\": \"Classify sentiment.\",\n      \"type\": \"choice\"\n    }\n  },\n  \"retry\": {\n    \"count\": 2,\n    \"on_codes\": [\n      429,\n      502,\n      503,\n      504\n    ]\n  },\n  \"state\": \"The customer says: I love this product. It is wonderful!\",\n  \"timeout\": {\n    \"call_timeout\": 2000\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -90,6 +90,12 @@ func registerclassifyCommands(root *cobra.Command) {
 							FlagName:    "state",
 							Type:        "json-or-string",
 							Description: "The content to evaluate. A string, an object or an array. For OpenAI GPT-6 Luna, strings are passed as text and objects or ordinary JSON arrays are serialized as text. User-message arrays accept string content or input_text/input_image parts. Images must be inline base64 data URLs, with at most 128 images across the request. Remote image URLs, file IDs, audio, non-user roles, bare content parts and tool items are rejected.",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
 						},
 					},
 				)
@@ -162,6 +168,12 @@ func registerclassifyCommands(root *cobra.Command) {
 					FlagName:    "state",
 					Type:        "json-or-string",
 					Description: "The content to evaluate. A string, an object or an array. For OpenAI GPT-6 Luna, strings are passed as text and objects or ordinary JSON arrays are serialized as text. User-message arrays accept string content or input_text/input_image parts. Images must be inline base64 data URLs, with at most 128 images across the request. Remote image URLs, file IDs, audio, non-user roles, bare content parts and tool items are rejected.",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
 				},
 			},
 		)
