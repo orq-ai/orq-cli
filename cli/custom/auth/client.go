@@ -1054,7 +1054,7 @@ func OpenBrowser(url string) bool {
 // session context in the request — so it answers for a session token and for a
 // gateway key alike, and a key minted in another workspace gets a 200 naming
 // that other workspace rather than a refusal. Verified against api.orq.ai with
-// a freshly minted restricted key of source "router": 200 here, 200 on
+// a freshly minted restricted gateway key: 200 here, 200 on
 // /v2/projects, 403 on /v2/api-keys/{id}.
 func (c *Client) KeyWorkspace(bearer string) (string, error) {
 	var resp struct {

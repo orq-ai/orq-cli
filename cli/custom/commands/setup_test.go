@@ -2478,9 +2478,9 @@ func TestMintIsAlwaysRestricted(t *testing.T) {
 	if id := savedGatewayKeyID(); id != "01HZXW2K7Y8Q9M0N1P2R3S4T5V" {
 		t.Errorf("gateway_key_id = %q, want the id parsed from %q", id, token)
 	}
-	// source is the field the live endpoint actually acts on.
-	if body["source"] != "router" {
-		t.Errorf("source = %v, want router — without it the server mints permission_mode all", body["source"])
+	// The live endpoint rejects the whole body over an undeclared field.
+	if _, sent := body["source"]; sent {
+		t.Errorf("source = %v, want it absent: the create endpoint answers 400 unknown field", body["source"])
 	}
 }
 
