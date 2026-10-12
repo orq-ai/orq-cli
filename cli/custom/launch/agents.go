@@ -64,6 +64,21 @@ type AgentDef struct {
 	// anthropic-native endpoint and resolves its model from env/defaults, so
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
+	// RequestHeaders reports whether launch can add orq gateway headers to this
+	// agent's model calls, and therefore whether --thread-id and --metadata are
+	// launcher flags for it. copilot is left out: its BYOK provider sends no
+	// custom headers (github/copilot-cli#3399), and a flag that silently does
+	// nothing is worse than none.
+	RequestHeaders bool
+	// OwnThread reports that the agent already sends a conversation id the
+	// gateway groups on (claude: x-claude-code-session-id, codex: its thread
+	// id). Launch then generates no thread id for it, and sends
+	// X-ORQ-THREAD-ID only for an explicit --thread-id. The others need one
+	// generated, or every model call of a session is its own trace.
+	OwnThread bool
+	// MCPEnvAuth reports whether the agent's MCP config can reference
+	// ORQ_API_KEY by name, and therefore whether --mcp-auth env is offered.
+	MCPEnvAuth bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared
 	// OpenAI-compatible one (claude, gemini). Build HelpRoute with helpRoute

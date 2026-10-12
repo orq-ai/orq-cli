@@ -22,6 +22,9 @@ func piAgent() AgentDef {
 		InstallHint:   "npm install -g @earendil-works/pi-coding-agent (https://github.com/badlogic/pi-mono)",
 		FetchesModels: true,
 		AllowModels:   true,
+		// provider headers in models.json. No MCPEnvAuth: launch does not wire
+		// pi's MCP yet.
+		RequestHeaders: true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"-p", v} },
@@ -53,7 +56,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	config, err := BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)
+	config, err := buildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos, threadHeaders(ctx.Flags))
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +65,9 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	// No MCP wiring: pi has no built-in MCP support by design (extensions
-	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
-	// grows a native config surface.
+	// No MCP wiring yet. pi has since grown native MCP (mcp.json in its agent
+	// dir, url + headers with ${NAME} interpolation), so this can reuse mcpURL()
+	// once `orq connect` knows the file too (RES-1653).
 	//
 	// Skills do not go in here: pi is a sharedReader whose only skills target
 	// is ~/.agents/skills (cli/custom/skills/targets.go), not
@@ -106,10 +109,11 @@ type piModel struct {
 }
 
 type piProviderConfig struct {
-	BaseURL string    `json:"baseUrl"`
-	APIKey  string    `json:"apiKey"`
-	API     string    `json:"api"`
-	Models  []piModel `json:"models"`
+	BaseURL string            `json:"baseUrl"`
+	APIKey  string            `json:"apiKey"`
+	API     string            `json:"api"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Models  []piModel         `json:"models"`
 }
 
 // BuildPiModelsJSON serializes pi's models.json: one provider whose default
@@ -117,6 +121,14 @@ type piProviderConfig struct {
 // per model (mirrors the kimi/opencode split). apiKey holds pi's env
 // interpolation syntax, not the key.
 func BuildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo) (string, error) {
+	return buildPiModelsJSON(baseURL, gatewayModels, infos, nil)
+}
+
+// buildPiModelsJSON is BuildPiModelsJSON plus per-session request headers on
+// the provider. Only launch passes them, for the reason openCodeSession gives.
+// pi interpolates $NAME and runs a leading "!" in header values, which
+// validHeaderValue refuses.
+func buildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo, headers []RequestHeader) (string, error) {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {
 		limits[info.ID] = info
@@ -156,6 +168,7 @@ func BuildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo
 				BaseURL: baseURL,
 				APIKey:  "$ORQ_API_KEY",
 				API:     "openai-completions",
+				Headers: headerMap(headers),
 				Models:  models,
 			},
 		},

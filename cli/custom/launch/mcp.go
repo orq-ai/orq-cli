@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -112,9 +113,73 @@ func MCPURLFor(apiBase string) string {
 	)
 }
 
+// mcpAuthEnvVar is the variable an --mcp-auth env entry names. Every agent's
+// plan already exports it, so the reference always resolves in the child.
+const mcpAuthEnvVar = "ORQ_API_KEY"
+
+func setMCPAuth(flags *GatewayFlags, value string) error {
+	switch value {
+	case MCPAuthOAuth, MCPAuthEnv:
+		flags.MCPAuth = value
+		return nil
+	}
+	return fmt.Errorf("flag --mcp-auth expects %q or %q, got %q", MCPAuthOAuth, MCPAuthEnv, value)
+}
+
+// mcpEnvAuth reports whether this launch authenticates the orq MCP server with
+// a bearer header naming ORQ_API_KEY instead of the agent's OAuth flow. OAuth
+// needs a browser, so a headless run (CI, a test runner) never connects
+// without it. Only the variable's name is written: the key stays in the
+// environment, as it does for the model provider.
+func mcpEnvAuth(ctx *AgentContext) bool {
+	return ctx.Flags.MCPAuth == MCPAuthEnv
+}
+
+// mcpEnvAuthWarnings names what --mcp-auth env changes that the user did not
+// ask about. OAuth never shows the MCP host the API key; env sends it there
+// as a bearer token, which only matters when ORQ_MCP_URL points the entry at
+// a host other than the API's own. And a login token is what ORQ_API_KEY
+// holds when there is no durable key, so the orq tools stop when it expires.
+func mcpEnvAuthWarnings(ctx *AgentContext) []string {
+	url := mcpURL(ctx)
+	if !mcpEnvAuth(ctx) || url == "" {
+		return nil
+	}
+	var warnings []string
+	apiBase := firstNonEmpty(ctx.Creds.APIBaseURL, DefaultGatewayAPIBaseURL)
+	if mcpHost, apiHost := urlHost(url), urlHost(apiBase); mcpHost != apiHost {
+		warnings = append(warnings, fmt.Sprintf(
+			"--mcp-auth env sends your orq API key to the MCP server at %s, which is not the API host %s", mcpHost, apiHost))
+	}
+	if ctx.Creds.Kind == CredentialSessionToken {
+		warnings = append(warnings,
+			"--mcp-auth env authenticates the orq MCP server with the login token, so the orq tools stop working when it expires (about an hour)")
+	}
+	return warnings
+}
+
+// urlHost is the lowercased host of raw, or raw itself when it does not parse,
+// so two unparseable values still compare as different hosts.
+func urlHost(raw string) string {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+// wantSessionMCPEntry reports whether launch writes its own orq MCP entry for
+// the agent. A persisted OAuth entry normally wins, but with --mcp-auth env
+// the session entry must shadow it: the persisted one may never have been
+// through its browser login.
+func wantSessionMCPEntry(ctx *AgentContext, agent string) bool {
+	return mcpEnvAuth(ctx) || !persistedMCPConfigured(agent)
+}
+
 // mcpURL returns the orq MCP endpoint for this launch, or "" with --no-mcp.
-// No credential is written anywhere: the URL is the whole entry, and every
-// harness authenticates this remote through its own OAuth flow.
+// By default no credential is written anywhere: the URL is the whole entry,
+// and every harness authenticates this remote through its own OAuth flow.
+// --mcp-auth env adds a header that names ORQ_API_KEY (see mcpEnvAuth).
 func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
 		return ""
@@ -156,24 +221,41 @@ func persistedMCPConfigured(agent string) bool {
 // --additional-mcp-config. Both authenticate the remote through their own OAuth
 // flow, so no credential appears in it.
 func httpMCPConfigJSON(url string) string {
+	return httpMCPConfigJSONAuth(url, "")
+}
+
+// httpMCPConfigJSONAuth is httpMCPConfigJSON with an Authorization header when
+// authorization is non-empty. Callers pass a reference to ORQ_API_KEY in the
+// agent's own interpolation syntax, never the key.
+func httpMCPConfigJSONAuth(url, authorization string) string {
+	entry := map[string]any{
+		"type": "http",
+		"url":  url,
+	}
+	if authorization != "" {
+		entry["headers"] = map[string]string{"Authorization": authorization}
+	}
 	encoded, _ := json.Marshal(map[string]any{
-		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
-		},
+		"mcpServers": map[string]any{MCPServerName: entry},
 	})
 	return string(encoded)
 }
 
-func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
+// claudeMCPEnvAuth is the header claude expands from its environment when it
+// loads an MCP config (${VAR} interpolation).
+const claudeMCPEnvAuth = "Bearer ${" + mcpAuthEnvVar + "}"
+
+func writeClaudeMCPConfig(url string, envAuth bool) (path string, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "orq-claude-mcp-")
 	if err != nil {
 		return "", nil, err
 	}
+	authorization := ""
+	if envAuth {
+		authorization = claudeMCPEnvAuth
+	}
 	path = filepath.Join(dir, "mcp.json")
-	if err := os.WriteFile(path, []byte(httpMCPConfigJSON(url)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(httpMCPConfigJSONAuth(url, authorization)), 0o600); err != nil {
 		os.RemoveAll(dir)
 		return "", nil, err
 	}
@@ -188,10 +270,29 @@ func codexMCPArgs(url string) []string {
 	}
 }
 
+// codexMCPEnvAuthArgs makes codex send ORQ_API_KEY as the server's bearer
+// token, read from its environment by name.
+func codexMCPEnvAuthArgs() []string {
+	return []string{
+		"-c", tomlOverride("mcp_servers."+MCPServerName+".bearer_token_env_var", mcpAuthEnvVar),
+	}
+}
+
 // openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config.
 // OAuth is owned by the agent, not by this CLI.
 func openCodeMCPBlock(url string) map[string]any {
 	return map[string]any{MCPServerName: RemoteMCPEntry(url)}
+}
+
+// openCodeMCPEnvAuthBlock is openCodeMCPBlock authenticated by a header
+// opencode fills from ORQ_API_KEY ({env:VAR} interpolation). oauth is false
+// so opencode does not start its own discovery and browser flow alongside
+// the header; false is the one non-object value its schema accepts there.
+func openCodeMCPEnvAuthBlock(url string) map[string]any {
+	entry := RemoteMCPEntry(url)
+	entry["headers"] = map[string]string{"Authorization": "Bearer {env:" + mcpAuthEnvVar + "}"}
+	entry["oauth"] = false
+	return map[string]any{MCPServerName: entry}
 }
 
 // RemoteMCPEntry is the opencode/kilo mcp value, shared by the session config
@@ -272,14 +373,15 @@ func maybeWriteSessionSkills(ctx *AgentContext, plan *LaunchPlan, dir string) {
 }
 
 // kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME. Kimi authenticates
-// this remote through its own OAuth flow.
-func kimiMCPConfig(url string) string {
+// this remote through its own OAuth flow, or with envAuth reads the bearer
+// token from ORQ_API_KEY by name (bearerTokenEnvVar).
+func kimiMCPConfig(url string, envAuth bool) string {
+	entry := map[string]any{"url": url}
+	if envAuth {
+		entry["bearerTokenEnvVar"] = mcpAuthEnvVar
+	}
 	encoded, _ := json.Marshal(map[string]any{
-		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"url": url,
-			},
-		},
+		"mcpServers": map[string]any{MCPServerName: entry},
 	})
 	return string(encoded)
 }

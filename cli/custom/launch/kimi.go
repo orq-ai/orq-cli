@@ -36,6 +36,10 @@ func kimiAgent() AgentDef {
 		InstallHint:   "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
 		FetchesModels: true,
 		AllowModels:   true,
+		// custom_headers on each provider for request headers,
+		// bearerTokenEnvVar in mcp.json for --mcp-auth env.
+		RequestHeaders: true,
+		MCPEnvAuth:     true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"--prompt", v} },
@@ -66,13 +70,13 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	toml := BuildKimiConfigTOML(resolved.BaseURL, ctx.Creds.APIKey, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos)
+	toml := buildKimiConfigTOML(resolved.BaseURL, ctx.Creds.APIKey, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, threadHeaders(ctx.Flags))
 	home, cleanup, err := writeKimiConfigHome(toml)
 	if err != nil {
 		return nil, err
 	}
 	if url := mcpURL(ctx); url != "" {
-		if err := os.WriteFile(filepath.Join(home, "mcp.json"), []byte(kimiMCPConfig(url)), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(home, "mcp.json"), []byte(kimiMCPConfig(url, mcpEnvAuth(ctx))), 0o600); err != nil {
 			cleanup()
 			return nil, err
 		}
@@ -81,7 +85,8 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			// The provider credential lives in config.toml (kimi has no env
-			// fallback); MCP authentication is handled by Kimi's OAuth flow.
+			// fallback); MCP authentication is handled by Kimi's OAuth flow, or
+			// by bearerTokenEnvVar naming ORQ_API_KEY under --mcp-auth env.
 			"ORQ_API_KEY":    ctx.Creds.APIKey,
 			"ORQ_SERVER":     ctx.Creds.APIBaseURL,
 			"KIMI_CODE_HOME": home,
@@ -118,6 +123,13 @@ func TOMLString(value string) string {
 // kimi stores the model they picked in the UI, and that choice is not ours to
 // replace.
 func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []string, infos []ModelInfo) string {
+	return buildKimiConfigTOML(baseURL, apiKey, gatewayModel, gatewayModels, infos, nil)
+}
+
+// buildKimiConfigTOML is BuildKimiConfigTOML plus per-session request headers
+// as each provider's custom_headers, which kimi sends on every model call.
+// Only launch passes them, for the reason openCodeSession gives.
+func buildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []string, infos []ModelInfo, headers []RequestHeader) string {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {
 		limits[info.ID] = info
@@ -142,7 +154,15 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 		fmt.Fprintf(&b, "[providers.%s]\n", name)
 		fmt.Fprintf(&b, "type = %s\n", TOMLString(typ))
 		fmt.Fprintf(&b, "base_url = %s\n", TOMLString(baseURL))
-		fmt.Fprintf(&b, "api_key = %s\n\n", TOMLString(apiKey))
+		fmt.Fprintf(&b, "api_key = %s\n", TOMLString(apiKey))
+		if len(headers) > 0 {
+			pairs := make([]string, 0, len(headers))
+			for _, h := range headers {
+				pairs = append(pairs, TOMLString(h.Name)+" = "+TOMLString(h.Value))
+			}
+			fmt.Fprintf(&b, "custom_headers = { %s }\n", strings.Join(pairs, ", "))
+		}
+		b.WriteString("\n")
 	}
 	if len(chatModels) > 0 {
 		provider(KimiChatProvider, kimiChatType)

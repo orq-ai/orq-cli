@@ -10,10 +10,7 @@ import (
 
 // Run resolves and launches an agent, returning the child exit code.
 func Run(def *AgentDef, argv []string) (int, error) {
-	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
-		Prompt:      def.Prompt,
-		AllowModels: def.AllowModels,
-	})
+	flags, passthrough, err := ParseArgv(argv, def.ParseOptions())
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
 		// 130 / 143 for orq's own failures, and a bad flag is just a failure.
@@ -34,21 +31,29 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 1, err
 	}
 
-	plan, err := def.Resolve(&AgentContext{
+	assignThreadID(def, &flags)
+	ctx := &AgentContext{
 		Creds:     creds,
 		Getenv:    os.Getenv,
 		Flags:     flags,
 		ExecProbe: hostExecProbe,
-	})
+	}
+	plan, err := def.Resolve(ctx)
 	if err != nil {
 		return 1, err
 	}
+	plan.Warnings = append(plan.Warnings, mcpEnvAuthWarnings(ctx)...)
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
 	reportCredentialNotices(def, creds)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
+	if flags.ThreadID != "" {
+		// On stderr, so a caller parsing the agent's stdout (stream-json) is
+		// not disturbed, and a generated id can still be looked up afterwards.
+		fmt.Fprintf(os.Stderr, "orq thread: %s\n", flags.ThreadID)
 	}
 
 	args := append(append([]string{}, plan.PreArgs...), passthrough...)
@@ -101,6 +106,30 @@ Flags:
                         again when it exits, leaving nothing behind. Not gated
                         on --mcp. For a permanent install, orq connect skills
 `)
+	if def.MCPEnvAuth {
+		fmt.Print(`  --mcp-auth <mode>     How the orq MCP server authenticates: oauth (default, the
+                        agent's own browser login) or env (a bearer header that
+                        names ORQ_API_KEY; only the name is written). Use env
+                        for headless runs, where no browser login can happen
+`)
+	}
+	if def.RequestHeaders {
+		fmt.Print(`  --thread-id <id>      Group this session's model calls under one orq thread
+                        (sent as X-ORQ-THREAD-ID)`)
+		if def.OwnThread {
+			fmt.Print(`. Default: the agent's own
+                        session id
+`)
+		} else {
+			fmt.Print(`. Default: a new id per
+                        launch, printed to stderr
+`)
+		}
+		fmt.Print(`  --metadata <k=v>      Tag every model call's trace with metadata k = v (sent
+                        as X-ORQ-METADATA-<k>; header names are case-insensitive,
+                        so treat k as lowercase). Repeatable
+`)
+	}
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}

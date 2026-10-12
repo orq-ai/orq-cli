@@ -71,8 +71,12 @@ func geminiAgent() AgentDef {
 		Label:         "Gemini CLI",
 		InstallHint:   "npm install -g @google/gemini-cli",
 		FetchesModels: true,
-		HelpRoute:     helpRoute("Gemini", DefaultGeminiGatewayURL),
-		HelpModel:     "Gemini model id, bare (e.g. gemini-2.5-pro)",
+		// GEMINI_CLI_CUSTOM_HEADERS for request headers, $VAR in settings.json
+		// for --mcp-auth env.
+		RequestHeaders: true,
+		MCPEnvAuth:     true,
+		HelpRoute:      helpRoute("Gemini", DefaultGeminiGatewayURL),
+		HelpModel:      "Gemini model id, bare (e.g. gemini-2.5-pro)",
 		// gemini-cli takes one --model per session and has no picker list to
 		// populate (settings.json holds auth and MCP servers, nothing about
 		// models), so resolved.GatewayModels has nowhere to go here. Offering
@@ -124,7 +128,11 @@ func resolveGemini(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	home, cleanup, err := writeGeminiHome(BuildGeminiSettingsJSON(mcpURL(ctx)))
+	settings := BuildGeminiSettingsJSON(mcpURL(ctx))
+	if mcpEnvAuth(ctx) {
+		addGeminiMCPEnvAuth(settings)
+	}
+	home, cleanup, err := writeGeminiHome(settings)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +157,12 @@ func resolveGemini(ctx *AgentContext) (*LaunchPlan, error) {
 			"gemini launches with a fresh config home for this session, so its own extensions, skills and session history are not available",
 		},
 		PreArgs: []string{"--model", resolved.GatewayModel},
+	}
+	// gemini-cli's comma-separated "Name: value" list, sent on every model
+	// call. Only set when there is something to add, so a user's own value
+	// passes through untouched otherwise.
+	if headers := threadHeaders(ctx.Flags); len(headers) > 0 {
+		plan.Env["GEMINI_CLI_CUSTOM_HEADERS"] = mergeHeaderEnv(ctx.Getenv("GEMINI_CLI_CUSTOM_HEADERS"), ',', headers)
 	}
 	// Only the fetch warnings, not appendModelWarnings' missing-provider-prefix
 	// hint: a bare id is the correct shape here, since the gateway's
@@ -241,4 +255,16 @@ func writeGeminiHome(settings map[string]any) (home string, cleanup func(), err 
 		return "", nil, err
 	}
 	return home, cleanup, nil
+}
+
+// addGeminiMCPEnvAuth gives the orq MCP entry an Authorization header that
+// gemini-cli expands from ORQ_API_KEY ($VAR interpolation in settings.json).
+// A no-op when the settings carry no orq MCP entry (--no-mcp).
+func addGeminiMCPEnvAuth(settings map[string]any) {
+	servers, _ := settings["mcpServers"].(map[string]any)
+	entry, _ := servers[MCPServerName].(map[string]any)
+	if entry == nil {
+		return
+	}
+	entry["headers"] = map[string]string{"Authorization": "Bearer $" + mcpAuthEnvVar}
 }

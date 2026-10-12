@@ -20,6 +20,11 @@ func codexAgent() AgentDef {
 		InstallHint:   "npm install -g @openai/codex",
 		FetchesModels: true,
 		AllowModels:   false,
+		// model_providers.<id>.http_headers for request headers,
+		// bearer_token_env_var for --mcp-auth env.
+		RequestHeaders: true,
+		OwnThread:      true,
+		MCPEnvAuth:     true,
 		Prompt: &PromptMapping{
 			Flags: []string{"-p", "--prompt"},
 			// Only the subcommand, no approval or sandbox flag: those are
@@ -73,11 +78,27 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
-	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("codex") {
+	plan.PreArgs = append(plan.PreArgs, codexHeaderArgs(threadHeaders(ctx.Flags))...)
+	if url := mcpURL(ctx); url != "" && wantSessionMCPEntry(ctx, "codex") {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
+		if mcpEnvAuth(ctx) {
+			plan.PreArgs = append(plan.PreArgs, codexMCPEnvAuthArgs()...)
+		}
 	}
 	maybeInstallSessionSkills(ctx, plan, "codex")
 	return plan, nil
+}
+
+// codexHeaderArgs sets each header on the orq provider's http_headers, one
+// key per override so a table the user persisted for the provider is added
+// to rather than replaced. Header names are bare-key safe: the fixed prefixes
+// plus a metadata key of letters, digits and hyphens.
+func codexHeaderArgs(headers []RequestHeader) []string {
+	var args []string
+	for _, h := range headers {
+		args = append(args, "-c", tomlOverride("model_providers."+CodexProvider+".http_headers."+h.Name, h.Value))
+	}
+	return args
 }
 
 func tomlOverride(key, value string) string {

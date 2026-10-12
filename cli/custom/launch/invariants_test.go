@@ -141,6 +141,8 @@ func flagStates() []struct {
 	}{
 		{GatewayFlags{}, ""},
 		{GatewayFlags{MCP: true}, "/--mcp"},
+		// Names ORQ_API_KEY in every MCP entry: the name, never the key.
+		{GatewayFlags{MCP: true, MCPAuth: MCPAuthEnv}, "/--mcp-auth=env"},
 	}
 }
 
@@ -209,17 +211,18 @@ func TestParseArgvLeadingOnly(t *testing.T) {
 // TestCompletionFlagsMatchParser enforces the claim that the completion list
 // mirrors ParseArgv: every advertised flag must be consumed when leading.
 func TestCompletionFlagsMatchParser(t *testing.T) {
-	def := FindAgent("opencode") // AllowModels + prompt mapping = fullest list
+	def := FindAgent("opencode") // AllowModels + RequestHeaders + MCPEnvAuth + prompt mapping = fullest list
 	for _, flag := range CompletionFlags(def, "-") {
 		argv := []string{flag}
 		switch flag {
-		case "--model", "--models", "--base-url", "-p", "--prompt":
+		case "--model", "--models", "--base-url", "--thread-id", "-p", "--prompt":
 			argv = append(argv, "value")
+		case "--metadata":
+			argv = append(argv, "key=value")
+		case "--mcp-auth":
+			argv = append(argv, "env")
 		}
-		flags, rest, err := ParseArgv(argv, ParseArgvOptions{
-			AllowModels: def.AllowModels,
-			Prompt:      def.Prompt,
-		})
+		flags, rest, err := ParseArgv(argv, def.ParseOptions())
 		if err != nil {
 			t.Fatalf("%s: %v", flag, err)
 		}

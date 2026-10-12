@@ -54,6 +54,10 @@ func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 		InstallHint:   family.installHint,
 		FetchesModels: true,
 		AllowModels:   true,
+		// provider options.headers for request headers, {env:VAR} in the mcp
+		// entry for --mcp-auth env.
+		RequestHeaders: true,
+		MCPEnvAuth:     true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"run", v} },
@@ -96,10 +100,13 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 	}
 
 	mcpServerURL := mcpURL(ctx)
-	if mcpServerURL != "" && persistedMCPConfigured(family.name) {
+	if mcpServerURL != "" && !wantSessionMCPEntry(ctx, family.name) {
 		mcpServerURL = ""
 	}
-	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpServerURL)
+	configJSON, err := buildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpServerURL, openCodeSession{
+		Headers:    threadHeaders(ctx.Flags),
+		MCPEnvAuth: mcpEnvAuth(ctx),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +128,7 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 type openCodeProvider struct {
 	Npm     string                    `json:"npm"`
 	Name    string                    `json:"name"`
-	Options map[string]string         `json:"options"`
+	Options map[string]any            `json:"options"`
 	Models  map[string]map[string]any `json:"models"`
 }
 
@@ -129,7 +136,26 @@ type openCodeProvider struct {
 // The api key stays out of the file via {env:ORQ_API_KEY} interpolation.
 // A non-empty mcpServerURL adds the orq MCP server as a remote entry.
 func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo, mcpServerURL string) (string, error) {
-	options := map[string]string{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
+	return buildOpenCodeConfigContent(baseURL, gatewayModel, gatewayModels, infos, mcpServerURL, openCodeSession{})
+}
+
+// openCodeSession is what only a launch adds to the config: the persistent one
+// `orq connect` writes outlives any one session, so a thread id there would
+// join every future session into one.
+type openCodeSession struct {
+	// Headers go on both AI SDK providers, which send them on every model call.
+	Headers []RequestHeader
+	// MCPEnvAuth authenticates the orq MCP entry from ORQ_API_KEY (--mcp-auth env).
+	MCPEnvAuth bool
+}
+
+// buildOpenCodeConfigContent is BuildOpenCodeConfigContent plus the session-only
+// settings.
+func buildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo, mcpServerURL string, session openCodeSession) (string, error) {
+	options := map[string]any{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
+	if headers := headerMap(session.Headers); headers != nil {
+		options["headers"] = headers
+	}
 	toModelMap := func(models []string) map[string]map[string]any {
 		out := make(map[string]map[string]any, len(models))
 		for _, m := range models {
@@ -167,7 +193,11 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	}
 
 	var mcp map[string]any
-	if mcpServerURL != "" {
+	switch {
+	case mcpServerURL == "":
+	case session.MCPEnvAuth:
+		mcp = openCodeMCPEnvAuthBlock(mcpServerURL)
+	default:
 		mcp = openCodeMCPBlock(mcpServerURL)
 	}
 

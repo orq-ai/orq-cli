@@ -117,6 +117,34 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq launch <agent> --mcp-auth env`** connects the orq MCP server
+  in headless runs (CI, scripts, `-p`). The default, `oauth`, leaves the entry
+  to the agent's own browser login, which a headless run never completes, so
+  the server stayed at `needs-auth` and no orq tools loaded. With `env` the
+  entry carries an `Authorization` header that names `ORQ_API_KEY` in the
+  agent's own interpolation syntax; the key itself is never written. It also
+  shadows a persisted `orq connect` entry for the session. Offered for
+  `claude`, `codex`, `gemini`, `opencode`, `kilo` and `kimi`. Launch warns when
+  `ORQ_MCP_URL` would send the key to a host other than the API's, and when the
+  credential is a login token that expires mid-run.
+
+- **Added: `orq launch claude` warns when claude has `orq-workspace` disabled
+  for the current directory.** Claude applies its `disabledMcpServers` list by
+  name, so the entry launch adds was silently switched off too.
+
+- **Added: `orq launch <agent> --thread-id <id>` and `--metadata <key=value>`**
+  (repeatable) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on every model
+  call, so one run can be found as one thread and tagged. The gateway records
+  metadata keys lowercased. Offered for every agent but `copilot`, whose
+  provider cannot send custom headers. `gemini`, `opencode`, `kilo`, `kimi`
+  and `pi` send no conversation id of their own, so they now get a new thread
+  id per launch when none is given, and every call of a session lands in one
+  thread instead of one trace each. `claude` and `codex` keep their own session
+  grouping unless `--thread-id` is passed. Whenever a thread id is set, launch
+  prints `orq thread: <id>` to stderr. Values refuse `,` `{` `}` `$` and a
+  leading `!`, which some agents expand from the environment, a file or a
+  command.
+
 ## [11.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.1) — 2026-09-28
 
 - **Fixed: a login session no longer gets stuck on `401 authz_stale`.** The

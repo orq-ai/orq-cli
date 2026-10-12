@@ -16,8 +16,22 @@ type PromptMapping struct {
 
 // ParseArgvOptions controls per-agent parsing behavior.
 type ParseArgvOptions struct {
-	Prompt      *PromptMapping
-	AllowModels bool
+	Prompt         *PromptMapping
+	AllowModels    bool
+	RequestHeaders bool
+	MCPEnvAuth     bool
+}
+
+// ParseOptions is the parser configuration this agent's definition implies.
+// One place to derive it, so the launcher and the help-invocation check
+// cannot disagree about which flags an agent owns.
+func (def *AgentDef) ParseOptions() ParseArgvOptions {
+	return ParseArgvOptions{
+		Prompt:         def.Prompt,
+		AllowModels:    def.AllowModels,
+		RequestHeaders: def.RequestHeaders,
+		MCPEnvAuth:     def.MCPEnvAuth,
+	}
 }
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
@@ -34,6 +48,12 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if def.AllowModels {
 		flags = append(flags, "--models")
 	}
+	if def.RequestHeaders {
+		flags = append(flags, "--thread-id", "--metadata")
+	}
+	if def.MCPEnvAuth {
+		flags = append(flags, "--mcp-auth")
+	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
 	}
@@ -48,7 +68,9 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
-// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h — are recognized
+// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h, plus
+// --thread-id/--metadata for agents with RequestHeaders and --mcp-auth for
+// agents with MCPEnvAuth — are recognized
 // only at the FRONT of argv: the first arg the launcher doesn't own ends
 // launcher parsing and everything from there on belongs to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
@@ -80,10 +102,39 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 		return v, true, nil
 	}
 
+	// Valued flags that only some agents own, each with its validating setter.
+	// Both the "--flag value" and "--flag=value" forms go through the setter.
+	setters := map[string]func(*GatewayFlags, string) error{}
+	if opts.MCPEnvAuth {
+		setters["--mcp-auth"] = setMCPAuth
+	}
+	if opts.RequestHeaders {
+		setters["--thread-id"] = setThreadID
+		setters["--metadata"] = addMetadata
+	}
+
 	i := 0
 scan:
 	for ; i < len(argv); i++ {
 		arg := argv[i]
+
+		name, _, hasEq := strings.Cut(arg, "=")
+		if set, ok := setters[name]; ok {
+			var v string
+			var err error
+			if hasEq {
+				v, _, err = eqValue(arg, name+"=")
+			} else {
+				v, err = takeValue(arg, &i)
+			}
+			if err == nil {
+				err = set(&flags, v)
+			}
+			if err != nil {
+				return flags, nil, err
+			}
+			continue
+		}
 
 		if v, ok, err := eqValue(arg, "--model="); ok {
 			if err != nil {
@@ -152,6 +203,10 @@ scan:
 		default:
 			break scan // first agent-owned arg; stop consuming
 		}
+	}
+
+	if flags.MCPAuth == MCPAuthEnv && !flags.MCP {
+		return flags, nil, fmt.Errorf("flag --mcp-auth env authenticates the orq MCP server, which --no-mcp turns off")
 	}
 
 	passthrough := append(prompt, argv[i:]...)

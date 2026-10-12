@@ -1,8 +1,13 @@
 package launch
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
 )
 
 const (
@@ -28,9 +33,14 @@ func claudeAgent() AgentDef {
 		Label:       "Claude Code",
 		InstallHint: "npm install -g @anthropic-ai/claude-code",
 		AllowModels: false,
-		HelpRoute:   helpRoute("Anthropic", DefaultClaudeGatewayURL),
-		Prompt:      nil, // claude's own -p passes through untouched
-		Resolve:     resolveClaude,
+		// ANTHROPIC_CUSTOM_HEADERS for request headers, ${VAR} in the MCP
+		// config for --mcp-auth env.
+		RequestHeaders: true,
+		OwnThread:      true,
+		MCPEnvAuth:     true,
+		HelpRoute:      helpRoute("Anthropic", DefaultClaudeGatewayURL),
+		Prompt:         nil, // claude's own -p passes through untouched
+		Resolve:        resolveClaude,
 	}
 }
 
@@ -81,14 +91,26 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		Warnings: warnings,
 	}
 
-	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
-		path, cleanup, err := writeClaudeMCPConfig(url)
+	// ANTHROPIC_CUSTOM_HEADERS is claude's newline-separated "Name: value"
+	// list, sent on every model call. Only set when there is something to
+	// add, so a user's own value passes through untouched otherwise.
+	if headers := threadHeaders(ctx.Flags); len(headers) > 0 {
+		plan.Env["ANTHROPIC_CUSTOM_HEADERS"] = mergeHeaderEnv(getenv("ANTHROPIC_CUSTOM_HEADERS"), '\n', headers)
+	}
+
+	if url := mcpURL(ctx); url != "" && wantSessionMCPEntry(ctx, "claude") {
+		path, cleanup, err := writeClaudeMCPConfig(url, mcpEnvAuth(ctx))
 		if err != nil {
 			return nil, err
 		}
 		plan.PreArgs = []string{"--mcp-config", path}
 		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
 		plan.AddCleanup(cleanup)
+	}
+	if mcpURL(ctx) != "" && claudeDisablesMCPServer(getenv, MCPServerName) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"claude has %s disabled for this directory (disabledMcpServers), which covers every entry by that name, the one launch adds included, so no orq tools will load; enable it with /mcp in Claude Code",
+			MCPServerName))
 	}
 	if url := skillsPluginURL(ctx); url != "" {
 		// Explicit ORQ_SKILLS_URL only: session-only plugin load, where claude
@@ -101,3 +123,48 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 }
 
 func noopNormalize(model string) string { return model }
+
+// claudeDisablesMCPServer reports whether claude's per-directory state lists
+// name under disabledMcpServers for the current directory. Claude applies
+// that list by server name to every source, --mcp-config included (confirmed
+// live on 2.1.284: the session entry reports status "disabled"). The state
+// lives in .claude.json under $CLAUDE_CONFIG_DIR, or the home directory,
+// keyed by the directory's absolute path with forward slashes. Any failure to
+// read it answers false: this only decides whether to warn.
+func claudeDisablesMCPServer(getenv func(string) string, name string) bool {
+	dir := strings.TrimSpace(getenv("CLAUDE_CONFIG_DIR"))
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		dir = home
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude.json"))
+	if err != nil {
+		return false
+	}
+	var state struct {
+		Projects map[string]struct {
+			DisabledMcpServers []string `json:"disabledMcpServers"`
+		} `json:"projects"`
+	}
+	if json.Unmarshal(data, &state) != nil {
+		return false
+	}
+	key := filepath.ToSlash(cwd)
+	for path, project := range state.Projects {
+		// Case-insensitive on Windows, where C:/Users and c:/users are one path.
+		if path != key && !(runtime.GOOS == "windows" && strings.EqualFold(path, key)) {
+			continue
+		}
+		if slices.Contains(project.DisabledMcpServers, name) {
+			return true
+		}
+	}
+	return false
+}

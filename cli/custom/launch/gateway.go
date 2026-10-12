@@ -71,6 +71,27 @@ type GatewayFlags struct {
 	NoSkills bool
 	DryRun   bool
 	Help     bool
+	// ThreadID and Metadata are sent as X-ORQ-THREAD-ID and
+	// X-ORQ-METADATA-<key> by the agents launch can add request headers to
+	// (AgentDef.RequestHeaders). Run fills an empty ThreadID with a fresh id
+	// for the agents that need one (see assignThreadID).
+	ThreadID string
+	Metadata []MetadataPair
+	// MCPAuth is how the orq MCP entry authenticates: MCPAuthOAuth (the
+	// agent's own browser flow) or MCPAuthEnv (a bearer header that names
+	// ORQ_API_KEY, for headless runs).
+	MCPAuth string
+}
+
+const (
+	MCPAuthOAuth = "oauth"
+	MCPAuthEnv   = "env"
+)
+
+// MetadataPair is one --metadata key=value, kept in flag order.
+type MetadataPair struct {
+	Key   string
+	Value string
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.
