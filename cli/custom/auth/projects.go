@@ -149,8 +149,10 @@ var ulidPattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{26}$`)
 // failure this map exists to prevent.
 //
 // Mirrors libs/catalog/orq/apikeys/v1/catalog.textpb in orquesta-web. A domain
-// added there and missing here costs a capability, never a permission; the
-// server ignores access-map entries it does not recognise.
+// added there and missing here costs a capability, never a permission. The
+// reverse is not safe: the server rejects the whole mint with a 400 when the
+// map names a domain the catalog does not know, so drop entries here before the
+// catalog removes them.
 var gatewayAccessMap = map[string]string{
 	"chat_completions":    "write",
 	"responses":           "write",
@@ -203,16 +205,14 @@ func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject b
 	if id := strings.TrimSpace(req.userID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
 	}
-	// source is what actually restricts the key. identity-api, which serves this
-	// route in production, never reads permission_mode or access — it discards
-	// both and applies the catalog's router preset when, and only when, source is
-	// "router". The two fields are still sent because platform-api's proto service
-	// does honour them, and either may answer.
+	// permission_mode and access are what restrict the key. There is no
+	// `source` field: identity-api dropped it from the create body (BACK-2189)
+	// and its strict decoder answers 400 "unknown field" to anything it does not
+	// declare, so sending it fails every mint.
 	out := map[string]any{
 		"name":            req.name,
 		"owner":           owner,
 		"project_scope":   map[string]any{"mode": "all"},
-		"source":          "router",
 		"permission_mode": "restricted",
 		"access":          req.access,
 	}
@@ -262,9 +262,9 @@ func WithProject(id string) APIKeyOption { return func(r *APIKeyRequest) { r.pro
 // only kind of key the CLI mints today.
 //
 // There is deliberately no way to ask for an unrestricted or permanent key. The
-// body always sends source: "router", which is what the server acts on, so an
-// unrestricted variant would need a different request shape rather than a
-// different argument. Add one when something needs it.
+// body always sends permission_mode: "restricted", so an unrestricted variant
+// would need a different request shape rather than a different argument. Add
+// one when something needs it.
 func NewAPIKeyRequest(name string, access map[string]string, expiresAt time.Time, opts ...APIKeyOption) (APIKeyRequest, error) {
 	if strings.TrimSpace(name) == "" {
 		return APIKeyRequest{}, errors.New("api key request needs a name")
@@ -568,9 +568,8 @@ func maskedTokenMatches(masked, token string) bool {
 }
 
 // GetAPIKey looks a key up by id. Authenticate with the session's workspace
-// token, not the key itself: a gateway key is minted with source "router",
-// whose catalog preset has no api_keys access, so it cannot read its own
-// record. The route is workspace-scoped, so a 404 here means the key is not in
+// token, not the key itself: a gateway key is minted with GatewayAccess(),
+// which has no api-key access, so it cannot read its own record. The route is workspace-scoped, so a 404 here means the key is not in
 // the workspace you are logged in to.
 func (c *Client) GetAPIKey(bearer, keyID string) (*APIKeyRecord, error) {
 	keyID = strings.TrimSpace(keyID)

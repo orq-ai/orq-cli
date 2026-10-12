@@ -79,10 +79,10 @@ func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
 		t.Errorf("access = %v, want lowercase levels per domain", access)
 	}
 
-	// source is the field the server acts on; permission_mode and access are
-	// sent for platform-api's proto service, which may answer instead.
-	if body["source"] != "router" {
-		t.Errorf("source = %v, want router, which is what restricts the key", body["source"])
+	// identity-api's strict decoder rejects the whole body over an undeclared
+	// field, and `source` was dropped from it (BACK-2189).
+	if _, sent := body["source"]; sent {
+		t.Errorf("source = %v, want it absent: the create endpoint answers 400 unknown field", body["source"])
 	}
 }
 
@@ -196,7 +196,7 @@ func TestNewAPIKeyRequestRefusesTheDangerousOmissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := createAPIKeyBody(req)
-	if body["source"] != "router" || body["permission_mode"] != "restricted" {
+	if body["permission_mode"] != "restricted" {
 		t.Errorf("a constructed request must still restrict: %v", body)
 	}
 	if owner := body["owner"].(map[string]any); owner["user_id"] != "user_1" {
