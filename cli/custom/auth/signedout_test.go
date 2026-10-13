@@ -94,3 +94,70 @@ func TestListSessionsReportsSignedOut(t *testing.T) {
 		t.Fatalf("status = %q, want %q", rows[0].Status, SessionStatusSignedOut)
 	}
 }
+
+// CheckSession probes one login against its server for `auth sessions --check`:
+// a live bootstrap is ok without a call, an expired one that the server rejects
+// is signed-out, an expired one the server accepts is ok, and a server that
+// cannot be reached stays needs-refresh rather than being called dead.
+func TestCheckSession(t *testing.T) {
+	future := formatISO(time.Now().Add(time.Hour))
+	past := formatISO(time.Now().Add(-time.Hour))
+
+	// SaveSession writes to the active resolved host's file, so point the active
+	// server at the fixture's host and return the host both share.
+	save := func(t *testing.T, apiBase, bootstrapExpiry string) string {
+		t.Helper()
+		isolateHome(t)
+		prev, prevSrc := Server(), ServerSource()
+		SetServer(apiBase, "flag")
+		t.Cleanup(func() { SetServer(prev, prevSrc) })
+		s := validSession("acme")
+		s.APIBaseURL = apiBase
+		s.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: bootstrapExpiry}
+		if err := SaveSession(s); err != nil {
+			t.Fatal(err)
+		}
+		return SessionHost(apiBase)
+	}
+
+	t.Run("live bootstrap is ok without a network call", func(t *testing.T) {
+		host := save(t, "https://unused.invalid", future)
+		if got := CheckSession(host); got != SessionStatusOK {
+			t.Fatalf("got %q, want ok", got)
+		}
+	})
+
+	t.Run("expired and rejected is signed-out", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+		}))
+		defer srv.Close()
+		host := save(t, srv.URL, past)
+		if got := CheckSession(host); got != SessionStatusSignedOut {
+			t.Fatalf("got %q, want signed-out", got)
+		}
+	})
+
+	t.Run("expired and accepted is ok", func(t *testing.T) {
+		srv := loginServer(t, "user-1", "acme")
+		host := save(t, srv.URL, past)
+		if got := CheckSession(host); got != SessionStatusOK {
+			t.Fatalf("got %q, want ok", got)
+		}
+	})
+
+	t.Run("unreachable server stays needs-refresh", func(t *testing.T) {
+		host := save(t, "http://127.0.0.1:0", past) // nothing listening
+		if got := CheckSession(host); got != SessionStatusNeedsRefresh {
+			t.Fatalf("got %q, want needs-refresh", got)
+		}
+	})
+
+	t.Run("missing file is unreadable", func(t *testing.T) {
+		isolateHome(t)
+		if got := CheckSession("nope.invalid"); got != SessionStatusUnreadable {
+			t.Fatalf("got %q, want unreadable", got)
+		}
+	})
+}

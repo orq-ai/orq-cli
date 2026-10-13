@@ -387,6 +387,41 @@ func markSessionSignedOut(session *Session) {
 	_ = SaveSession(session)
 }
 
+// CheckSession probes one saved login against its server for `orq auth sessions
+// --check` and returns the live status. ok when the login works or its
+// bootstrap token is still valid; signed-out when the server rejects the
+// refresh token; needs-refresh when the token is stale but the server could not
+// be reached to confirm, so a transient failure never calls a live login dead.
+// A file that will not load is reported invalid or unreadable, as in the
+// listing. The probe is one refresh: EnsureBootstrapToken records signed-out on
+// a rejected refresh and clears it on success, so the status also lands on disk.
+func CheckSession(host string) string {
+	data, err := os.ReadFile(sessionPathFor(host))
+	if err != nil {
+		return SessionStatusUnreadable
+	}
+	var session Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		return SessionStatusInvalid
+	}
+	if err := validateSession(&session); err != nil {
+		return SessionStatusInvalid
+	}
+	if session.SignedOut {
+		return SessionStatusSignedOut
+	}
+	if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
+		return SessionStatusOK
+	}
+	if _, err := NewClient(session.APIBaseURL).EnsureBootstrapToken(&session); err != nil {
+		if Unauthorized(err) {
+			return SessionStatusSignedOut
+		}
+		return SessionStatusNeedsRefresh // could not reach the server — not a verdict
+	}
+	return SessionStatusOK
+}
+
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
 	Host      string `json:"host"`
