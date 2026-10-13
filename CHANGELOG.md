@@ -120,10 +120,6 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-- **Fixed:** `orq setup` failed at step 3/4 with "Request body failed
-  validation." The API now only accepts service-account owners for new keys,
-  so setup mints the gateway key against the workspace service account
-  instead of the logged-in user.
 - **Changed:** API validation errors now print the field and reason the server
   returns (for example `owner: owner.type must be service_account`) instead of
   only the generic summary.
