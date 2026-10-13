@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -67,10 +68,12 @@ func InstallSession(agent string) (func(), error) {
 				path := filepath.Clean(filepath.Join(target.Dir, name))
 				existing := findLink(m, path)
 				switch {
-				case !exists(path) && anyHas(elsewhere, name):
-					// The agent already loads this skill from another directory
-					// it reads. A second copy only gets loaded twice (pi warns
-					// about a name collision for every one), so use that one.
+				case !exists(path) && anyHasSame(elsewhere, name):
+					// The agent already loads this exact skill from another
+					// directory it reads. A second copy only gets loaded twice
+					// (pi warns about a name collision for every one). A copy
+					// that differs is still linked: the session runs the bundled
+					// version, and the collision warning is the honest report.
 					continue
 				case existing != nil && existing.Session && exists(path) && isOurs(*existing):
 					// Another live session already put this here. Join its
@@ -197,11 +200,21 @@ func readElsewhere(target Target, cwd string) []string {
 	return dirs
 }
 
-// anyHas follows links: a dangling one elsewhere loads nothing, so it must
-// not stop the session linking its own.
-func anyHas(dirs []string, name string) bool {
+// anyHasSame reports whether one of dirs holds name with exactly the bundled
+// content. Skills carry no version field, so the tree hash is the version.
+// os.DirFS follows a link at the skill root, and a dangling or unreadable copy
+// is never the same.
+func anyHasSame(dirs []string, name string) bool {
+	want, err := fs.Sub(Assets(), name)
+	if err != nil {
+		return false
+	}
+	wantSum, err := hashFS(want)
+	if err != nil {
+		return false
+	}
 	for _, d := range dirs {
-		if _, err := os.Stat(filepath.Join(d, name)); err == nil {
+		if sum, err := hashFS(os.DirFS(filepath.Join(d, name))); err == nil && sum == wantSum {
 			return true
 		}
 	}

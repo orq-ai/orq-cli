@@ -122,13 +122,14 @@ controls on surface changes, whichever side they originate from.
   earlier run. Such a key can't read workspace settings, and setup already
   recorded its workspace when it minted the key. Keys passed with `--api-key`,
   or saved for a different workspace, still warn.
-- **Fixed: `orq launch` no longer links a skill the agent already loads from
-  another directory.** Launched from a project, it used to link every orq skill
+- **Fixed: `orq launch` no longer links a skill the agent already loads, with
+  identical content, from another directory.** Launched from a project, it used to link every orq skill
   into the project's `.agents/skills` (or `.claude/skills`) even when the same
   skill was in `~/.agents/skills` or a parent directory up to the repository
   root. Pi then reported a name collision for each one at startup. Launch now
-  skips those skills, and does not create the project skills directory when
-  nothing is left to link.
+  skips a skill whose copy elsewhere matches the bundled one file for file, and
+  does not create the project skills directory when nothing is left to link. A
+  copy that differs is still linked, so the session runs the bundled version.
 
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 

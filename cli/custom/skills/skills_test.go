@@ -3,6 +3,7 @@ package skills
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -607,15 +608,19 @@ func TestInstallSessionLinksLocallyOutsideHome(t *testing.T) {
 	}
 }
 
-// A skill the agent already reads from somewhere else is not linked again:
-// pi reports a name collision for every duplicate, and an empty project
-// .agents/skills makes it ask to trust the project.
+// A skill the agent already reads from somewhere else, with the same content,
+// is not linked again: pi reports a name collision for every duplicate, and an
+// empty project .agents/skills makes it ask to trust the project.
 func TestInstallSessionSkipsSkillsAlreadyVisible(t *testing.T) {
 	names, _ := Names()
 	plant := func(t *testing.T, dir string) {
 		t.Helper()
 		for _, n := range names {
-			if err := os.MkdirAll(filepath.Join(dir, n), 0o755); err != nil {
+			sub, err := fs.Sub(Assets(), n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.CopyFS(filepath.Join(dir, n), sub); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -649,6 +654,31 @@ func TestInstallSessionSkipsSkillsAlreadyVisible(t *testing.T) {
 			t.Errorf("%s: session created %s although every skill was already visible", c.agent, c.rel)
 		}
 		release()
+	}
+}
+
+// A copy elsewhere that differs from the bundle is an older or newer version:
+// the session still links its own.
+func TestInstallSessionLinksOverADifferentVersion(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	names, _ := Names()
+	stale := filepath.Join(home, ".agents", "skills", names[0])
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	t.Chdir(project)
+	release, err := InstallSession("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if !exists(filepath.Join(project, ".agents", "skills", names[0])) {
+		t.Error("a different version in $HOME suppressed the session link")
 	}
 }
 
