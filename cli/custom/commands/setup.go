@@ -1937,22 +1937,33 @@ func promptForScope(caps []string) (bool, error) {
 
 // verifySetup makes one authenticated call with the new credentials. Not whoami: an --api-key run has no session and whoami would report "not logged in".
 func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, mintedThisRun bool) bool {
-	// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
-	attempts := 1
+	var err error
 	if mintedThisRun {
-		attempts = 4
+		// Minted in the active workspace, which the mint already recorded, so
+		// there is no mismatch to look for; and a project-scoped key is refused
+		// workspace-settings. A freshly minted key is not accepted for a second
+		// or two; without the retry a working setup reports as broken.
+		for attempt := 0; attempt < 4; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt) * time.Second)
+			}
+			if _, err = client.ListProjects(state.bearer); err == nil {
+				return true
+			}
+		}
+		if auth.Unauthorized(err) || auth.Forbidden(err) || auth.NotFound(err) {
+			rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
+			diagnoseRejectedKey(rep, client, state)
+		} else {
+			rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+		}
+		return false
 	}
 	// workspace-settings over projects: same reachability signal, and it names
 	// the workspace the credential actually belongs to.
-	var err error
-	var keyWS string
-	for attempt := 0; attempt < attempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-		if keyWS, err = client.KeyWorkspace(state.bearer); err == nil {
-			return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
-		}
+	keyWS, err := client.KeyWorkspace(state.bearer)
+	if err == nil {
+		return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
 	}
 	if auth.Unauthorized(err) {
 		// 401 is a revoked key, not a workspace mismatch: a key from another
@@ -1968,7 +1979,9 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *set
 		// This is the call verification used before workspace-settings replaced
 		// it. "verified" is a machine contract; it must never be a guess.
 		if _, perr := client.ListProjects(state.bearer); perr == nil {
-			rep.warn("could not confirm the key's workspace: %v", err)
+			if !(auth.Forbidden(err) && recordedInActiveWorkspace(state, state.bearer)) {
+				rep.warn("could not confirm the key's workspace: %v", err)
+			}
 			return true
 		}
 		rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
@@ -2040,10 +2053,20 @@ func checkSavedKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		// route does not serve are all "could not tell", and re-minting over any
 		// of them orphans a working key. Say so: "✓ using your saved key" has
 		// already printed, and unannounced this reads as a check that passed.
-		rep.warn("could not confirm the saved key's workspace: %v — reusing it", err)
+		if !(auth.Forbidden(err) && recordedInActiveWorkspace(state, token)) {
+			rep.warn("could not confirm the saved key's workspace: %v — reusing it", err)
+		}
 		return true
 	}
 	return reconcileKeyWorkspace(rep, client, state, opts, token, keyWS, true)
+}
+
+// recordedInActiveWorkspace reports whether token is the saved key and was
+// recorded, at mint, against the active workspace. A project-scoped key is
+// refused workspace-settings (403), and for such a key that record is the answer.
+func recordedInActiveWorkspace(state *authState, token string) bool {
+	saved, ws := savedAPIKey()
+	return token != "" && token == saved && ws != "" && ws == activeWorkspaceKey(state.session)
 }
 
 // reconcileRejectedSavedKey handles a saved key the API answered 401 to.

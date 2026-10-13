@@ -14,7 +14,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 	budgetsCmd := &cobra.Command{
 		Use:   "budgets",
 		Short: "Budgets",
-		Long:  bartolocli.Markdown("Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, API key, provider, and model. Every applicable budget is enforced, and the most restrictive limit applies per dimension."),
+		Long:  bartolocli.Markdown("Budgets"),
 	}
 	root.AddCommand(budgetsCmd)
 
