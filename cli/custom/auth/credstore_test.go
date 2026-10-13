@@ -209,6 +209,44 @@ func TestMacKeychainChunksOversizeSecret(t *testing.T) {
 	}
 }
 
+// A write that fails partway through a multi-chunk secret must leave nothing
+// behind: not a half-written secret, and not stale tail chunks from a previous
+// larger secret (logout's Delete stops at the first gap and would orphan them).
+func TestMacKeychainSaveFailureLeavesNoOrphanChunks(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	big := strings.Repeat("A", 12000) // several chunks
+
+	if err := (macKeychainStore{}).Save(host, big); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+	if len(fk.items) < 3 {
+		t.Fatalf("seed did not produce multiple chunks: %v", keysOf(fk.items))
+	}
+
+	// Re-save, failing the add on the second chunk (index 1). A naive 0..i
+	// cleanup would strand the chunks from index 2 up that the seed wrote.
+	addCalls := 0
+	runSecretTool = func(stdin, name string, args ...string) (string, string, error) {
+		if name == "security" && len(args) > 0 && args[0] == "-i" {
+			defer func() { addCalls++ }()
+			if addCalls == 1 {
+				return "", "boom", fakeExit{1}
+			}
+		}
+		return fk.run(stdin, name, args...)
+	}
+	if err := (macKeychainStore{}).Save(host, big); err == nil {
+		t.Fatal("re-save succeeded, want the injected add failure")
+	}
+	if len(fk.items) != 0 {
+		t.Fatalf("failed Save left orphan chunks: %v", keysOf(fk.items))
+	}
+	if _, ok, err := (macKeychainStore{}).Load(host); ok || err != nil {
+		t.Fatalf("Load after cleanup: ok=%v err=%v, want ok=false err=nil", ok, err)
+	}
+}
+
 func keysOf(m map[string]string) []string {
 	ks := make([]string, 0, len(m))
 	for k := range m {

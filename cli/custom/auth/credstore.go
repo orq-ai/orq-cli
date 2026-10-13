@@ -210,12 +210,19 @@ func (macKeychainStore) Save(host, secret string) error {
 		service, account := chunkTarget(host, i)
 		cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", service, account, chunk)
 		if _, _, err := runSecretTool(cmd, "security", "-i"); err != nil {
-			// Best-effort: drop the chunks already written so Load never finds a
-			// half-written secret (it would fail to base64-decode). Leaving none
-			// lets the caller fall back to the 0600 file cleanly.
-			for j := 0; j <= i; j++ {
+			// Best-effort: drop every chunk so Load never finds a half-written
+			// secret (it would fail to base64-decode) and no stale tail fragment
+			// from a previous larger secret is orphaned. Delete the chunks we may
+			// have written (0..i), then keep going until a continuation chunk is
+			// absent, so logout's Delete — which stops at the first gap — is never
+			// left with items it cannot reach. Leaving none lets the caller fall
+			// back to the 0600 file cleanly.
+			for j := 0; ; j++ {
 				s, a := chunkTarget(host, j)
-				_, _, _ = runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
+				_, _, derr := runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
+				if derr != nil && j > i {
+					break // past our writes and no more leftover chunks
+				}
 			}
 			// Never include security's stderr: on a rejected `-i` line it echoes
 			// the command, which carries the base64 secret. Exit code only.
