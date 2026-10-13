@@ -13,9 +13,6 @@ on:
   pull_request:
   push:
     branches: [main]
-  # schema-drift.yml dispatches this on the PRs it opens, which as GITHUB_TOKEN
-  # PRs trigger no pull_request run.
-  workflow_dispatch:
 
 permissions:
   contents: read
