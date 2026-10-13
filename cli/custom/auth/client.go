@@ -959,6 +959,7 @@ func DescribeAPIError(status int, raw []byte) string {
 	}
 	var body struct {
 		Message   string  `json:"message"`
+		Param     string  `json:"param"`
 		Error     string  `json:"error"`
 		Detail    string  `json:"detail"`
 		RequestID string  `json:"request_id"`
@@ -967,6 +968,7 @@ func DescribeAPIError(status int, raw []byte) string {
 		Errors    []issue `json:"errors"`
 		Details   struct {
 			Issues []issue `json:"issues"`
+			Reason string  `json:"reason"`
 		} `json:"details"`
 	}
 	parsed := json.Unmarshal(raw, &body) == nil
@@ -977,6 +979,14 @@ func DescribeAPIError(status int, raw []byte) string {
 	}
 
 	details := []string{}
+	// Current API errors carry one problem as details.reason plus the
+	// offending top-level field in param.
+	if r := body.Details.Reason; r != "" {
+		if body.Param != "" {
+			r = body.Param + ": " + r
+		}
+		details = append(details, r)
+	}
 	all := append(append(append([]issue{}, body.Details.Issues...), body.Issues...), body.Errors...)
 	for _, i := range all {
 		line := joinPathMessage(i.Path, i.Message)

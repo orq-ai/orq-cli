@@ -8,27 +8,15 @@ import (
 	"time"
 )
 
-// A service-account key can only be created by a workspace admin, so asking for
-// one unconditionally locks every non-admin member out of `orq setup`. When the
-// caller knows who is logged in, the key must be attributed to them.
-func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
-	body, scoped := createAPIKeyBody(APIKeyRequest{name: "orq-cli laptop", userID: "user_123", access: GatewayAccess()})
+// The live endpoint rejects user-owned keys with 400 "owner.type must be
+// service_account", which failed every `orq setup` at step 3/4.
+func TestCreateAPIKeyOwnedByServiceAccount(t *testing.T) {
+	body, scoped := createAPIKeyBody(APIKeyRequest{name: "orq-cli laptop", access: GatewayAccess()})
 	if scoped {
 		t.Error("no project id given, key should not claim project scope")
 	}
-	owner, ok := body["owner"].(map[string]any)
-	if !ok {
-		t.Fatalf("owner is %T, want a map", body["owner"])
-	}
-	if owner["type"] != "user" || owner["user_id"] != "user_123" {
-		t.Errorf("owner = %v, want a user key attributed to user_123", owner)
-	}
-
-	// No session, no user to attribute to: the service account is the only
-	// remaining option, and this path never mints anyway.
-	body, _ = createAPIKeyBody(APIKeyRequest{name: "orq-cli laptop", userID: "  ", access: GatewayAccess()})
-	if owner := body["owner"].(map[string]any); owner["type"] != "service_account" {
-		t.Errorf("owner without a user id = %v, want service_account", owner)
+	if owner := body["owner"].(map[string]any); owner["type"] != "service_account" || len(owner) != 1 {
+		t.Errorf("owner = %v, want service_account", owner)
 	}
 }
 
@@ -39,7 +27,7 @@ func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
 // sending it as well would silently widen the key back to all projects.
 func TestCreateAPIKeyScopesThroughProjects(t *testing.T) {
 	id := "019def44-a743-7000-a442-c0db96b06699"
-	body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: id, userID: "user_1", access: GatewayAccess()})
+	body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: id, access: GatewayAccess()})
 	if !scoped {
 		t.Fatal("a project id must produce a project-scoped key")
 	}
@@ -51,7 +39,7 @@ func TestCreateAPIKeyScopesThroughProjects(t *testing.T) {
 		t.Error("project_scope must not travel alongside projects")
 	}
 
-	body, scoped = createAPIKeyBody(APIKeyRequest{name: "k", userID: "user_1", access: GatewayAccess()})
+	body, scoped = createAPIKeyBody(APIKeyRequest{name: "k", access: GatewayAccess()})
 	if scoped {
 		t.Error("no project id given, key should not claim project scope")
 	}
@@ -67,7 +55,7 @@ func TestCreateAPIKeyScopesThroughProjects(t *testing.T) {
 // it must hold gateway verbs and nothing else. Under permission_mode "all" the
 // server resolves the whole catalog, including member, billing and sso.
 func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
-	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", userID: "user_1", access: map[string]string{"chat_completions": "write", "model": "read"}})
+	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", access: map[string]string{"chat_completions": "write", "model": "read"}})
 	if body["permission_mode"] != "restricted" {
 		t.Errorf("permission_mode = %v, want restricted", body["permission_mode"])
 	}
@@ -155,7 +143,7 @@ func TestKeyIDFromToken(t *testing.T) {
 // body always carries the field.
 func TestCreateAPIKeyBodyCarriesExpiry(t *testing.T) {
 	at := time.Date(2026, 11, 19, 8, 30, 0, 0, time.FixedZone("CET", 3600))
-	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", userID: "u", access: GatewayAccess(), expiresAt: at})
+	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", access: GatewayAccess(), expiresAt: at})
 	// "expiration": the live endpoint rejects the spec's "expires_at" outright
 	// with `unknown field`, which fails the whole mint.
 	if got := body["expiration"]; got != "2026-11-19T07:30:00Z" {
@@ -191,16 +179,13 @@ func TestNewAPIKeyRequestRefusesTheDangerousOmissions(t *testing.T) {
 		})
 	}
 
-	req, err := NewAPIKeyRequest("orq-cli gateway laptop", GatewayAccess(), at, WithUser("user_1"))
+	req, err := NewAPIKeyRequest("orq-cli gateway laptop", GatewayAccess(), at)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := createAPIKeyBody(req)
 	if body["permission_mode"] != "restricted" {
 		t.Errorf("a constructed request must still restrict: %v", body)
-	}
-	if owner := body["owner"].(map[string]any); owner["user_id"] != "user_1" {
-		t.Errorf("WithUser did not reach the body: %v", owner)
 	}
 }
 
@@ -221,7 +206,7 @@ func TestCreateAPIKeyReadsTheKeyIDFromEitherShape(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer srv.Close()
-			_, keyID, _, err := NewClient(srv.URL).CreateAPIKey("t", APIKeyRequest{name: "k", userID: "u", access: GatewayAccess(), expiresAt: time.Now().Add(time.Hour)})
+			_, keyID, _, err := NewClient(srv.URL).CreateAPIKey("t", APIKeyRequest{name: "k", access: GatewayAccess(), expiresAt: time.Now().Add(time.Hour)})
 			if err != nil {
 				t.Fatal(err)
 			}
