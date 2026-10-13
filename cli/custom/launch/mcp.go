@@ -102,10 +102,16 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 	}
 }
 
+// SkillsUpdateHook says whether a newer CLI is out to suggest. The commands
+// package injects it, as with PersistedMCPHook: the update check lives there.
+// known=false means "cannot tell"; hint="" with known=true means this binary
+// is the latest, so there is no upgrade to suggest.
+var SkillsUpdateHook func() (hint string, known bool)
+
 // differingSkillsHint explains the name collisions an agent reports when a
 // skill it also reads elsewhere is a different version from the bundled one.
 // The bundle is pinned to the CLI release, so updating the CLI is the fix
-// when the other copy is the newer one.
+// when the other copy is the newer one — unless this is already the latest.
 func differingSkillsHint(agent string) string {
 	paths, err := skills.DifferingCopies(agent)
 	if err != nil || len(paths) == 0 {
@@ -119,10 +125,18 @@ func differingSkillsHint(agent string) string {
 			where = append(where, d)
 		}
 	}
-	return fmt.Sprintf(
-		"%d orq skills in %s differ from the version this CLI bundles; this session uses the bundled ones. "+
-			"If yours are newer, run 'orq update' to get a CLI that bundles them",
+	msg := fmt.Sprintf("%d orq skills in %s differ from the version this CLI bundles; this session uses the bundled ones",
 		len(paths), strings.Join(where, ", "))
+	suggestion := "if yours are newer, run 'orq update' to get a CLI that bundles them"
+	if SkillsUpdateHook != nil {
+		if hint, known := SkillsUpdateHook(); known {
+			suggestion = hint
+		}
+	}
+	if suggestion == "" {
+		return msg
+	}
+	return msg + "; " + suggestion
 }
 
 // MCPURLFor is the single derivation of the orq MCP endpoint: the explicit

@@ -130,8 +130,10 @@ controls on surface changes, whichever side they originate from.
   skips a skill whose copy elsewhere matches the bundled one file for file, and
   does not create the project skills directory when nothing is left to link. A
   copy that differs is still linked, so the session runs the bundled version,
-  and launch prints a warning naming how many differ and where, with a hint to
-  run `orq update` if those copies are newer.
+  and launch prints a warning naming how many differ and where. The warning
+  suggests `orq update` only when a newer CLI release is out (checked against
+  the update cache, fetched if stale), and drops the suggestion when this CLI
+  is already the latest.
 
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 
