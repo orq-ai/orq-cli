@@ -907,19 +907,24 @@ func Unauthorized(err error) bool {
 }
 
 // RefreshRejected reports whether err is the auth server ending the login: the
-// refresh token was invalid or revoked, or the account is gone or deactivated.
+// refresh token itself was invalid/revoked, or the account was deactivated.
 //
 // The /access-token endpoint does not answer these with 401. Measured against
 // the live auth-api (orquesta-web apps/auth-api issue-access-token.ts), a
-// rejected refresh returns 400 "Invalid refresh token!", a missing account 400
-// "Account not found!", and a deactivated account 403 "Account has been
-// deactivated". So Unauthorized() (401 only, the gateway-key verdict) never
-// fires here and the login would silently read as merely needs-refresh.
+// rejected refresh returns 400 "Invalid refresh token!" and a deactivated
+// account 403 "Account has been deactivated". So Unauthorized() (401 only, the
+// gateway-key verdict) never fires here; without this the login would silently
+// read as merely needs-refresh.
 //
-// Matched on status 400/403 AND the rejection message so a malformed-request
-// 400 (a different message) is not mistaken for a dead login. Transient
-// failures (5xx, timeouts, transport errors) are not APIErrors of this shape,
-// so they never sign the user out.
+// Deliberately NOT matched: the 400 "Account not found!" that the same endpoint
+// returns when a valid, active login requests a workspace or project it cannot
+// access (issue-access-token.ts:164 — reached only after the refresh token has
+// verified and the account is confirmed active). That is an authorization miss
+// on the requested scope, not a dead login; signing the whole session out on it
+// would wrongly kill a working login (e.g. a stale ActiveProjectID). The match
+// is on the specific dead-login messages, not a bare "account" substring, and
+// transient failures (5xx, timeouts, transport errors) are not APIErrors of
+// this shape, so none of them sign the user out.
 func RefreshRejected(err error) bool {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
@@ -928,9 +933,12 @@ func RefreshRejected(err error) bool {
 	if apiErr.Status == http.StatusUnauthorized {
 		return true
 	}
-	if apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusForbidden {
-		msg := strings.ToLower(apiErr.Msg)
-		return strings.Contains(msg, "refresh token") || strings.Contains(msg, "account")
+	msg := strings.ToLower(apiErr.Msg)
+	if apiErr.Status == http.StatusBadRequest {
+		return strings.Contains(msg, "refresh token")
+	}
+	if apiErr.Status == http.StatusForbidden {
+		return strings.Contains(msg, "deactivat")
 	}
 	return false
 }

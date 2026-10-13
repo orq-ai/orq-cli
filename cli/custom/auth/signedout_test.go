@@ -74,9 +74,44 @@ func TestEnsureBootstrapTokenDoesNotSignOutOnTransientError(t *testing.T) {
 	}
 }
 
+// A valid, active login asking for a workspace or project it cannot access gets
+// a 400 "Account not found!" from the same /access-token endpoint. That is an
+// authorization miss (e.g. a stale ActiveProjectID), not a dead refresh token,
+// so the whole session must not be signed out — only the request errors.
+func TestEnsureWorkspaceTokenDoesNotSignOutOnWorkspaceMiss(t *testing.T) {
+	isolateHome(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"message":"Account not found!"}`)
+	}))
+	defer srv.Close()
+
+	s := validSession("acme")
+	s.APIBaseURL = srv.URL
+	s.RefreshToken = "live-refresh"
+	if err := SaveSession(s); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	if _, err := clientFor(srv).EnsureWorkspaceToken(s, "no-such-ws"); err == nil {
+		t.Fatal("EnsureWorkspaceToken succeeded, want the server's rejection")
+	}
+	if s.SignedOut {
+		t.Error("a workspace/project access miss must not mark the session SignedOut")
+	}
+	rows, err := ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Status == SessionStatusSignedOut {
+		t.Fatalf("persisted rows = %+v, want not signed-out", rows)
+	}
+}
+
 // RefreshRejected is the crux of the login-health fix: the auth server ends a
-// login with 400/403 and a refresh-token or account message, never a bare 401
-// on a different body. Transient failures must not match.
+// login: a 400 naming the refresh token, or a 403 deactivation. It must NOT
+// match the 400 "Account not found!" that a live login gets for a workspace or
+// project it cannot access, nor any transient failure.
 func TestRefreshRejected(t *testing.T) {
 	cases := []struct {
 		name string
@@ -84,9 +119,13 @@ func TestRefreshRejected(t *testing.T) {
 		want bool
 	}{
 		{"400 invalid refresh token", &APIError{Status: http.StatusBadRequest, Msg: "Invalid refresh token!"}, true},
-		{"400 account not found", &APIError{Status: http.StatusBadRequest, Msg: "Account not found!"}, true},
 		{"403 account deactivated", &APIError{Status: http.StatusForbidden, Msg: "Account has been deactivated"}, true},
 		{"401 any body", &APIError{Status: http.StatusUnauthorized, Msg: "unauthorized"}, true},
+		// A valid, active login asking for a workspace/project it cannot access:
+		// the endpoint answers 400 "Account not found!". This is an authorization
+		// miss, not a dead login, so it must not sign the whole session out.
+		{"400 account not found (workspace/project miss)", &APIError{Status: http.StatusBadRequest, Msg: "Account not found!"}, false},
+		{"403 forbidden route (not deactivation)", &APIError{Status: http.StatusForbidden, Msg: "This API key type cannot access this endpoint"}, false},
 		{"400 unrelated validation error", &APIError{Status: http.StatusBadRequest, Msg: "workspace_key must be a string"}, false},
 		{"500 server error", &APIError{Status: http.StatusInternalServerError, Msg: "Invalid refresh token!"}, false},
 		{"transport error", fmt.Errorf("dial tcp: connection refused"), false},
