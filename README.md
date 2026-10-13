@@ -290,8 +290,10 @@ this one included. Ask this command with `-o`.
 `-o json` on stdout is the only stability-guaranteed machine contract; its
 shape follows the orq API response behind the command. The table a terminal
 gets, and TOON, are presentation-only and may change rendering between
-releases. Exit codes are `0` success, `1` failure, `130`/`143` on
-SIGINT/SIGTERM, and errors go to stderr. The full contract, including how
+releases. Exit codes are `0` success, `2` a bad invocation (usage error: bad
+flag or value, unknown command/subcommand, destructive command without
+`--force`), `1` any other failure, `130`/`143` on SIGINT/SIGTERM, and errors go
+to stderr. The full contract, including how
 command/flag removals are announced, lives in
 [CHANGELOG.md](./CHANGELOG.md). The command surface itself is tracked in
 [`surface.json`](./surface.json), which CI keeps in lockstep with the code so
