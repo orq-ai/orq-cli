@@ -14,7 +14,7 @@ func registerhubCommands(root *cobra.Command) {
 	hubCmd := &cobra.Command{
 		Use:   "hub",
 		Short: "Hub",
-		Long:  bartolocli.Markdown("Hub items are reusable templates available to a workspace."),
+		Long:  bartolocli.Markdown("Hub"),
 	}
 	root.AddCommand(hubCmd)
 

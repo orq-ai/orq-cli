@@ -14,7 +14,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 	environmentsCmd := &cobra.Command{
 		Use:   "environments",
 		Short: "Environments",
-		Long:  bartolocli.Markdown("Reusable workspace- and project-scoped deployment environments."),
+		Long:  bartolocli.Markdown("Environments"),
 	}
 	root.AddCommand(environmentsCmd)
 

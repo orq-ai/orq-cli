@@ -28,7 +28,7 @@ func registerimagesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "edit",
 			Short:   "Create image edit",
-			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- ... and 8 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,6 +41,12 @@ func registerimagesCommands(root *cobra.Command) {
 							FlagName:    "cache",
 							Type:        "json",
 							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 						},
 						{
 							Name:        "fallbacks",
@@ -160,6 +166,12 @@ func registerimagesCommands(root *cobra.Command) {
 					Description: "Cache configuration for the request.",
 				},
 				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
+				},
+				{
 					Name:        "fallbacks",
 					FlagName:    "fallbacks",
 					Type:        "json",
@@ -270,7 +282,7 @@ func registerimagesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "generate",
 			Short:   "Create image",
-			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 12 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `output_format` is `--body-output-format` (not `--output-format`)\n"),
+			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- ... and 13 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `output_format` is `--body-output-format` (not `--output-format`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -292,6 +304,12 @@ func registerimagesCommands(root *cobra.Command) {
 							FlagName:    "cache",
 							Type:        "json",
 							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 						},
 						{
 							Name:        "fallbacks",
@@ -438,6 +456,12 @@ func registerimagesCommands(root *cobra.Command) {
 					Description: "Cache configuration for the request.",
 				},
 				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
+				},
+				{
 					Name:        "fallbacks",
 					FlagName:    "fallbacks",
 					Type:        "json",
@@ -566,7 +590,7 @@ func registerimagesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "variation",
 			Short:   "Create image variation",
-			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- ... and 6 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -579,6 +603,12 @@ func registerimagesCommands(root *cobra.Command) {
 							FlagName:    "cache",
 							Type:        "json",
 							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 						},
 						{
 							Name:        "fallbacks",
@@ -689,6 +719,12 @@ func registerimagesCommands(root *cobra.Command) {
 					FlagName:    "cache",
 					Type:        "json",
 					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 				},
 				{
 					Name:        "fallbacks",

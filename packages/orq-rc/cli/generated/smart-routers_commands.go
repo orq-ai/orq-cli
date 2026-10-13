@@ -14,7 +14,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	smartRoutersCmd := &cobra.Command{
 		Use:   "smart-routers",
 		Short: "Smart Routers",
-		Long:  bartolocli.Markdown("Create and manage workspace Smart Routers. A Smart Router selects a model from an eligible pool for each request according to a quality, balanced, or cost profile."),
+		Long:  bartolocli.Markdown("Smart Routers"),
 	}
 	root.AddCommand(smartRoutersCmd)
 

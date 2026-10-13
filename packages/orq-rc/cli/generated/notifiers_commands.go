@@ -14,7 +14,7 @@ func registernotifiersCommands(root *cobra.Command) {
 	notifiersCmd := &cobra.Command{
 		Use:   "notifiers",
 		Short: "Notifiers",
-		Long:  bartolocli.Markdown("Notifier destinations used to send delivery and workflow notifications."),
+		Long:  bartolocli.Markdown("Notifiers"),
 	}
 	root.AddCommand(notifiersCmd)
 

@@ -14,7 +14,7 @@ func registerfilesCommands(root *cobra.Command) {
 	filesCmd := &cobra.Command{
 		Use:   "files",
 		Short: "Files",
-		Long:  bartolocli.Markdown("File upload and retrieval operations."),
+		Long:  bartolocli.Markdown("Files"),
 	}
 	root.AddCommand(filesCmd)
 
