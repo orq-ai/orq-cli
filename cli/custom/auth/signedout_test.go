@@ -23,6 +23,12 @@ func TestEnsureBootstrapTokenMarksSignedOutOnRejectedRefresh(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	// Refresh the active login (the realistic case), so the active host and the
+	// session's own host are the same file. markSessionSignedOut now writes to the
+	// session's own host rather than the active one; pinning them together keeps this
+	// a single-file test instead of leaving a stray active-host copy.
+	t.Setenv("ORQ_SERVER", srv.URL)
+
 	s := validSession("acme")
 	s.APIBaseURL = srv.URL
 	s.RefreshToken = "dead-refresh"
@@ -309,5 +315,35 @@ func TestCheckSessionPersistsToProbedHostNotActive(t *testing.T) {
 	// The active host's file is untouched.
 	if data, _ := os.ReadFile(sessionPathFor(activeHost)); strings.Contains(string(data), `"signedOut": true`) {
 		t.Fatalf("active host file was wrongly modified:\n%s", data)
+	}
+}
+
+// A fresh `orq auth login` is a new credential, so the new session must not
+// inherit a signed-out mark from the prior rejected one — otherwise the working
+// login still reads dead.
+func TestSessionForLoginClearsSignedOut(t *testing.T) {
+	fresh := sessionForLogin(&Session{SignedOut: true, RefreshToken: "r"})
+	if fresh.SignedOut {
+		t.Error("sessionForLogin must clear SignedOut; a fresh login is not signed out")
+	}
+}
+
+// markSessionSignedOut must write the mark to the session's OWN host file, not
+// the active host's, so refreshing a non-active login does not stamp the wrong file.
+func TestMarkSignedOutWritesOwnHostNotActive(t *testing.T) {
+	isolateHome(t)
+	t.Setenv("ORQ_SERVER", "https://active.invalid") // the active host
+
+	s := validSession("acme")
+	s.APIBaseURL = "https://other.invalid" // a different, non-active login
+	markSessionSignedOut(s)
+
+	own, _ := os.ReadFile(sessionPathFor(SessionHost("https://other.invalid")))
+	if !strings.Contains(string(own), `"signedOut": true`) {
+		t.Fatalf("mark not written to the session's own host file:\n%s", own)
+	}
+	active, _ := os.ReadFile(sessionPathFor(SessionHost("https://active.invalid")))
+	if strings.Contains(string(active), `"signedOut": true`) {
+		t.Fatalf("mark wrongly written to the active host file:\n%s", active)
 	}
 }

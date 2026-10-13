@@ -571,6 +571,10 @@ func sessionForLogin(previous *Session) *Session {
 		return &Session{}
 	}
 	kept := *previous
+	// A fresh login is a new credential, so it is not signed out — clear any mark a
+	// prior rejected refresh left, otherwise the new working login still reads dead
+	// (usableSessionStatus drops it, and CheckSession returns signed-out before it probes).
+	kept.SignedOut = false
 	return &kept
 }
 

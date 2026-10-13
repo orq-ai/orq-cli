@@ -1424,3 +1424,19 @@ func TestGatewayKeyServerCheck(t *testing.T) {
 		t.Fatal("a session with no gateway key should produce no check")
 	}
 }
+
+func TestFailingCheckIDs(t *testing.T) {
+	checks := []doctorCheck{
+		{ID: "api_base_url", Status: "pass"},
+		{ID: "login", Status: "fail"},
+		{ID: "credentials", Status: "warn"},
+		{ID: "gateway_key", Status: "fail"},
+	}
+	got := failingCheckIDs(checks)
+	if len(got) != 2 || got[0] != "login" || got[1] != "gateway_key" {
+		t.Fatalf("failingCheckIDs = %v, want [login gateway_key]", got)
+	}
+	if ids := failingCheckIDs([]doctorCheck{{ID: "ok", Status: "pass"}}); len(ids) != 0 {
+		t.Fatalf("failingCheckIDs with no fail = %v, want empty", ids)
+	}
+}

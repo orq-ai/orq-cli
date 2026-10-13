@@ -35,6 +35,19 @@ type doctorCheck struct {
 	AlwaysShow bool `json:"-"`
 }
 
+// failingCheckIDs returns the ids of checks whose status is "fail", so the command
+// can exit non-zero and name what broke. Warnings do not count; only a hard fail
+// (a dead login, a revoked gateway key, a permissions repair that could not run).
+func failingCheckIDs(checks []doctorCheck) []string {
+	var ids []string
+	for _, c := range checks {
+		if c.Status == "fail" {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
+}
+
 type resolvedValue struct {
 	Value  string `json:"value"`
 	Source string `json:"source"`
@@ -249,14 +262,24 @@ func NewDoctorCommand() *cobra.Command {
 			// format request always get the structured report.
 			// The report goes out first either way: a failed --fix has to name
 			// which path it could not repair before the error ends the run.
+			// A failing check must end the run non-zero, so a non-TTY caller sees the
+			// broken login (or gateway key) the ticket is about, not an exit 0 beside a
+			// "fail" line. The report prints first either way. permsErr (a --fix repair
+			// that could not run) takes precedence; it carries its own message.
+			doctorErr := permsErr
+			if doctorErr == nil {
+				if failed := failingCheckIDs(checks); len(failed) > 0 {
+					doctorErr = fmt.Errorf("doctor found %d failing check(s): %s", len(failed), strings.Join(failed, ", "))
+				}
+			}
 			if wantsHumanView(cmd) {
 				printDoctorSummary(authStatus, userEmail, client.URLs.APIBaseURL, checks)
-				return permsErr
+				return doctorErr
 			}
 			if err := emit(report); err != nil {
 				return err
 			}
-			return permsErr
+			return doctorErr
 		},
 	}
 	DeprecatedAPIBaseFlag(cmd)

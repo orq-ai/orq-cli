@@ -384,7 +384,11 @@ func markSessionSignedOut(session *Session) {
 		return
 	}
 	session.SignedOut = true
-	_ = SaveSession(session)
+	// Write the mark to this session's OWN host file, not the active host. SaveSession
+	// targets SessionFilePath() (the active login), so marking a non-active session —
+	// EnsureBootstrapToken called on another host — would stamp the wrong file. This
+	// mirrors CheckSession, which already works around the same SaveSession behaviour.
+	_ = saveSessionTo(sessionPathFor(SessionHost(session.APIBaseURL)), session)
 }
 
 // CheckSession probes one saved login against its server for `orq auth sessions
