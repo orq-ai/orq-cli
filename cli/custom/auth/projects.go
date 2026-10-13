@@ -183,35 +183,22 @@ func GatewayAccess() map[string]string {
 // from CreateAPIKey so the owner and scope decisions are testable without a
 // network call. An empty access map mints the legacy all-permissions key.
 //
-// Owner choice is the important part. A service-account key is workspace-owned
-// and outlives its creator, but only workspace admins may create one — so
-// asking for it unconditionally makes `orq setup` fail outright for a Developer
-// or Researcher in an Enterprise workspace, which is most of the people the
-// installer is aimed at. A user key is what the product documents for "personal
-// use and local development", and any member can mint one. It is revoked if the
-// user leaves the org, which for a key that only ever sits in one person's
-// ~/.orq and coding-agent configs is the correct lifecycle, not a limitation.
-//
-// Falls back to a service account when the caller has no user id — an
-// API-key-only run has no session and therefore nobody to attribute the key to.
+// The owner is always a service account: the live endpoint answers 400
+// "owner.type must be service_account" to a user-owned key, session or not.
 //
 // The request shape here deliberately does not match openapi.yaml: the live API
 // uses discriminated unions keyed on `type`/`mode` and lowercase permission
 // values, while the committed spec documents wrapper objects and
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
-// actually validates against (verified against /v2/api-keys, both owner types).
+// actually validates against (verified against /v2/api-keys).
 func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject bool) {
-	owner := map[string]any{"type": "service_account"}
-	if id := strings.TrimSpace(req.userID); id != "" {
-		owner = map[string]any{"type": "user", "user_id": id}
-	}
 	// permission_mode and access are what restrict the key. There is no
 	// `source` field: identity-api dropped it from the create body (BACK-2189)
 	// and its strict decoder answers 400 "unknown field" to anything it does not
 	// declare, so sending it fails every mint.
 	out := map[string]any{
 		"name":            req.name,
-		"owner":           owner,
+		"owner":           map[string]any{"type": "service_account"},
 		"project_scope":   map[string]any{"mode": "all"},
 		"permission_mode": "restricted",
 		"access":          req.access,
@@ -241,17 +228,12 @@ func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject b
 type APIKeyRequest struct {
 	name      string
 	projectID string
-	userID    string
 	access    map[string]string
 	expiresAt time.Time
 }
 
 // APIKeyOption sets a field that does have a safe default.
 type APIKeyOption func(*APIKeyRequest)
-
-// WithUser attributes the key to a person. Without it the API mints against a
-// service account, which only workspace admins may create; see createAPIKeyBody.
-func WithUser(id string) APIKeyOption { return func(r *APIKeyRequest) { r.userID = id } }
 
 // WithProject narrows the key to one project, so a leaked or shared credential
 // cannot reach the rest of the workspace.
@@ -288,8 +270,7 @@ func NewAPIKeyRequest(name string, access map[string]string, expiresAt time.Time
 //
 // The key is scoped to projectID when that ID is in the format this endpoint
 // accepts, and to the whole workspace otherwise. scopedToProject reports which
-// happened so the caller can tell the user. userID attributes the key to a
-// person; see createAPIKeyBody for why that is the default.
+// happened so the caller can tell the user.
 func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID string, scopedToProject bool, err error) {
 	body, scopedToProject := createAPIKeyBody(req)
 	// The live endpoint answers flat (`id` alongside `token`); the proto service
