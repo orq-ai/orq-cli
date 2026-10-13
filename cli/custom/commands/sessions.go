@@ -106,7 +106,7 @@ func switchTarget(rows []auth.SessionListEntry) string {
 // paintStatus highlights session states that require user action.
 func paintStatus(status string) string {
 	switch status {
-	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable:
+	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable, auth.SessionStatusSignedOut:
 		return paint(ansiRed, status)
 	default:
 		return paint(ansiDim, status)

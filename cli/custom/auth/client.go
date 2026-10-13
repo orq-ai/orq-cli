@@ -648,9 +648,16 @@ func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
+		// A 401 is the server ending the login (refresh token rejected), not a
+		// transient failure: record it so the login reads as dead without another
+		// call. A network error leaves the status untouched.
+		if Unauthorized(err) {
+			markSessionSignedOut(session)
+		}
 		return nil, err
 	}
 	session.BootstrapToken = tok
+	session.SignedOut = false // a successful refresh clears any prior signed-out mark
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
@@ -699,12 +706,16 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 	if !cached || isExpired(current.ExpiresAt, 60) {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
+			if Unauthorized(err) {
+				markSessionSignedOut(session)
+			}
 			return nil, err
 		}
 		if session.WorkspaceTokens == nil {
 			session.WorkspaceTokens = map[string]StoredAccessToken{}
 		}
 		session.WorkspaceTokens[cacheKey] = tok
+		session.SignedOut = false // a successful refresh clears any prior signed-out mark
 	}
 	session.ActiveWorkspaceKey = stringPtr(workspaceKey)
 	if err := SaveSession(session); err != nil {

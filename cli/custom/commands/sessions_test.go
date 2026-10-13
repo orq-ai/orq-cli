@@ -111,6 +111,7 @@ func TestUsableSessionStatus(t *testing.T) {
 		{auth.SessionStatusNeedsRefresh, true},
 		{auth.SessionStatusInvalid, false},
 		{auth.SessionStatusUnreadable, false},
+		{auth.SessionStatusSignedOut, false},
 	} {
 		if got := usableSessionStatus(tc.status); got != tc.want {
 			t.Errorf("usableSessionStatus(%q) = %v, want %v", tc.status, got, tc.want)

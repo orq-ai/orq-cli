@@ -48,6 +48,13 @@ type Session struct {
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
 
+	// SignedOut records that the server rejected this login's refresh token — a
+	// definitive end, not a stale local date. It is written on a rejected
+	// refresh so `auth sessions`, `doctor` and the switch hints read the login
+	// as dead without another network call; a fresh `orq auth login` or any
+	// later successful refresh clears it.
+	SignedOut bool `json:"signedOut,omitempty"`
+
 	// ProfileTransport records which profile endpoint this host answered on
 	// ("rpc" or "rest"), so a deployment whose ingress does not route the
 	// identity RPC is not re-probed before every profile fetch. Empty on
@@ -361,7 +368,24 @@ const (
 	SessionStatusNeedsRefresh = "needs-refresh"
 	SessionStatusInvalid      = "invalid"
 	SessionStatusUnreadable   = "unreadable"
+	// SessionStatusSignedOut is a login the server has ended: its refresh token
+	// was rejected. Unlike needs-refresh it is not usable, and the only fix is a
+	// new login. Recorded on the session (Session.SignedOut), so it is reported
+	// without a network call.
+	SessionStatusSignedOut = "signed-out"
 )
+
+// markSessionSignedOut records a server-rejected refresh on the session file so
+// the login reads as dead without another network call. Best effort: the login
+// is already broken here, so a failed write must not mask the original auth
+// error the caller is about to return.
+func markSessionSignedOut(session *Session) {
+	if session == nil || session.SignedOut {
+		return
+	}
+	session.SignedOut = true
+	_ = SaveSession(session)
+}
 
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
@@ -433,9 +457,13 @@ func ListSessions() ([]SessionListEntry, error) {
 			row.Workspace = *session.ActiveWorkspaceKey
 		}
 		row.Project = session.ActiveProjectName
-		// Match EnsureBootstrapToken's 60-second clock skew.
+		// A server-rejected refresh is a dead login; a stale local date only
+		// means the next call re-mints. Match EnsureBootstrapToken's 60s skew.
 		row.Status = SessionStatusOK
-		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
+		switch {
+		case session.SignedOut:
+			row.Status = SessionStatusSignedOut
+		case isExpired(session.BootstrapToken.ExpiresAt, 60):
 			row.Status = SessionStatusNeedsRefresh
 		}
 		sessions = append(sessions, row)
