@@ -49,6 +49,17 @@ func TestExitCodeUsageVsFailure(t *testing.T) {
 	if code := exitCodeOf(t, noAuth, "datasets", "delete", "abc", "--no-input"); code != 2 {
 		t.Errorf("destructive delete without --force exit = %d, want 2 (usage error)", code)
 	}
+	// A group command with an unknown subcommand is caught by unknownSubcommand
+	// (run.go:66), a different exit site than the main execute path above. Pins it
+	// so that line cannot regress to exit 1 unnoticed.
+	if code := exitCodeOf(t, noAuth, "traces", "bogus"); code != 2 {
+		t.Errorf("unknown group subcommand exit = %d, want 2 (usage error)", code)
+	}
+	// A malformed global flag typed before a passthrough command (launch/orqi) is
+	// parsed at run.go:60, before the command runs — the third exit site.
+	if code := exitCodeOf(t, noAuth, "--no-input=notabool", "launch", "echo", "hi"); code != 2 {
+		t.Errorf("bad global flag before launch exit = %d, want 2 (usage error)", code)
+	}
 
 	// A genuine request failure (dead server, with a key so it skips the session
 	// and calls the API) stays 1 — not flattened into the usage code.

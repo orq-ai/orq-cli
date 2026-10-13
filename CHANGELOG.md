@@ -25,14 +25,17 @@ What you may depend on, and what you may not:
   The `toon-go` dependency is pinned in `go.mod` and a golden-output test
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
-- **Exit codes:** `0` success, `1` any failure, `130` interrupted (SIGINT),
-  `143` terminated (SIGTERM). Two exceptions: `orq launch` and `orq orqi` run
+- **Exit codes:** `0` success, `2` a bad invocation (a usage error: a bad flag
+  or value, an unknown command or subcommand, or a destructive command without
+  `--force`), `1` any other failure, `130` interrupted (SIGINT), `143`
+  terminated (SIGTERM). A destructive prompt the user declines exits `0` (it is
+  a choice, not a failure). Two exceptions: `orq launch` and `orq orqi` run
   another program and propagate that program's exit status verbatim, so any
   value from `2` to `255` can come back — `127` when the child binary does not
   start, `128+signum` when it is killed by a signal (`137` for SIGKILL), and
   otherwise whatever the child itself returned. Scripts wrapping `orq launch`
   or `orq orqi` should treat any non-zero code as failure rather than matching
-  on the four above.
+  on the codes above.
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
@@ -116,6 +119,13 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+**Fixed:** a bad invocation now exits `2` (a usage error), not `1`. Bad flags
+and values, unknown commands and subcommands, and a destructive command run
+without `--force` in a non-interactive shell were already reported as usage
+errors but still exited `1`; they now exit `2`, so a script can tell a typo from
+a failed request. Success stays `0`, other failures stay `1`, and a destructive
+prompt the user declines exits `0`.
 
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 

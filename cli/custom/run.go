@@ -15,9 +15,11 @@ import (
 
 // Run is the shared entrypoint for both mains, which differ only in the
 // generated tree they register. It owns signal handling and the exit-code
-// contract - 0 ok, 1 command error, 130 SIGINT, 143 SIGTERM, and a second
-// signal kills immediately rather than waiting on a stuck cleanup - so the two
-// modules cannot drift apart again.
+// contract - 0 ok, 2 bad invocation (a usage error: bad flag or value, unknown
+// command or subcommand, a destructive command without --force), 1 any other
+// command error, 130 SIGINT, 143 SIGTERM, and a second signal kills immediately
+// rather than waiting on a stuck cleanup - so the two modules cannot drift apart
+// again. (orq launch and orq orqi additionally propagate the child's own status.)
 //
 // apiVersion is the orq API line the generated commands came from. It stays out
 // of root.Version, which install.sh and the update check parse as a bare semver,
@@ -87,8 +89,9 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	if err != nil {
 		// Route through bartolo's mapping instead of a hardcoded 1: a
 		// *bartolocli.UsageError (bad flag, enum/format rejection, destructive
-		// command without --force, unknown subcommand) exits 2, everything else
-		// 1, so a script can tell a typo from a failed request.
+		// command without --force, unknown subcommand) exits 2, a declined
+		// destructive prompt (ErrDestructiveRefused) exits 0, everything else 1,
+		// so a script can tell a typo from a failed request.
 		os.Exit(bartolocli.ExitCodeFor(err))
 	}
 }
