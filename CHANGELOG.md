@@ -117,6 +117,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `orq setup` no longer warns "could not confirm the key's workspace"
+  for a project-scoped key,** whether it was just minted or reused from an
+  earlier run. Such a key can't read workspace settings, and setup already
+  recorded its workspace when it minted the key. Keys passed with `--api-key`,
+  or saved for a different workspace, still warn.
+
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 
 - **Changed: the command is `orq traces conversation` again,** with the short

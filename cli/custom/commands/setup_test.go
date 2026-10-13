@@ -3566,6 +3566,28 @@ func TestVerifySetupProvesTheKeyWhenTheWorkspaceIsUnconfirmable(t *testing.T) {
 			}
 		})
 
+		// A key minted this run belongs to the active workspace by construction,
+		// so it is checked with projects alone and never warns.
+		t.Run(name+", minted this run", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/projects" {
+					fmt.Fprint(w, `{"data":[]}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, true) {
+				t.Fatalf("a setup whose credential answers was reported as broken:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("a key minted this run needs no workspace warning:\n%s", out.String())
+			}
+		})
+
 		t.Run(name+", credential does not work", func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(status)
@@ -3691,7 +3713,7 @@ func TestRetryWindowAppliesOnlyToAMintedKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var calls int64
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/v2/workspace-settings" {
+				if r.URL.Path == "/v2/workspace-settings" || r.URL.Path == "/v2/projects" {
 					atomic.AddInt64(&calls, 1)
 				}
 				w.WriteHeader(http.StatusInternalServerError)
@@ -3881,5 +3903,45 @@ func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
 		if strings.Contains(body, "auth.OpenBrowser(") {
 			t.Errorf("%s calls auth.OpenBrowser directly; go through openBrowserFn so tests can stub it", name)
 		}
+	}
+}
+
+// A project-scoped key is refused workspace-settings. When the saved key was
+// recorded against the active workspace, that record answers the question, so
+// reusing it must not warn; any other key still says it could not tell.
+func TestForbiddenWorkspaceProbeIsSilentForARecordedKey(t *testing.T) {
+	credsHarness(t)
+	if err := saveGatewayKeyProfile("sk-orq-SCOPED", "KEYID", time.Now().Add(90*24*time.Hour), "acme", "proj"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/projects" {
+			fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	for name, tc := range map[string]struct {
+		token    string
+		wantWarn bool
+	}{
+		"recorded key":   {token: "sk-orq-SCOPED", wantWarn: false},
+		"unrecorded key": {token: "sk-orq-OTHER", wantWarn: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ws := "acme"
+			state := &authState{bearer: tc.token, session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !checkSavedKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, tc.token) {
+				t.Fatalf("a 403 must not refuse the saved key:\n%s", out.String())
+			}
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("a key that answers projects was reported as broken:\n%s", out.String())
+			}
+			if got := strings.Contains(out.String(), "could not confirm"); got != tc.wantWarn {
+				t.Errorf("warned = %v, want %v:\n%s", got, tc.wantWarn, out.String())
+			}
+		})
 	}
 }
