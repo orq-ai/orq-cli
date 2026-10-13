@@ -2,7 +2,6 @@ package auth
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -158,18 +157,64 @@ func TestLoadSurfacesStoreErrorNotNotFound(t *testing.T) {
 }
 
 // A secret large enough to overflow security's interactive line buffer must be
-// refused, not stored truncated. Reproduces the multi-workspace blob case.
-func TestMacKeychainRejectsOversizeSecret(t *testing.T) {
+// split across keychain items and round-trip intact, never truncated and never
+// dropped to plaintext. Reproduces the multi-workspace blob case.
+func TestMacKeychainChunksOversizeSecret(t *testing.T) {
 	fk := withFakeKeychain(t, 44)
 	const host = "api.orq.ai"
 	secret := strings.Repeat("A", 6000) // base64 ~8000 bytes, past the 4095 line buffer
-	if err := (macKeychainStore{}).Save(host, secret); !errors.Is(err, errSecretTooLarge) {
-		t.Fatalf("oversize Save: got err=%v, want errSecretTooLarge", err)
+
+	if err := (macKeychainStore{}).Save(host, secret); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
-	// Nothing was stored, so Load cannot hand back a truncated, corrupt value.
-	if _, ok := fk.items[host]; ok {
-		t.Fatalf("oversize Save stored a value; want nothing")
+	// It spilled into continuation items, and every stored line is under the cap.
+	if _, ok := fk.items[host+".1"]; !ok {
+		t.Fatalf("oversize Save did not spill into a continuation chunk; items=%v", keysOf(fk.items))
 	}
+	for acct, v := range fk.items {
+		service := keychainService
+		if acct != host { // chunk 0 is the bare host; continuations use .cont
+			service = keychainContService
+		}
+		if got := len(v) + len("add-generic-password -U -s "+service+" -a "+acct+" -w \n"); got > maxKeychainCommand {
+			t.Fatalf("chunk %q line is %d bytes, over the %d cap", acct, got, maxKeychainCommand)
+		}
+	}
+
+	got, ok, err := (macKeychainStore{}).Load(host)
+	if err != nil || !ok {
+		t.Fatalf("Load after chunked Save: ok=%v err=%v", ok, err)
+	}
+	if got != secret {
+		t.Fatalf("chunked round trip corrupted the secret (len got=%d want=%d)", len(got), len(secret))
+	}
+
+	// Saving a small secret clears the leftover continuation chunks.
+	if err := (macKeychainStore{}).Save(host, "small"); err != nil {
+		t.Fatalf("Save small: %v", err)
+	}
+	if _, ok := fk.items[host+".1"]; ok {
+		t.Fatalf("shrinking Save left a stale continuation chunk; items=%v", keysOf(fk.items))
+	}
+	if back, _, _ := (macKeychainStore{}).Load(host); back != "small" {
+		t.Fatalf("after shrink: Load = %q, want %q", back, "small")
+	}
+
+	// Delete removes every chunk.
+	if err := (macKeychainStore{}).Delete(host); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if len(fk.items) != 0 {
+		t.Fatalf("Delete left items behind: %v", keysOf(fk.items))
+	}
+}
+
+func keysOf(m map[string]string) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
 }
 
 // When security rejects the interactive command it can echo the command line,

@@ -110,6 +110,9 @@ func ResolveSecretStore(getenv func(string) string) SecretStore {
 			return secretToolStore{}
 		}
 	}
+	// No secure store on this platform (Windows and the rest): secrets stay in
+	// the 0600 session JSON. doctor reports the store as unused so this is
+	// visible, not silent. A Windows credential store is out of scope here.
 	return nil
 }
 
@@ -120,65 +123,129 @@ type macKeychainStore struct{}
 func (macKeychainStore) Name() string { return "macOS Keychain" }
 
 func (macKeychainStore) Load(host string) (string, bool, error) {
-	// -w prints only the password; exit 44 is errSecItemNotFound.
-	out, stderr, err := runSecretTool("", "security", "find-generic-password",
-		"-s", keychainService, "-a", host, "-w")
-	if err != nil {
-		if exitCode(err) == 44 {
-			return "", false, nil
+	// Read chunk 0, then each continuation chunk, until one is missing (exit 44,
+	// errSecItemNotFound). The joined value is base64 (see Save).
+	var enc strings.Builder
+	for i := 0; ; i++ {
+		service, account := chunkTarget(host, i)
+		// -w prints only the password.
+		out, stderr, err := runSecretTool("", "security", "find-generic-password",
+			"-s", service, "-a", account, "-w")
+		if err != nil {
+			if exitCode(err) == 44 {
+				if i == 0 {
+					return "", false, nil // no secret stored
+				}
+				break // no more chunks
+			}
+			return "", false, fmt.Errorf("security find-generic-password: %w: %s", err, stderr)
 		}
-		return "", false, fmt.Errorf("security find-generic-password: %w: %s", err, stderr)
+		enc.WriteString(strings.TrimRight(out, "\n"))
 	}
-	// The stored value is base64 (see Save). Decode before handing it back.
-	dec, derr := base64.StdEncoding.DecodeString(strings.TrimRight(out, "\n"))
+	dec, derr := base64.StdEncoding.DecodeString(enc.String())
 	if derr != nil {
 		return "", false, fmt.Errorf("keychain secret is not valid base64: %w", derr)
 	}
 	return string(dec), true, nil
 }
 
-// maxKeychainCommand bounds the single `security -i` command line. security's
+// maxKeychainCommand bounds a single `security -i` command line. security's
 // interactive reader takes each line into a 4095-byte buffer; a longer line is
-// split mid-command, so it stores a truncated value and runs the tail as a
+// split mid-command, so it would store a truncated value and run the tail as a
 // second, failing command (echoing the tail — base64 secret — to stderr). A
-// session with many workspace tokens can cross this, so we refuse the write
-// above a safe margin and let the caller keep the secrets in the 0600 file
-// rather than store a corrupt one.
+// session with many workspace tokens can cross this, so Save splits the encoded
+// secret across keychain items, each written on a command line kept under this
+// margin. The secret is never truncated and never falls back to plaintext just
+// for being large.
 const maxKeychainCommand = 4000
 
-// errSecretTooLarge is returned when the encoded secret would overflow
-// security's interactive line buffer. It names no secret material.
-var errSecretTooLarge = errors.New("session secret is too large for the macOS keychain command interface")
+// keychainContService holds continuation chunks for a secret too large for one
+// keychain item. Chunk 0 stays under keychainService with the bare host account
+// (so a one-item secret is read by a plain lookup and stores written before
+// chunking still load); chunk i>=1 lives here as "<host>.<i>", a separate
+// namespace so it never collides with a primary per-host item.
+const keychainContService = keychainService + ".cont"
+
+// errSecretTooLarge is returned only in the degenerate case where the service
+// and host names are themselves so long that not even an empty value fits one
+// command line. It names no secret material.
+var errSecretTooLarge = errors.New("keychain service/host names too long for the command interface")
+
+// chunkTarget is the (service, account) a given chunk of host's secret is
+// stored under. See keychainContService for why chunk 0 is special.
+func chunkTarget(host string, i int) (service, account string) {
+	if i == 0 {
+		return keychainService, host
+	}
+	return keychainContService, fmt.Sprintf("%s.%d", host, i)
+}
 
 func (macKeychainStore) Save(host, secret string) error {
 	// base64 so the blob carries no spaces or quotes to break the interactive
 	// parser, and the command goes in on stdin via `security -i`, not argv, so
 	// the token never appears in the process table. -U updates in place.
 	enc := base64.StdEncoding.EncodeToString([]byte(secret))
-	cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", keychainService, host, enc)
-	if len(cmd) > maxKeychainCommand {
-		return errSecretTooLarge
+
+	// Split so each add-generic-password line stays under the interactive
+	// buffer. The per-chunk budget shrinks by the command's fixed overhead,
+	// which varies with the service and account for that chunk.
+	var chunks []string
+	rest := enc
+	for i := 0; ; i++ {
+		service, account := chunkTarget(host, i)
+		overhead := len(fmt.Sprintf("add-generic-password -U -s %s -a %s -w \n", service, account))
+		budget := maxKeychainCommand - overhead
+		if budget <= 0 {
+			return errSecretTooLarge // names so long no value fits a line
+		}
+		if len(rest) <= budget {
+			chunks = append(chunks, rest)
+			break
+		}
+		chunks = append(chunks, rest[:budget])
+		rest = rest[budget:]
 	}
-	_, _, err := runSecretTool(cmd, "security", "-i")
-	if err != nil {
-		// Never include security's stderr: on a rejected `-i` line it echoes the
-		// command, and that command carries the base64 secret. Report the exit
-		// code only, so no token reaches the terminal or a captured log.
-		return fmt.Errorf("security -i add-generic-password failed (exit %d)", exitCode(err))
+
+	for i, chunk := range chunks {
+		service, account := chunkTarget(host, i)
+		cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", service, account, chunk)
+		if _, _, err := runSecretTool(cmd, "security", "-i"); err != nil {
+			// Best-effort: drop the chunks already written so Load never finds a
+			// half-written secret (it would fail to base64-decode). Leaving none
+			// lets the caller fall back to the 0600 file cleanly.
+			for j := 0; j <= i; j++ {
+				s, a := chunkTarget(host, j)
+				_, _, _ = runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
+			}
+			// Never include security's stderr: on a rejected `-i` line it echoes
+			// the command, which carries the base64 secret. Exit code only.
+			return fmt.Errorf("security -i add-generic-password failed (exit %d)", exitCode(err))
+		}
+	}
+
+	// Clear any leftover chunks from a previous, larger secret.
+	for i := len(chunks); ; i++ {
+		service, account := chunkTarget(host, i)
+		if _, _, err := runSecretTool("", "security", "delete-generic-password", "-s", service, "-a", account); err != nil {
+			break // exit 44 (gone) or any error: nothing more to clear
+		}
 	}
 	return nil
 }
 
 func (macKeychainStore) Delete(host string) error {
-	_, stderr, err := runSecretTool("", "security", "delete-generic-password",
-		"-s", keychainService, "-a", host)
-	if err != nil {
-		if exitCode(err) == 44 {
-			return nil // already gone
+	// Remove chunk 0 and every continuation chunk, stopping at the first missing.
+	for i := 0; ; i++ {
+		service, account := chunkTarget(host, i)
+		_, stderr, err := runSecretTool("", "security", "delete-generic-password",
+			"-s", service, "-a", account)
+		if err != nil {
+			if exitCode(err) == 44 {
+				return nil // already gone / no more chunks
+			}
+			return fmt.Errorf("security delete-generic-password: %w: %s", err, stderr)
 		}
-		return fmt.Errorf("security delete-generic-password: %w: %s", err, stderr)
 	}
-	return nil
 }
 
 // ---- Linux: secret-tool(1) / libsecret ----
