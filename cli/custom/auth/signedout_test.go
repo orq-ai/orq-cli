@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,21 +105,20 @@ func TestCheckSession(t *testing.T) {
 	future := formatISO(time.Now().Add(time.Hour))
 	past := formatISO(time.Now().Add(-time.Hour))
 
-	// SaveSession writes to the active resolved host's file, so point the active
-	// server at the fixture's host and return the host both share.
+	// Write the fixture to the probed host's own file (not via SaveSession,
+	// which targets the active host) so the test exercises CheckSession's
+	// real per-host read and write, no active-server crutch.
 	save := func(t *testing.T, apiBase, bootstrapExpiry string) string {
 		t.Helper()
 		isolateHome(t)
-		prev, prevSrc := Server(), ServerSource()
-		SetServer(apiBase, "flag")
-		t.Cleanup(func() { SetServer(prev, prevSrc) })
 		s := validSession("acme")
 		s.APIBaseURL = apiBase
 		s.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: bootstrapExpiry}
-		if err := SaveSession(s); err != nil {
+		host := SessionHost(apiBase)
+		if err := saveSessionTo(sessionPathFor(host), s); err != nil {
 			t.Fatal(err)
 		}
-		return SessionHost(apiBase)
+		return host
 	}
 
 	t.Run("live bootstrap is ok without a network call", func(t *testing.T) {
@@ -160,4 +161,47 @@ func TestCheckSession(t *testing.T) {
 			t.Fatalf("got %q, want unreadable", got)
 		}
 	})
+}
+
+// TestCheckSessionPersistsToProbedHostNotActive is the regression for the bug
+// where CheckSession refreshed through EnsureBootstrapToken, whose SaveSession
+// always wrote the active host's file. Probing a non-active login must record
+// its result on its own file and leave the active login untouched.
+func TestCheckSessionPersistsToProbedHostNotActive(t *testing.T) {
+	isolateHome(t)
+
+	// A healthy active login that --check must not touch.
+	active := validSession("acme")
+	active.APIBaseURL = "https://active.invalid"
+	active.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: formatISO(time.Now().Add(time.Hour))}
+	activeHost := SessionHost(active.APIBaseURL)
+	if err := saveSessionTo(sessionPathFor(activeHost), active); err != nil {
+		t.Fatal(err)
+	}
+
+	// A different, non-active login whose server rejects the refresh.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+	}))
+	defer srv.Close()
+	other := validSession("acme")
+	other.APIBaseURL = srv.URL
+	other.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: formatISO(time.Now().Add(-time.Hour))}
+	otherHost := SessionHost(srv.URL)
+	if err := saveSessionTo(sessionPathFor(otherHost), other); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := CheckSession(otherHost); got != SessionStatusSignedOut {
+		t.Fatalf("CheckSession(other) = %q, want signed-out", got)
+	}
+	// The probed host's file records signed-out.
+	if data, _ := os.ReadFile(sessionPathFor(otherHost)); !strings.Contains(string(data), `"signedOut": true`) {
+		t.Fatalf("probed host file not marked signed-out:\n%s", data)
+	}
+	// The active host's file is untouched.
+	if data, _ := os.ReadFile(sessionPathFor(activeHost)); strings.Contains(string(data), `"signedOut": true`) {
+		t.Fatalf("active host file was wrongly modified:\n%s", data)
+	}
 }

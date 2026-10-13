@@ -413,12 +413,23 @@ func CheckSession(host string) string {
 	if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
 		return SessionStatusOK
 	}
-	if _, err := NewClient(session.APIBaseURL).EnsureBootstrapToken(&session); err != nil {
+	// Probe the refresh directly and persist the outcome to THIS host's file.
+	// EnsureBootstrapToken would SaveSession, which always writes the active
+	// host's file — wrong when --check probes a login that is not the active
+	// one (it would stamp another host's status onto, or overwrite, the active
+	// login). ExchangeAccessToken does no I/O, so we control where it lands.
+	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
+	if err != nil {
 		if Unauthorized(err) {
+			session.SignedOut = true
+			_ = saveSessionTo(sessionPathFor(host), &session)
 			return SessionStatusSignedOut
 		}
 		return SessionStatusNeedsRefresh // could not reach the server — not a verdict
 	}
+	session.BootstrapToken = tok
+	session.SignedOut = false
+	_ = saveSessionTo(sessionPathFor(host), &session)
 	return SessionStatusOK
 }
 
