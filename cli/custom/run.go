@@ -55,13 +55,15 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	if len(globals) > 0 {
 		if err := bartolocli.Root.PersistentFlags().Parse(globals); err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			// A malformed global flag is bad input, not a failed operation, so it
+			// maps to the usage exit code like every other flag error.
+			os.Exit(bartolocli.ExitCodeFor(bartolocli.NewUsageError(err)))
 		}
 		bartolocli.Root.SetArgs(rest)
 	}
 	if err := unknownSubcommand(bartolocli.Root, rest); err != nil {
 		fmt.Fprintf(bartolocli.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(bartolocli.ExitCodeFor(err))
 	}
 
 	// ExecuteContextC, not ExecuteContext, for the command that actually ran:
@@ -83,6 +85,10 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	default:
 	}
 	if err != nil {
-		os.Exit(1)
+		// Route through bartolo's mapping instead of a hardcoded 1: a
+		// *bartolocli.UsageError (bad flag, enum/format rejection, destructive
+		// command without --force, unknown subcommand) exits 2, everything else
+		// 1, so a script can tell a typo from a failed request.
+		os.Exit(bartolocli.ExitCodeFor(err))
 	}
 }
