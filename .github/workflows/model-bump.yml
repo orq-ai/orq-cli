@@ -97,7 +97,7 @@ jobs:
           git add -A -- cli/custom README.md CHANGELOG.md
           git diff --cached --quiet && { echo "::error::candidates found but Claude changed nothing"; exit 1; }
           [ -s "$RUNNER_TEMP/pr-body.md" ] || { echo "::error::no PR body written"; exit 1; }
-          { echo '```diff'; git diff --cached; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '```diff'; git diff --cached; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "patch=$(git diff --cached --binary | base64 -w0)" >> "$GITHUB_OUTPUT"
           echo "body=$(base64 -w0 < "$RUNNER_TEMP/pr-body.md")" >> "$GITHUB_OUTPUT"
 
