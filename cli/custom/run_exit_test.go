@@ -42,6 +42,13 @@ func TestExitCodeUsageVsFailure(t *testing.T) {
 	if code := exitCodeOf(t, noAuth, "definitely-not-a-real-command"); code != 2 {
 		t.Errorf("unknown command exit = %d, want 2 (usage error)", code)
 	}
+	// A destructive command without --force in a non-interactive shell is
+	// refused before any request (a *UsageError), so it exits 2. This is the
+	// RES-1502 acceptance path most likely to regress, since it depends on the
+	// refusal staying a usage error rather than a plain failure.
+	if code := exitCodeOf(t, noAuth, "datasets", "delete", "abc", "--no-input"); code != 2 {
+		t.Errorf("destructive delete without --force exit = %d, want 2 (usage error)", code)
+	}
 
 	// A genuine request failure (dead server, with a key so it skips the session
 	// and calls the API) stays 1 — not flattened into the usage code.
