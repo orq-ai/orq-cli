@@ -8477,6 +8477,16 @@
       "use": "get trace-id"
     },
     {
+      "path": "orq traces get-batch",
+      "use": "get-batch [trace-id ...]",
+      "flags": [
+        {
+          "name": "spans",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq traces get-span",
       "use": "get-span trace-id span-id"
     },
