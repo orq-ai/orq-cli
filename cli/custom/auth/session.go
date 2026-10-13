@@ -322,7 +322,7 @@ func saveSessionTo(path string, s *Session) error {
 			// The fallback (secrets inline in the file) keeps the login working,
 			// but silence would leave a user believing the store holds the token
 			// when it does not. Say so; orq doctor reports the same location.
-			fmt.Fprintf(os.Stderr,
+			warnStoreFailureOnce(
 				"orq: could not write the %s (%v); session secrets saved to %s in plaintext. Run orq doctor.\n",
 				store.Name(), err, path)
 		}

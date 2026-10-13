@@ -137,15 +137,34 @@ func (macKeychainStore) Load(host string) (string, bool, error) {
 	return string(dec), true, nil
 }
 
+// maxKeychainCommand bounds the single `security -i` command line. security's
+// interactive reader takes each line into a 4095-byte buffer; a longer line is
+// split mid-command, so it stores a truncated value and runs the tail as a
+// second, failing command (echoing the tail — base64 secret — to stderr). A
+// session with many workspace tokens can cross this, so we refuse the write
+// above a safe margin and let the caller keep the secrets in the 0600 file
+// rather than store a corrupt one.
+const maxKeychainCommand = 4000
+
+// errSecretTooLarge is returned when the encoded secret would overflow
+// security's interactive line buffer. It names no secret material.
+var errSecretTooLarge = errors.New("session secret is too large for the macOS keychain command interface")
+
 func (macKeychainStore) Save(host, secret string) error {
 	// base64 so the blob carries no spaces or quotes to break the interactive
 	// parser, and the command goes in on stdin via `security -i`, not argv, so
 	// the token never appears in the process table. -U updates in place.
 	enc := base64.StdEncoding.EncodeToString([]byte(secret))
 	cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", keychainService, host, enc)
-	_, stderr, err := runSecretTool(cmd, "security", "-i")
+	if len(cmd) > maxKeychainCommand {
+		return errSecretTooLarge
+	}
+	_, _, err := runSecretTool(cmd, "security", "-i")
 	if err != nil {
-		return fmt.Errorf("security -i add-generic-password: %w: %s", err, stderr)
+		// Never include security's stderr: on a rejected `-i` line it echoes the
+		// command, and that command carries the base64 secret. Report the exit
+		// code only, so no token reaches the terminal or a captured log.
+		return fmt.Errorf("security -i add-generic-password failed (exit %d)", exitCode(err))
 	}
 	return nil
 }

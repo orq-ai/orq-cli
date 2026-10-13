@@ -6,7 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
+
+// storeFailureWarned holds the "secrets stayed in plaintext" notice to once per
+// process. hydrateSecrets runs the migration on every read, so without this the
+// warning — and on macOS a keychain prompt — repeats on every command while the
+// store stays unwritable (for example a session too large for the keychain).
+var storeFailureWarned sync.Once
+
+func warnStoreFailureOnce(format string, a ...any) {
+	storeFailureWarned.Do(func() { fmt.Fprintf(os.Stderr, format, a...) })
+}
 
 // session_secrets.go splits a Session's secret token material from its
 // inspectable state. When a SecretStore is active the tokens live in the OS
@@ -153,7 +164,7 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 		// warn and leave the file untouched rather than failing the command. A
 		// Load failure (secrets only in an unreachable store) is different and
 		// does surface as an error in hydrateSecrets.
-		fmt.Fprintf(os.Stderr,
+		warnStoreFailureOnce(
 			"orq: could not move %s session secrets into the %s (%v); they remain in %s. Run orq doctor.\n",
 			host, store.Name(), err, path)
 		return nil

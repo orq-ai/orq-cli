@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -152,6 +154,41 @@ func TestLoadSurfacesStoreErrorNotNotFound(t *testing.T) {
 	}
 	if _, ok, err := (macKeychainStore{}).Load("h"); err == nil || ok {
 		t.Fatalf("locked keychain: want error and ok=false, got ok=%v err=%v", ok, err)
+	}
+}
+
+// A secret large enough to overflow security's interactive line buffer must be
+// refused, not stored truncated. Reproduces the multi-workspace blob case.
+func TestMacKeychainRejectsOversizeSecret(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	secret := strings.Repeat("A", 6000) // base64 ~8000 bytes, past the 4095 line buffer
+	if err := (macKeychainStore{}).Save(host, secret); !errors.Is(err, errSecretTooLarge) {
+		t.Fatalf("oversize Save: got err=%v, want errSecretTooLarge", err)
+	}
+	// Nothing was stored, so Load cannot hand back a truncated, corrupt value.
+	if _, ok := fk.items[host]; ok {
+		t.Fatalf("oversize Save stored a value; want nothing")
+	}
+}
+
+// When security rejects the interactive command it can echo the command line,
+// which carries the base64 secret. The Save error must never include it.
+func TestMacKeychainSaveErrorOmitsSecret(t *testing.T) {
+	prev := runSecretTool
+	t.Cleanup(func() { runSecretTool = prev })
+	const secret = "super-secret-refresh-token-value"
+	runSecretTool = func(stdin, name string, args ...string) (string, string, error) {
+		// security echoing the rejected command (which contains the base64 blob).
+		return "", `security: unknown command "` + stdin + `"`, fakeExit{1}
+	}
+	err := (macKeychainStore{}).Save("api.orq.ai", secret)
+	if err == nil {
+		t.Fatal("want an error from a failing security -i")
+	}
+	enc := base64.StdEncoding.EncodeToString([]byte(secret))
+	if strings.Contains(err.Error(), enc) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("Save error leaked the secret: %q", err.Error())
 	}
 }
 
