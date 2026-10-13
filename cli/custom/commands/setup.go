@@ -1937,22 +1937,33 @@ func promptForScope(caps []string) (bool, error) {
 
 // verifySetup makes one authenticated call with the new credentials. Not whoami: an --api-key run has no session and whoami would report "not logged in".
 func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, mintedThisRun bool) bool {
-	// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
-	attempts := 1
+	var err error
 	if mintedThisRun {
-		attempts = 4
+		// Minted in the active workspace, which the mint already recorded, so
+		// there is no mismatch to look for; and a project-scoped key is refused
+		// workspace-settings. A freshly minted key is not accepted for a second
+		// or two; without the retry a working setup reports as broken.
+		for attempt := 0; attempt < 4; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt) * time.Second)
+			}
+			if _, err = client.ListProjects(state.bearer); err == nil {
+				return true
+			}
+		}
+		if auth.Unauthorized(err) || auth.Forbidden(err) || auth.NotFound(err) {
+			rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
+			diagnoseRejectedKey(rep, client, state)
+		} else {
+			rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+		}
+		return false
 	}
 	// workspace-settings over projects: same reachability signal, and it names
 	// the workspace the credential actually belongs to.
-	var err error
-	var keyWS string
-	for attempt := 0; attempt < attempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-		if keyWS, err = client.KeyWorkspace(state.bearer); err == nil {
-			return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
-		}
+	keyWS, err := client.KeyWorkspace(state.bearer)
+	if err == nil {
+		return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
 	}
 	if auth.Unauthorized(err) {
 		// 401 is a revoked key, not a workspace mismatch: a key from another

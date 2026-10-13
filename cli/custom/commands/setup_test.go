@@ -3566,6 +3566,28 @@ func TestVerifySetupProvesTheKeyWhenTheWorkspaceIsUnconfirmable(t *testing.T) {
 			}
 		})
 
+		// A key minted this run belongs to the active workspace by construction,
+		// so it is checked with projects alone and never warns.
+		t.Run(name+", minted this run", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/projects" {
+					fmt.Fprint(w, `{"data":[]}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, true) {
+				t.Fatalf("a setup whose credential answers was reported as broken:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("a key minted this run needs no workspace warning:\n%s", out.String())
+			}
+		})
+
 		t.Run(name+", credential does not work", func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(status)
@@ -3691,7 +3713,7 @@ func TestRetryWindowAppliesOnlyToAMintedKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var calls int64
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/v2/workspace-settings" {
+				if r.URL.Path == "/v2/workspace-settings" || r.URL.Path == "/v2/projects" {
 					atomic.AddInt64(&calls, 1)
 				}
 				w.WriteHeader(http.StatusInternalServerError)
