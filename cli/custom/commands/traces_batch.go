@@ -27,7 +27,7 @@ func NewTracesGetBatchCommand(api TraceAPI) *cobra.Command {
 			"",
 			"Ids come from the arguments, or from stdin (one id per line, blanks ignored) when no argument is given or the only argument is `-`, so piping from `orq traces search` works. With --spans each id's spans are listed instead of the trace.",
 			"",
-			"The output is an array in input order, one entry per id: {id, trace} (or {id, spans}), or {id, error} when that id could not be read. A failing id does not abort the batch — inspect each entry's error field. Each id is fetched by id with default parameters, like `orq traces get <id>`.",
+			"The output is an array in input order, one entry per id: {id, trace} with the trace object, or {id, spans} with the full span list (paged through, not just the first page), or {id, error} when that id could not be read. A failing id does not abort the batch — inspect each entry's error field. Each id is fetched by id with default parameters, like `orq traces get <id>`.",
 		}, "\n"),
 		Example: strings.Join([]string{
 			"  orq traces get-batch tr_1 tr_2 tr_3",
@@ -51,11 +51,14 @@ func NewTracesGetBatchCommand(api TraceAPI) *cobra.Command {
 }
 
 // batchResult is one id's outcome. Exactly one of Trace, Spans, or Error is set.
+// Trace and Spans are `any` so a present-but-empty result (a trace with zero
+// spans) still renders its key rather than collapsing to just {id}: omitempty on
+// an interface drops only a nil, not an empty slice or map behind it.
 type batchResult struct {
-	ID    string         `json:"id"`
-	Trace map[string]any `json:"trace,omitempty"`
-	Spans map[string]any `json:"spans,omitempty"`
-	Error string         `json:"error,omitempty"`
+	ID    string `json:"id"`
+	Trace any    `json:"trace,omitempty"`
+	Spans any    `json:"spans,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 // batchTraceIDs reads ids from the arguments, or from stdin (one per line) when
@@ -91,16 +94,18 @@ func fetchTraceBatch(api TraceAPI, ids []string, spans bool) []batchResult {
 			defer func() { <-sem }()
 			res := batchResult{ID: id}
 			if spans {
-				if data, err := api.ListSpans(id, viper.New()); err != nil {
+				if list, err := fetchAllSpans(api, id); err != nil {
 					res.Error = err.Error()
 				} else {
-					res.Spans = data
+					res.Spans = list
 				}
 			} else {
 				if data, err := api.GetTrace(id, viper.New()); err != nil {
 					res.Error = err.Error()
 				} else {
-					res.Trace = data
+					// GetTrace returns the API envelope {trace: {...}}; unwrap it so an
+					// entry is {id, trace: {...}}, not the double-nested {id, trace: {trace}}.
+					res.Trace = unwrapThreadEnvelope(data, "trace")
 				}
 			}
 			results[i] = res
@@ -108,4 +113,26 @@ func fetchTraceBatch(api TraceAPI, ids []string, spans bool) []batchResult {
 	}
 	wg.Wait()
 	return results
+}
+
+// fetchAllSpans pages through a trace's spans and returns the flattened array,
+// so --spans gives {id, spans: [...]} (the full set), not the raw first-page
+// envelope. Mirrors the pagination the single `orq traces` span path does.
+func fetchAllSpans(api TraceAPI, id string) ([]map[string]any, error) {
+	all := []map[string]any{}
+	params := viper.New()
+	seen := map[string]bool{}
+	for {
+		response, err := api.ListSpans(id, params)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, listEnvelopeData(response)...)
+		next := threadString(response["next_page_token"])
+		if next == "" || seen[next] {
+			return all, nil
+		}
+		seen[next] = true
+		params.Set("page-token", next)
+	}
 }

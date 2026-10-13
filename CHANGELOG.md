@@ -117,6 +117,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `orq traces get-batch [trace-id ...]` fetches many traces, or their
+spans with `--spans`, in one process instead of running `orq traces get` once
+per id. Ids come from arguments or stdin (one per line), so it pipes from `orq
+traces search`. Output is a `-o json` array in input order, one `{id, trace}` /
+`{id, spans}` / `{id, error}` entry per id; a failing id does not abort the rest.
+
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 
 - **Changed: the command is `orq traces conversation` again,** with the short

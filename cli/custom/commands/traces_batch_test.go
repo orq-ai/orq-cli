@@ -2,8 +2,11 @@ package commands
 
 import (
 	"errors"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
@@ -11,22 +14,29 @@ import (
 )
 
 // batchTraceAPI is an inline TraceAPI with per-id behaviour: tr_bad fails, every
-// other id returns a trace/spans naming itself.
+// other id returns a trace/spans naming itself. The shapes mirror the real API:
+// GetTrace returns the {trace: {...}} envelope, ListSpans the {data: [...]} one.
 func batchTraceAPI() TraceAPI {
 	return TraceAPI{
 		GetTrace: func(id string, _ *viper.Viper) (map[string]any, error) {
 			if id == "tr_bad" {
 				return nil, errors.New("trace not found")
 			}
-			return map[string]any{"id": id}, nil
+			return map[string]any{"trace": map[string]any{"id": id}}, nil
 		},
 		ListSpans: func(id string, _ *viper.Viper) (map[string]any, error) {
 			if id == "tr_bad" {
 				return nil, errors.New("spans not found")
 			}
-			return map[string]any{"id": id, "spans": []any{}}, nil
+			return map[string]any{"data": []any{map[string]any{"span_id": "sp_" + id}}}, nil
 		},
 	}
+}
+
+// traceID unwraps a batchResult.Trace (an `any` holding the trace map) to its id.
+func traceID(r batchResult) any {
+	m, _ := r.Trace.(map[string]any)
+	return m["id"]
 }
 
 func TestFetchTraceBatchKeepsOrderAndIsolatesFailures(t *testing.T) {
@@ -40,24 +50,77 @@ func TestFetchTraceBatchKeepsOrderAndIsolatesFailures(t *testing.T) {
 			t.Fatalf("result[%d].ID = %q, want %q (order not preserved)", i, got[i].ID, id)
 		}
 	}
-	if got[0].Error != "" || got[0].Trace["id"] != "tr_1" {
-		t.Errorf("tr_1 = %+v, want the trace and no error", got[0])
+	// The trace is unwrapped from its envelope: {id, trace: {...}}, not {trace: {trace}}.
+	if got[0].Error != "" || traceID(got[0]) != "tr_1" {
+		t.Errorf("tr_1 = %+v, want the unwrapped trace and no error", got[0])
 	}
 	if got[1].Error == "" || got[1].Trace != nil {
 		t.Errorf("tr_bad = %+v, want an error and no trace", got[1])
 	}
-	if got[2].Error != "" || got[2].Trace["id"] != "tr_2" {
-		t.Errorf("tr_2 = %+v, want the trace and no error", got[2])
+	if got[2].Error != "" || traceID(got[2]) != "tr_2" {
+		t.Errorf("tr_2 = %+v, want the unwrapped trace and no error", got[2])
 	}
 }
 
-func TestFetchTraceBatchSpansUsesListSpans(t *testing.T) {
+func TestFetchTraceBatchSpansFlattensEnvelope(t *testing.T) {
 	got := fetchTraceBatch(batchTraceAPI(), []string{"tr_1"}, true)
 	if got[0].Trace != nil {
 		t.Errorf("--spans must not set trace: %+v", got[0])
 	}
-	if got[0].Spans == nil || got[0].Spans["id"] != "tr_1" {
-		t.Errorf("--spans must set spans from ListSpans: %+v", got[0])
+	spans, ok := got[0].Spans.([]map[string]any)
+	if !ok || len(spans) != 1 || spans[0]["span_id"] != "sp_tr_1" {
+		t.Errorf("--spans must flatten ListSpans data to the span array, got %+v", got[0].Spans)
+	}
+}
+
+// --spans pages through all span pages, not just the first (RES-1255 review P2).
+func TestFetchTraceBatchSpansPaginates(t *testing.T) {
+	api := TraceAPI{
+		ListSpans: func(id string, params *viper.Viper) (map[string]any, error) {
+			if params.GetString("page-token") == "" {
+				return map[string]any{
+					"data":            []any{map[string]any{"span_id": "sp_1"}},
+					"next_page_token": "p2",
+				}, nil
+			}
+			return map[string]any{"data": []any{map[string]any{"span_id": "sp_2"}}}, nil
+		},
+	}
+	got := fetchTraceBatch(api, []string{"tr_1"}, true)
+	spans, ok := got[0].Spans.([]map[string]any)
+	if !ok || len(spans) != 2 {
+		t.Fatalf("want both pages (2 spans), got %+v", got[0].Spans)
+	}
+}
+
+// The semaphore must bound concurrent requests. Delete `sem` and this fails:
+// all ids would run at once and maxInFlight would exceed the limit.
+func TestFetchTraceBatchBoundsConcurrency(t *testing.T) {
+	var inFlight, maxInFlight int64
+	api := TraceAPI{
+		GetTrace: func(id string, _ *viper.Viper) (map[string]any, error) {
+			cur := atomic.AddInt64(&inFlight, 1)
+			for {
+				old := atomic.LoadInt64(&maxInFlight)
+				if cur <= old || atomic.CompareAndSwapInt64(&maxInFlight, old, cur) {
+					break
+				}
+			}
+			time.Sleep(10 * time.Millisecond) // hold the slot so requests overlap
+			atomic.AddInt64(&inFlight, -1)
+			return map[string]any{"trace": map[string]any{"id": id}}, nil
+		},
+	}
+	ids := make([]string, batchFetchConcurrency*3)
+	for i := range ids {
+		ids[i] = "tr_" + strconv.Itoa(i)
+	}
+	fetchTraceBatch(api, ids, false)
+	if maxInFlight > batchFetchConcurrency {
+		t.Fatalf("max concurrent = %d, want <= %d (semaphore not bounding)", maxInFlight, batchFetchConcurrency)
+	}
+	if maxInFlight < 2 {
+		t.Fatalf("max concurrent = %d, want >1 (not running concurrently at all)", maxInFlight)
 	}
 }
 
