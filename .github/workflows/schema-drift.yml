@@ -1,0 +1,173 @@
+name: Schema drift
+
+# cli/generated follows openapi.yaml by itself, but cli/custom calls part of the
+# API by hand (api-keys, projects, auth, workspace-settings, the gateway) and
+# names generated commands in groups.go and register.go. Nothing ties either to
+# the schema: #129 shipped because the setup flow kept sending a field the
+# create-key body had dropped. On every schema publish this runs Claude Code,
+# routed through the orq gateway, over the schema diff and opens a PR when the
+# hand-written code needs to follow it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - openapi.yaml
+      - packages/orq-rc/openapi.yaml
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Commit to diff the schemas from (default: before the last schema commit)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-drift
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check hand-written code against the schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # push the fix branch
+      pull-requests: write # open the PR
+      actions: write # dispatch ci.yml on it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # create-pull-request authenticates its own push with the token below.
+          persist-credentials: false
+
+      - name: Schema diff
+        id: diff
+        env:
+          BASE: ${{ github.event.before || inputs.base }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ]; then
+            BASE="$(git log -1 --format=%H -- openapi.yaml packages/orq-rc/openapi.yaml)~1"
+          fi
+          git diff "$BASE" HEAD -- openapi.yaml packages/orq-rc/openapi.yaml > "$RUNNER_TEMP/schema.diff"
+          lines="$(wc -l < "$RUNNER_TEMP/schema.diff")"
+          echo "schema diff $BASE..HEAD: $lines lines"
+          echo "base=$(git rev-parse "$BASE")" >> "$GITHUB_OUTPUT"
+          echo "changed=$([ "$lines" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          node-version: "24"
+
+      - name: Regenerate both modules
+        if: steps.diff.outputs.changed == 'true'
+        # The release pipeline commits the regenerated tree on its own; this is
+        # only so the build and tests below see the new schema. Never part of
+        # the PR (see add-paths).
+        run: |
+          set -euo pipefail
+          for dir in . packages/orq-rc; do
+            version="$(cd "$dir" && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
+            go install "github.com/orq-ai/bartolo@$version"
+            spec="$(jq -r '.last_spec_path' "$dir/.bartolo.json")"
+            ( cd "$dir" && "$(go env GOPATH)/bin/bartolo" generate "$spec" )
+          done
+
+      - name: Run Claude Code
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          BASE: ${{ steps.diff.outputs.base }}
+          ANTHROPIC_BASE_URL: https://my.orq.ai/v3/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ORQ_API_KEY }}
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_MODEL: anthropic/claude-opus-5
+          ANTHROPIC_DEFAULT_OPUS_MODEL: anthropic/claude-opus-5
+          ANTHROPIC_DEFAULT_SONNET_MODEL: anthropic/claude-sonnet-5
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropic/claude-haiku-4-5
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        run: |
+          set -euo pipefail
+          npm install -g @anthropic-ai/claude-code@2.1.296
+          cat > "$RUNNER_TEMP/prompt.md" <<EOF
+          The orq API schema changed. The diff of openapi.yaml (prod CLI) and
+          packages/orq-rc/openapi.yaml (rc CLI) between $BASE and HEAD is in
+          $RUNNER_TEMP/schema.diff; the full schemas are in the repo. Read
+          AGENTS.md first. cli/generated has already been regenerated locally;
+          never edit it.
+
+          Find what in the hand-written code under cli/custom no longer matches
+          the schema, and fix it. Code in cli/custom ships on both lines and
+          must compile against both schemas. Check at least:
+          - every raw HTTP call (grep for "/v2/" and "/v3/"): path, method,
+            request body fields (the server rejects unknown fields), response
+            fields we decode, enum values, required fields;
+          - generated command names referenced by groups.go and register.go,
+            and new visible commands that need a commandGroup entry;
+          - tests and fixtures that encode the old shape.
+
+          Verify with:
+            go build ./... && go vet ./... && go test ./cli/custom/...
+            (cd packages/orq-rc && go build ./... && go vet ./...)
+            gofmt -l \$(git ls-files 'cli/custom/*.go')
+
+          If a fix changes what users see, add an entry under "## Unreleased"
+          in CHANGELOG.md, matching the existing entries.
+
+          If you changed anything, write .schema-drift-pr.md: a pull request
+          body that explains, per change, which schema change forced it and
+          what the CLI did wrong before. This repo is public: no internal
+          links, ticket ids or hostnames other than the public API. No tool
+          attribution footer. If nothing needs changing, change nothing.
+
+          End with a short plain-text summary of what you checked and found.
+          EOF
+          claude -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --max-turns 150 \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(go:*),Bash(gofmt:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(grep:*),Bash(jq:*)" \
+            | tee "$RUNNER_TEMP/summary.md"
+          {
+            echo "## Schema drift: $BASE..$(git rev-parse --short HEAD)"
+            cat "$RUNNER_TEMP/summary.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .schema-drift-pr.md ]; then
+            mv .schema-drift-pr.md "$RUNNER_TEMP/pr-body.md"
+          else
+            cp "$RUNNER_TEMP/summary.md" "$RUNNER_TEMP/pr-body.md"
+          fi
+
+      - name: Open PR
+        id: pr
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          # Only hand-written files: the regenerated tree reaches main through
+          # the release pipeline, and carrying it here would conflict with it.
+          add-paths: |
+            cli/custom
+            CHANGELOG.md
+          branch: schema-drift/${{ github.sha }}
+          base: main
+          title: "fix: follow openapi schema changes in hand-written commands"
+          commit-message: "fix: follow openapi schema changes in hand-written commands"
+          body-path: ${{ runner.temp }}/pr-body.md
+          author: "Orq GitHub Actions <admin@orq.ai>"
+          committer: "Orq GitHub Actions <admin@orq.ai>"
+
+      - name: Run CI on the PR
+        # A PR opened with GITHUB_TOKEN triggers no pull_request workflows;
+        # workflow_dispatch is the exception, and its checks land on the PR's
+        # head commit.
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: schema-drift/${{ github.sha }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
