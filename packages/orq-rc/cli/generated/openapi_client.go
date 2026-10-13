@@ -2070,49 +2070,6 @@ func OpenapiParse(params *viper.Viper, body string) (*gentleman.Response, map[st
 	return resp, decoded, nil
 }
 
-// OpenapiBulkCreateDatapoints Create multiple datapoints
-func OpenapiBulkCreateDatapoints(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
-	handlerPath := "datasets bulk-create-datapoints dataset-id"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/datasets/{dataset_id}/datapoints/bulk"
-	if paramDatasetId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
-	}
-
-	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiClearDataset Delete all datapoints
 func OpenapiClearDataset(paramDatasetId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "datasets clear dataset-id"
@@ -2196,10 +2153,53 @@ func OpenapiCreateDataset(params *viper.Viper, body string) (*gentleman.Response
 
 // OpenapiCreateDatasetItem Create datapoints
 func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
-	handlerPath := "datasets create-item dataset-id"
+	handlerPath := "datasets create-datapoint dataset-id"
 	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints"
+	if paramDatasetId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiBulkCreateDatapoints Create multiple datapoints
+func OpenapiBulkCreateDatapoints(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+	handlerPath := "datasets create-datapoints dataset-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/datasets/{dataset_id}/datapoints/bulk"
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
@@ -3427,6 +3427,48 @@ func OpenapiPostV2FeedbackEvaluationRemove(params *viper.Viper, body string) (*g
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
 		decoded = after
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiSubmitFeedback Submit feedback
+func OpenapiSubmitFeedback(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "feedback submit"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/submit-feedback"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -15270,48 +15312,6 @@ func OpenapiCreateDecisions(params *viper.Viper, body string) (*gentleman.Respon
 	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/router/decisions"
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiSubmitFeedback Submit feedback
-func OpenapiSubmitFeedback(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "submit-feedback submit-feedback"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v3/submit-feedback"
 
 	req := bartolocli.Client.Post().URL(url)
 
