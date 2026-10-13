@@ -2,10 +2,45 @@ package auth
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
+
+// The migrate-failure and save-failure notices each hold to once per process, but
+// through their OWN sync.Once: one firing must not silence the other. With a single
+// shared Once, the migrate warning below would be swallowed by the earlier save one.
+func TestStoreFailureWarningsAreIndependent(t *testing.T) {
+	migrateFailureWarned = sync.Once{}
+	saveFailureWarned = sync.Once{}
+	t.Cleanup(func() { migrateFailureWarned = sync.Once{}; saveFailureWarned = sync.Once{} })
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := os.Stderr
+	os.Stderr = w
+	warnStoreFailureOnce(&saveFailureWarned, "SAVE_WARN\n")
+	warnStoreFailureOnce(&saveFailureWarned, "SAVE_WARN_AGAIN\n") // same Once: suppressed
+	warnStoreFailureOnce(&migrateFailureWarned, "MIGRATE_WARN\n") // different Once: must appear
+	os.Stderr = prev
+	w.Close()
+	out, _ := io.ReadAll(r)
+	s := string(out)
+
+	if !strings.Contains(s, "SAVE_WARN\n") {
+		t.Errorf("save warning missing: %q", s)
+	}
+	if strings.Contains(s, "SAVE_WARN_AGAIN") {
+		t.Errorf("save warning fired twice; the Once did not dedupe: %q", s)
+	}
+	if !strings.Contains(s, "MIGRATE_WARN") {
+		t.Errorf("migrate warning was suppressed by the save Once; the two are not independent: %q", s)
+	}
+}
 
 // memStore is an in-memory SecretStore for the session read/write tests, so the
 // split/migrate logic is exercised without a real keychain.
