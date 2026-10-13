@@ -220,3 +220,37 @@ func TestDryRunNamesTheLocalSkillsDirectory(t *testing.T) {
 	}
 	t.Errorf("dry-run notes do not name %s:\n%v", want, plan.Notes)
 }
+
+// The warning about differing skills drops its upgrade suggestion when the
+// update check says this CLI is the latest, and names the release when not.
+func TestDifferingSkillsHintFollowsTheUpdateCheck(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("session skills are not installed on the copy-fallback platform")
+	}
+	home, _ := os.UserHomeDir()
+	names, _ := skills.Names()
+	stale := filepath.Join(home, ".agents", "skills", names[0])
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(stale)
+	if err := os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	orig := SkillsUpdateHook
+	defer func() { SkillsUpdateHook = orig }()
+
+	SkillsUpdateHook = func() (string, bool) { return "", true }
+	if got := differingSkillsHint("pi"); got == "" || strings.Contains(got, "orq update") {
+		t.Errorf("latest CLI: got %q, want the warning without an upgrade suggestion", got)
+	}
+	SkillsUpdateHook = func() (string, bool) { return "orq 9.9.9 is out", true }
+	if got := differingSkillsHint("pi"); !strings.Contains(got, "9.9.9") {
+		t.Errorf("behind: got %q, want the release named", got)
+	}
+	SkillsUpdateHook = func() (string, bool) { return "", false }
+	if got := differingSkillsHint("pi"); !strings.Contains(got, "orq update") {
+		t.Errorf("unknown: got %q, want the generic suggestion", got)
+	}
+}

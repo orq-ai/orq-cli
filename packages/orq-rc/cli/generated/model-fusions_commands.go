@@ -14,7 +14,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 	modelFusionsCmd := &cobra.Command{
 		Use:   "model-fusions",
 		Short: "Model Fusions",
-		Long:  bartolocli.Markdown("Model Fusions combine independent model answers through a panel, judge, and optional synthesizer."),
+		Long:  bartolocli.Markdown("Model Fusions"),
 	}
 	root.AddCommand(modelFusionsCmd)
 

@@ -347,3 +347,18 @@ func TestWriteUpdateCacheIsPrivate(t *testing.T) {
 		t.Errorf("atomic write left temp files behind: %v", entries)
 	}
 }
+
+// The skills-differ warning suggests an upgrade only when there is one: the
+// latest release says nothing, and a dev build cannot tell.
+func TestSkillsUpdateHint(t *testing.T) {
+	updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	if hint, known := skillsUpdateHint(updateTestCmd("4.13.22")); !known || hint != "" {
+		t.Errorf("latest: got (%q, %v), want (\"\", true)", hint, known)
+	}
+	if hint, known := skillsUpdateHint(updateTestCmd("4.13.21")); !known || !strings.Contains(hint, "4.13.22") {
+		t.Errorf("behind: got (%q, %v), want a hint naming 4.13.22", hint, known)
+	}
+	if _, known := skillsUpdateHint(updateTestCmd("dev")); known {
+		t.Error("dev build: want unknown")
+	}
+}

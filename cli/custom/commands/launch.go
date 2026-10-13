@@ -62,6 +62,7 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 				// and the registry is the one place that knows where each
 				// agent keeps its MCP entry.
 				launch.PersistedMCPHook = mcpEntryPresent
+				launch.SkillsUpdateHook = func() (string, bool) { return skillsUpdateHint(cmd) }
 				launch.LoginHook = func() error {
 					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
 					return err

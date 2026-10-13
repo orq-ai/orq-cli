@@ -14,7 +14,7 @@ func registerviewsCommands(root *cobra.Command) {
 	viewsCmd := &cobra.Command{
 		Use:   "views",
 		Short: "Views",
-		Long:  bartolocli.Markdown("Saved filters and columns for workspace observability pages."),
+		Long:  bartolocli.Markdown("Views"),
 	}
 	root.AddCommand(viewsCmd)
 
