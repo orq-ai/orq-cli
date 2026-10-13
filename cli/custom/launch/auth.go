@@ -231,18 +231,26 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// The key `orq setup` minted lives for 90 days; the session token below
 	// lives about an hour and is baked into the child process once, so an agent
 	// running longer than that meets a 401.
-	if key, ws := savedKeyForWorkspace(session); key != "" {
-		return &Credentials{
-			APIKey:              key,
-			APIBaseURL:          apiBase,
-			Kind:                CredentialAPIKey,
-			Workspace:           ws,
-			SupersededWorkspace: supersededWorkspace,
-		}, nil
-	}
 	// apiBase, not session.APIBaseURL: an explicit --server diverts the token
 	// fetch too, so one run cannot straddle two hosts.
 	client := auth.NewClient(apiBase)
+	if key, ws := savedKeyForWorkspace(session); key != "" {
+		// Verify the saved key against the server before reusing it: a key
+		// revoked or disabled before its recorded expiry passes the local check
+		// but 401s at runtime, so the wired agent fails. Drop it only on a
+		// definitive rejection (401); a network or server error is not a verdict,
+		// so the key is still used rather than block a launch on a transient blip.
+		if err := validateReusableKey(client, key); err == nil || !auth.Unauthorized(err) {
+			return &Credentials{
+				APIKey:              key,
+				APIBaseURL:          apiBase,
+				Kind:                CredentialAPIKey,
+				Workspace:           ws,
+				SupersededWorkspace: supersededWorkspace,
+			}, nil
+		}
+		// Rejected by the server: fall through to a fresh session token below.
+	}
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		// Only the superseded path earns the re-login advice: a working exported
@@ -278,6 +286,14 @@ func profileKey() (name, key string, ok bool) {
 // session's active workspace and has not expired. Only a key for that workspace
 // qualifies: anything else would silently launch against a workspace the user
 // did not pick. An unrecorded expiry is unknown, not expired.
+// validateReusableKey verifies a saved gateway key against the server before
+// launch reuses it. Swappable in tests. A nil error means the server accepts
+// the key; auth.Unauthorized(err) means it was revoked or disabled.
+var validateReusableKey = func(client *auth.Client, key string) error {
+	_, err := client.KeyWorkspace(key)
+	return err
+}
+
 func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return "", ""
