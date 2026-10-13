@@ -1309,6 +1309,12 @@
       "use": "sessions",
       "aliases": [
         "session"
+      ],
+      "flags": [
+        {
+          "name": "check",
+          "type": "bool"
+        }
       ]
     },
     {

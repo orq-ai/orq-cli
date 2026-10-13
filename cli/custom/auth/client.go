@@ -571,6 +571,10 @@ func sessionForLogin(previous *Session) *Session {
 		return &Session{}
 	}
 	kept := *previous
+	// A fresh login is a new credential, so it is not signed out — clear any mark a
+	// prior rejected refresh left, otherwise the new working login still reads dead
+	// (usableSessionStatus drops it, and CheckSession returns signed-out before it probes).
+	kept.SignedOut = false
 	return &kept
 }
 
@@ -648,9 +652,17 @@ func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
+		// The server ending the login (refresh token rejected, account gone or
+		// deactivated) is recorded so the login reads as dead without another
+		// call. That answer is a 400/403, not a 401 (see RefreshRejected). A
+		// transient failure leaves the status untouched.
+		if RefreshRejected(err) {
+			markSessionSignedOut(session)
+		}
 		return nil, err
 	}
 	session.BootstrapToken = tok
+	session.SignedOut = false // a successful refresh clears any prior signed-out mark
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
@@ -699,12 +711,16 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 	if !cached || isExpired(current.ExpiresAt, 60) {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
+			if RefreshRejected(err) {
+				markSessionSignedOut(session)
+			}
 			return nil, err
 		}
 		if session.WorkspaceTokens == nil {
 			session.WorkspaceTokens = map[string]StoredAccessToken{}
 		}
 		session.WorkspaceTokens[cacheKey] = tok
+		session.SignedOut = false // a successful refresh clears any prior signed-out mark
 	}
 	session.ActiveWorkspaceKey = stringPtr(workspaceKey)
 	if err := SaveSession(session); err != nil {
@@ -892,6 +908,43 @@ func (e *APIError) Error() string { return e.Msg }
 func Unauthorized(err error) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized
+}
+
+// RefreshRejected reports whether err is the auth server ending the login: the
+// refresh token itself was invalid/revoked, or the account was deactivated.
+//
+// The /access-token endpoint does not answer these with 401. Measured against
+// the live auth-api (orquesta-web apps/auth-api issue-access-token.ts), a
+// rejected refresh returns 400 "Invalid refresh token!" and a deactivated
+// account 403 "Account has been deactivated". So Unauthorized() (401 only, the
+// gateway-key verdict) never fires here; without this the login would silently
+// read as merely needs-refresh.
+//
+// Deliberately NOT matched: the 400 "Account not found!" that the same endpoint
+// returns when a valid, active login requests a workspace or project it cannot
+// access (issue-access-token.ts:164 — reached only after the refresh token has
+// verified and the account is confirmed active). That is an authorization miss
+// on the requested scope, not a dead login; signing the whole session out on it
+// would wrongly kill a working login (e.g. a stale ActiveProjectID). The match
+// is on the specific dead-login messages, not a bare "account" substring, and
+// transient failures (5xx, timeouts, transport errors) are not APIErrors of
+// this shape, so none of them sign the user out.
+func RefreshRejected(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.Status == http.StatusUnauthorized {
+		return true
+	}
+	msg := strings.ToLower(apiErr.Msg)
+	if apiErr.Status == http.StatusBadRequest {
+		return strings.Contains(msg, "refresh token")
+	}
+	if apiErr.Status == http.StatusForbidden {
+		return strings.Contains(msg, "deactivat")
+	}
+	return false
 }
 
 // Forbidden reports whether err is the API accepting the credential but

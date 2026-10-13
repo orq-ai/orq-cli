@@ -48,6 +48,13 @@ type Session struct {
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
 
+	// SignedOut records that the server rejected this login's refresh token — a
+	// definitive end, not a stale local date. It is written on a rejected
+	// refresh so `auth sessions`, `doctor` and the switch hints read the login
+	// as dead without another network call; a fresh `orq auth login` or any
+	// later successful refresh clears it.
+	SignedOut bool `json:"signedOut,omitempty"`
+
 	// ProfileTransport records which profile endpoint this host answered on
 	// ("rpc" or "rest"), so a deployment whose ingress does not route the
 	// identity RPC is not re-probed before every profile fetch. Empty on
@@ -361,7 +368,74 @@ const (
 	SessionStatusNeedsRefresh = "needs-refresh"
 	SessionStatusInvalid      = "invalid"
 	SessionStatusUnreadable   = "unreadable"
+	// SessionStatusSignedOut is a login the server has ended: its refresh token
+	// was rejected. Unlike needs-refresh it is not usable, and the only fix is a
+	// new login. Recorded on the session (Session.SignedOut), so it is reported
+	// without a network call.
+	SessionStatusSignedOut = "signed-out"
 )
+
+// markSessionSignedOut records a server-rejected refresh on the session file so
+// the login reads as dead without another network call. Best effort: the login
+// is already broken here, so a failed write must not mask the original auth
+// error the caller is about to return.
+func markSessionSignedOut(session *Session) {
+	if session == nil || session.SignedOut {
+		return
+	}
+	session.SignedOut = true
+	// Write the mark to this session's OWN host file, not the active host. SaveSession
+	// targets SessionFilePath() (the active login), so marking a non-active session —
+	// EnsureBootstrapToken called on another host — would stamp the wrong file. This
+	// mirrors CheckSession, which already works around the same SaveSession behaviour.
+	_ = saveSessionTo(sessionPathFor(SessionHost(session.APIBaseURL)), session)
+}
+
+// CheckSession probes one saved login against its server for `orq auth sessions
+// --check` and returns the live status. ok when the login works or its
+// bootstrap token is still valid; signed-out when the server rejects the
+// refresh token; needs-refresh when the token is stale but the server could not
+// be reached to confirm, so a transient failure never calls a live login dead.
+// A file that will not load is reported invalid or unreadable, as in the
+// listing. The probe is one refresh: EnsureBootstrapToken records signed-out on
+// a rejected refresh and clears it on success, so the status also lands on disk.
+func CheckSession(host string) string {
+	data, err := os.ReadFile(sessionPathFor(host))
+	if err != nil {
+		return SessionStatusUnreadable
+	}
+	var session Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		return SessionStatusInvalid
+	}
+	if err := validateSession(&session); err != nil {
+		return SessionStatusInvalid
+	}
+	if session.SignedOut {
+		return SessionStatusSignedOut
+	}
+	if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
+		return SessionStatusOK
+	}
+	// Probe the refresh directly and persist the outcome to THIS host's file.
+	// EnsureBootstrapToken would SaveSession, which always writes the active
+	// host's file — wrong when --check probes a login that is not the active
+	// one (it would stamp another host's status onto, or overwrite, the active
+	// login). ExchangeAccessToken does no I/O, so we control where it lands.
+	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
+	if err != nil {
+		if RefreshRejected(err) {
+			session.SignedOut = true
+			_ = saveSessionTo(sessionPathFor(host), &session)
+			return SessionStatusSignedOut
+		}
+		return SessionStatusNeedsRefresh // could not reach the server — not a verdict
+	}
+	session.BootstrapToken = tok
+	session.SignedOut = false
+	_ = saveSessionTo(sessionPathFor(host), &session)
+	return SessionStatusOK
+}
 
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
@@ -433,9 +507,13 @@ func ListSessions() ([]SessionListEntry, error) {
 			row.Workspace = *session.ActiveWorkspaceKey
 		}
 		row.Project = session.ActiveProjectName
-		// Match EnsureBootstrapToken's 60-second clock skew.
+		// A server-rejected refresh is a dead login; a stale local date only
+		// means the next call re-mints. Match EnsureBootstrapToken's 60s skew.
 		row.Status = SessionStatusOK
-		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
+		switch {
+		case session.SignedOut:
+			row.Status = SessionStatusSignedOut
+		case isExpired(session.BootstrapToken.ExpiresAt, 60):
 			row.Status = SessionStatusNeedsRefresh
 		}
 		sessions = append(sessions, row)
