@@ -420,7 +420,7 @@ func CheckSession(host string) string {
 	// login). ExchangeAccessToken does no I/O, so we control where it lands.
 	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
-		if Unauthorized(err) {
+		if RefreshRejected(err) {
 			session.SignedOut = true
 			_ = saveSessionTo(sessionPathFor(host), &session)
 			return SessionStatusSignedOut

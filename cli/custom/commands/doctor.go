@@ -146,7 +146,7 @@ func NewDoctorCommand() *cobra.Command {
 					switch {
 					case err == nil:
 						bearer = refreshed.BootstrapToken.Token
-					case auth.Unauthorized(err):
+					case auth.RefreshRejected(err):
 						bearer = ""
 						checks = append(checks, doctorCheck{
 							ID:         "login",

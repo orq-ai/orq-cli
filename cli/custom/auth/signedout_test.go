@@ -10,14 +10,15 @@ import (
 	"time"
 )
 
-// A server-rejected refresh (401) is the server ending the login. It must be
-// recorded on the session file so `auth sessions`, `doctor` and the hints read
-// the login as dead without another network call.
+// A server-rejected refresh is the server ending the login. The auth server
+// answers it with 400 "Invalid refresh token!" (not 401, see RefreshRejected),
+// and it must be recorded on the session file so `auth sessions`, `doctor` and
+// the hints read the login as dead without another network call.
 func TestEnsureBootstrapTokenMarksSignedOutOnRejectedRefresh(t *testing.T) {
 	isolateHome(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
 	}))
 	defer srv.Close()
@@ -43,6 +44,60 @@ func TestEnsureBootstrapTokenMarksSignedOutOnRejectedRefresh(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].Status != SessionStatusSignedOut {
 		t.Fatalf("persisted rows = %+v, want one row with status %q", rows, SessionStatusSignedOut)
+	}
+}
+
+// A transient failure (the server is reachable but 500s, or cannot be reached)
+// is not a verdict on the login: the refresh must error without marking the
+// session signed-out, or a blip would wrongly report a live login as dead.
+func TestEnsureBootstrapTokenDoesNotSignOutOnTransientError(t *testing.T) {
+	isolateHome(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"message":"boom"}`)
+	}))
+	defer srv.Close()
+
+	s := validSession("acme")
+	s.APIBaseURL = srv.URL
+	s.RefreshToken = "live-refresh"
+	s.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: formatISO(time.Now().Add(-time.Hour))}
+	if err := SaveSession(s); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	if _, err := clientFor(srv).EnsureBootstrapToken(s); err == nil {
+		t.Fatal("EnsureBootstrapToken succeeded, want the server error")
+	}
+	if s.SignedOut {
+		t.Error("a transient server error must not mark the session SignedOut")
+	}
+}
+
+// RefreshRejected is the crux of the login-health fix: the auth server ends a
+// login with 400/403 and a refresh-token or account message, never a bare 401
+// on a different body. Transient failures must not match.
+func TestRefreshRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"400 invalid refresh token", &APIError{Status: http.StatusBadRequest, Msg: "Invalid refresh token!"}, true},
+		{"400 account not found", &APIError{Status: http.StatusBadRequest, Msg: "Account not found!"}, true},
+		{"403 account deactivated", &APIError{Status: http.StatusForbidden, Msg: "Account has been deactivated"}, true},
+		{"401 any body", &APIError{Status: http.StatusUnauthorized, Msg: "unauthorized"}, true},
+		{"400 unrelated validation error", &APIError{Status: http.StatusBadRequest, Msg: "workspace_key must be a string"}, false},
+		{"500 server error", &APIError{Status: http.StatusInternalServerError, Msg: "Invalid refresh token!"}, false},
+		{"transport error", fmt.Errorf("dial tcp: connection refused"), false},
+		{"nil", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RefreshRejected(tc.err); got != tc.want {
+				t.Fatalf("RefreshRejected(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -130,13 +185,25 @@ func TestCheckSession(t *testing.T) {
 
 	t.Run("expired and rejected is signed-out", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
+			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
 		}))
 		defer srv.Close()
 		host := save(t, srv.URL, past)
 		if got := CheckSession(host); got != SessionStatusSignedOut {
 			t.Fatalf("got %q, want signed-out", got)
+		}
+	})
+
+	t.Run("server error stays needs-refresh (not a verdict)", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"message":"boom"}`)
+		}))
+		defer srv.Close()
+		host := save(t, srv.URL, past)
+		if got := CheckSession(host); got != SessionStatusNeedsRefresh {
+			t.Fatalf("got %q, want needs-refresh", got)
 		}
 	})
 
@@ -181,7 +248,7 @@ func TestCheckSessionPersistsToProbedHostNotActive(t *testing.T) {
 
 	// A different, non-active login whose server rejects the refresh.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
 	}))
 	defer srv.Close()

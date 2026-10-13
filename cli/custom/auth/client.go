@@ -648,10 +648,11 @@ func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
-		// A 401 is the server ending the login (refresh token rejected), not a
-		// transient failure: record it so the login reads as dead without another
-		// call. A network error leaves the status untouched.
-		if Unauthorized(err) {
+		// The server ending the login (refresh token rejected, account gone or
+		// deactivated) is recorded so the login reads as dead without another
+		// call. That answer is a 400/403, not a 401 (see RefreshRejected). A
+		// transient failure leaves the status untouched.
+		if RefreshRejected(err) {
 			markSessionSignedOut(session)
 		}
 		return nil, err
@@ -706,7 +707,7 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 	if !cached || isExpired(current.ExpiresAt, 60) {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
-			if Unauthorized(err) {
+			if RefreshRejected(err) {
 				markSessionSignedOut(session)
 			}
 			return nil, err
@@ -903,6 +904,35 @@ func (e *APIError) Error() string { return e.Msg }
 func Unauthorized(err error) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized
+}
+
+// RefreshRejected reports whether err is the auth server ending the login: the
+// refresh token was invalid or revoked, or the account is gone or deactivated.
+//
+// The /access-token endpoint does not answer these with 401. Measured against
+// the live auth-api (orquesta-web apps/auth-api issue-access-token.ts), a
+// rejected refresh returns 400 "Invalid refresh token!", a missing account 400
+// "Account not found!", and a deactivated account 403 "Account has been
+// deactivated". So Unauthorized() (401 only, the gateway-key verdict) never
+// fires here and the login would silently read as merely needs-refresh.
+//
+// Matched on status 400/403 AND the rejection message so a malformed-request
+// 400 (a different message) is not mistaken for a dead login. Transient
+// failures (5xx, timeouts, transport errors) are not APIErrors of this shape,
+// so they never sign the user out.
+func RefreshRejected(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.Status == http.StatusUnauthorized {
+		return true
+	}
+	if apiErr.Status == http.StatusBadRequest || apiErr.Status == http.StatusForbidden {
+		msg := strings.ToLower(apiErr.Msg)
+		return strings.Contains(msg, "refresh token") || strings.Contains(msg, "account")
+	}
+	return false
 }
 
 // Forbidden reports whether err is the API accepting the credential but
