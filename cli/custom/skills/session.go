@@ -59,13 +59,19 @@ func InstallSession(agent string) (func(), error) {
 
 		var held []string
 		for _, target := range targets {
-			if err := os.MkdirAll(target.Dir, 0o755); err != nil {
-				return err
-			}
+			// No MkdirAll up front: project creates the directory when a link
+			// is actually needed, and an empty project .agents/skills is not
+			// harmless — pi asks the user to trust the project over it.
+			elsewhere := readElsewhere(target, cwd)
 			for _, name := range names {
 				path := filepath.Clean(filepath.Join(target.Dir, name))
 				existing := findLink(m, path)
 				switch {
+				case !exists(path) && anyHas(elsewhere, name):
+					// The agent already loads this skill from another directory
+					// it reads. A second copy only gets loaded twice (pi warns
+					// about a name collision for every one), so use that one.
+					continue
 				case existing != nil && existing.Session && exists(path) && isOurs(*existing):
 					// Another live session already put this here. Join its
 					// claim instead of reprojecting: the link stays until the
@@ -149,6 +155,57 @@ func InstallSession(agent string) (func(), error) {
 			released = true
 		}
 	}, nil
+}
+
+// readElsewhere is every other directory the agent reads target's skills
+// from: the global copy for a local target, plus, for the shared directory,
+// each ancestor up to the repository root — codex, opencode, pi and kilo walk
+// up from cwd. Claude's own directory is not walked: its ancestors are not
+// read.
+func readElsewhere(target Target, cwd string) []string {
+	if target.Global {
+		return nil
+	}
+	rel, err := filepath.Rel(cwd, target.Dir)
+	if err != nil {
+		return nil
+	}
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, rel))
+	}
+	if target.Agent != "" {
+		return dirs
+	}
+	root, ok := RepoRoot(cwd)
+	if !ok {
+		return dirs
+	}
+	// RepoRoot resolves symlinks, so walk the resolved cwd to meet it.
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return dirs
+	}
+	for dir != root {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+		dirs = append(dirs, filepath.Join(dir, rel))
+	}
+	return dirs
+}
+
+// anyHas follows links: a dangling one elsewhere loads nothing, so it must
+// not stop the session linking its own.
+func anyHas(dirs []string, name string) bool {
+	for _, d := range dirs {
+		if _, err := os.Stat(filepath.Join(d, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // ReleaseSession drops one session's claim and removes only the links no

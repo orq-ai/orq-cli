@@ -607,6 +607,51 @@ func TestInstallSessionLinksLocallyOutsideHome(t *testing.T) {
 	}
 }
 
+// A skill the agent already reads from somewhere else is not linked again:
+// pi reports a name collision for every duplicate, and an empty project
+// .agents/skills makes it ask to trust the project.
+func TestInstallSessionSkipsSkillsAlreadyVisible(t *testing.T) {
+	names, _ := Names()
+	plant := func(t *testing.T, dir string) {
+		t.Helper()
+		for _, n := range names {
+			if err := os.MkdirAll(filepath.Join(dir, n), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cases := []struct {
+		agent, rel string
+		visible    func(home, repo string) string
+	}{
+		{"pi", filepath.Join(".agents", "skills"), func(home, _ string) string { return filepath.Join(home, ".agents", "skills") }},
+		{"pi", filepath.Join(".agents", "skills"), func(_, repo string) string { return filepath.Join(repo, ".agents", "skills") }},
+		{"claude", filepath.Join(".claude", "skills"), func(home, _ string) string { return filepath.Join(home, ".claude", "skills") }},
+	}
+	for _, c := range cases {
+		home := t.TempDir()
+		setHome(t, home)
+		repo := t.TempDir()
+		if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		sub := filepath.Join(repo, "sub")
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		plant(t, c.visible(home, repo))
+		t.Chdir(sub)
+		release, err := InstallSession(c.agent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists(filepath.Join(sub, c.rel)) {
+			t.Errorf("%s: session created %s although every skill was already visible", c.agent, c.rel)
+		}
+		release()
+	}
+}
+
 func TestInstallSessionLinksGloballyFromHome(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
