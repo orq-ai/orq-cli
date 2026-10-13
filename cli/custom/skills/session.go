@@ -201,24 +201,76 @@ func readElsewhere(target Target, cwd string) []string {
 }
 
 // anyHasSame reports whether one of dirs holds name with exactly the bundled
-// content. Skills carry no version field, so the tree hash is the version.
-// os.DirFS follows a link at the skill root, and a dangling or unreadable copy
-// is never the same.
+// content.
 func anyHasSame(dirs []string, name string) bool {
-	want, err := fs.Sub(Assets(), name)
-	if err != nil {
-		return false
-	}
-	wantSum, err := hashFS(want)
+	want, err := bundledHash(name)
 	if err != nil {
 		return false
 	}
 	for _, d := range dirs {
-		if sum, err := hashFS(os.DirFS(filepath.Join(d, name))); err == nil && sum == wantSum {
+		if hashOf(d, name) == want {
 			return true
 		}
 	}
 	return false
+}
+
+// bundledHash is the version of one bundled skill. Skills carry no version
+// field, so the tree hash is the version.
+func bundledHash(name string) (string, error) {
+	sub, err := fs.Sub(Assets(), name)
+	if err != nil {
+		return "", err
+	}
+	return hashFS(sub)
+}
+
+// hashOf is the tree hash of dir/name, or "" when it is missing, dangling or
+// unreadable. os.DirFS follows a link at the skill root.
+func hashOf(dir, name string) string {
+	sum, err := hashFS(os.DirFS(filepath.Join(dir, name)))
+	if err != nil {
+		return ""
+	}
+	return sum
+}
+
+// DifferingCopies lists the copies of bundled skills, in the other
+// directories agent reads beside its session target, whose content differs
+// from the bundle. A launch still links its own, so these show up in the agent
+// as name collisions; the caller turns them into a hint to update the CLI.
+func DifferingCopies(agent string) ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	targets, err := Targets([]string{agent}, ScopeFor(cwd))
+	if err != nil {
+		return nil, err
+	}
+	names, err := Names()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, target := range targets {
+		dirs := readElsewhere(target, cwd)
+		for _, name := range names {
+			want, err := bundledHash(name)
+			if err != nil {
+				return nil, err
+			}
+			if anyHasSame(dirs, name) {
+				continue
+			}
+			for _, d := range dirs {
+				if got := hashOf(d, name); got != "" && got != want {
+					out = append(out, filepath.Join(d, name))
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // ReleaseSession drops one session's claim and removes only the links no

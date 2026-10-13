@@ -97,6 +97,32 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 		return
 	}
 	plan.AddCleanup(release)
+	if hint := differingSkillsHint(agent); hint != "" {
+		plan.Warnings = append(plan.Warnings, hint)
+	}
+}
+
+// differingSkillsHint explains the name collisions an agent reports when a
+// skill it also reads elsewhere is a different version from the bundled one.
+// The bundle is pinned to the CLI release, so updating the CLI is the fix
+// when the other copy is the newer one.
+func differingSkillsHint(agent string) string {
+	paths, err := skills.DifferingCopies(agent)
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	dirs := map[string]bool{}
+	var where []string
+	for _, p := range paths {
+		if d := filepath.Dir(p); !dirs[d] {
+			dirs[d] = true
+			where = append(where, d)
+		}
+	}
+	return fmt.Sprintf(
+		"%d orq skills in %s differ from the version this CLI bundles; this session uses the bundled ones. "+
+			"If yours are newer, run 'orq update' to get a CLI that bundles them",
+		len(paths), strings.Join(where, ", "))
 }
 
 // MCPURLFor is the single derivation of the orq MCP endpoint: the explicit

@@ -680,6 +680,13 @@ func TestInstallSessionLinksOverADifferentVersion(t *testing.T) {
 	if !exists(filepath.Join(project, ".agents", "skills", names[0])) {
 		t.Error("a different version in $HOME suppressed the session link")
 	}
+	got, err := DifferingCopies("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != stale {
+		t.Errorf("DifferingCopies = %v, want [%s]", got, stale)
+	}
 }
 
 func TestInstallSessionLinksGloballyFromHome(t *testing.T) {
