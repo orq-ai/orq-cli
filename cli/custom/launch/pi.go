@@ -53,7 +53,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	config, err := BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)
+	config, err := BuildPiModelsJSON(resolved.BaseURL, "$ORQ_API_KEY", resolved.GatewayModels, resolved.Infos)
 	if err != nil {
 		return nil, err
 	}
@@ -115,9 +115,9 @@ type piProviderConfig struct {
 
 // BuildPiModelsJSON serializes pi's models.json: one provider whose default
 // api is chat completions, with openai/* models flipped to the Responses API
-// per model (mirrors the kimi/opencode split). apiKey holds pi's env
-// interpolation syntax, not the key.
-func BuildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo) (string, error) {
+// per model (mirrors the kimi/opencode split). apiKey uses the caller-supplied
+// environment-variable reference, not the key itself.
+func BuildPiModelsJSON(baseURL, apiKeyRef string, gatewayModels []string, infos []ModelInfo) (string, error) {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {
 		limits[info.ID] = info
@@ -149,13 +149,11 @@ func BuildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo
 		})
 	}
 
-	// Schema requires a top-level "providers" wrapper (the docs' bare example
-	// is rejected by pi's validator).
 	encoded, err := json.MarshalIndent(map[string]any{
 		"providers": map[string]piProviderConfig{
 			PiProvider: {
 				BaseURL: baseURL,
-				APIKey:  "$ORQ_API_KEY",
+				APIKey:  apiKeyRef,
 				API:     "openai-completions",
 				Models:  models,
 			},

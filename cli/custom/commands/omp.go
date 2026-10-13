@@ -5,25 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
 
-// ompPath resolves inside omp's agent directory: $PI_CODING_AGENT_DIR when set,
-// ~/.omp/agent otherwise — the same order omp resolves it. The variable is
-// shared with pi, so launch.OmpPiOwned decides whose directory it is.
+// ompPath shares default-profile directory resolution with the launcher.
 func ompPath(rel string) func(bool) (string, error) {
 	return func(bool) (string, error) {
-		if dir := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); dir != "" {
-			return filepath.Join(dir, rel), nil
-		}
-		home, err := os.UserHomeDir()
+		home, _ := os.UserHomeDir()
+		dir, err := launch.OmpAgentDir(os.Getenv, home)
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".omp", "agent", rel), nil
+		return filepath.Join(dir, rel), nil
 	}
 }
 
@@ -34,13 +29,15 @@ func ompDetect() bool {
 		return false
 	}
 	info, err := os.Stat(dir)
-	return err == nil && info.IsDir() && !launch.OmpPiOwned(dir)
+	return err == nil && info.IsDir() && refusePiOwnedDir(dir) == nil
 }
 
-// ompMCPEntry is omp's http MCP server shape: exactly type and url. No
-// headers; omp logs in through its own OAuth flow (/mcp).
-func ompMCPEntry(url string) map[string]any {
-	return map[string]any{"type": "http", "url": url}
+func refusePiOwnedDir(dir string) error {
+	home, _ := os.UserHomeDir()
+	if launch.OmpPiOwned(dir, home) {
+		return fmt.Errorf("%s holds pi's models.json, not omp's: PI_CODING_AGENT_DIR points at pi's directory — unset it or point it at a different directory for omp", dir)
+	}
+	return nil
 }
 
 // writeOmpProviderYAML registers the gateway in omp's models.yml, the durable
@@ -53,11 +50,11 @@ func writeOmpProviderYAML(path, routerURL, _ string, models []auth.RouterModel, 
 	if len(models) == 0 {
 		return 0, errNoModelsToOffer
 	}
-	if dir := filepath.Dir(path); launch.OmpPiOwned(dir) {
-		return 0, fmt.Errorf("%s holds pi's models.json, not omp's: PI_CODING_AGENT_DIR points at pi's directory — unset it or point it at a different directory for omp", dir)
+	if err := refusePiOwnedDir(filepath.Dir(path)); err != nil {
+		return 0, err
 	}
 	refs, infos := launchCatalog(models)
-	built, err := launch.BuildPiModelsJSON(routerURL, refs, infos)
+	built, err := launch.BuildPiModelsJSON(routerURL, launch.OmpAPIKeyRef, refs, infos)
 	if err != nil {
 		return 0, err
 	}
@@ -65,18 +62,14 @@ func writeOmpProviderYAML(path, routerURL, _ string, models []auth.RouterModel, 
 	if err != nil {
 		return 0, err
 	}
-	return len(models), writeConfigFile(path, data, mcpFileMode(path))
+	return len(models), writeConfigFile(path, data, 0o600)
 }
 
-// writeOmpMCP carries the ownership rule onto the MCP write: a dir
-// pi owns is refused here too, so an explicit 'orq connect omp mcp'
-// cannot drop omp's entry into pi's directory. The provider writer
-// refuses the same dir with the same error.
 func writeOmpMCP(path, url string) error {
-	if dir := filepath.Dir(path); launch.OmpPiOwned(dir) {
-		return fmt.Errorf("%s holds pi's models.json, not omp's: PI_CODING_AGENT_DIR points at pi's directory — unset it or point it at a different directory for omp", dir)
+	if err := refusePiOwnedDir(filepath.Dir(path)); err != nil {
+		return err
 	}
-	return writeMCPJSON("mcpServers", ompMCPEntry)(path, url)
+	return writeMCPJSON("mcpServers", launch.HTTPMCPEntry)(path, url)
 }
 
 // ompProviderPresent is false when the file is absent, unparseable or holds no providers.orq.
@@ -129,5 +122,5 @@ func removeOmpProvider(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return true, writeConfigFile(path, data, mcpFileMode(path))
+	return true, writeConfigFile(path, data, 0o600)
 }

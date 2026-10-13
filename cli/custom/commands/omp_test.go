@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -309,13 +310,6 @@ func TestOmpMalformedFilesAreRefusedNotOverwritten(t *testing.T) {
 	}
 }
 
-func TestOmpMCPEntryIsTypeAndURLOnly(t *testing.T) {
-	entry := ompMCPEntry("https://api.orq.ai/v2/mcp")
-	if len(entry) != 2 || entry["type"] != "http" || entry["url"] != "https://api.orq.ai/v2/mcp" {
-		t.Errorf("entry = %v, want exactly {type: http, url}", entry)
-	}
-}
-
 func TestOmpSpecWiring(t *testing.T) {
 	home := ompHome(t)
 	spec, ok := lookupAgent("omp")
@@ -357,5 +351,150 @@ func TestMCPCheckNamesOmpLoginCommand(t *testing.T) {
 	check, ok = mcpCheck()
 	if !ok || check.Status != "pass" || !strings.Contains(check.Message, "omp MCP entry present — run /mcp in omp") {
 		t.Fatalf("wired omp: ok=%v %+v", ok, check)
+	}
+}
+
+func TestOmpConnectDefaultLegacyDirectory(t *testing.T) {
+	home := ompHome(t)
+	t.Setenv("USERPROFILE", home)
+	dir := filepath.Join(home, ".omp", "agent")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"providers":{"local":{"baseUrl":"http://localhost:11434"}}}`
+	if err := os.WriteFile(filepath.Join(dir, "models.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !ompDetect() {
+		t.Fatal("legacy default omp dir not detected")
+	}
+	path := filepath.Join(dir, "models.yml")
+	if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Providers map[string]any `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(mustRead(t, path), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Providers["local"] == nil || doc.Providers[launch.OmpProvider] == nil {
+		t.Fatalf("connect lost legacy providers: %+v", doc.Providers)
+	}
+	if err := writeOmpMCP(filepath.Join(dir, "mcp.json"), "https://mcp.example"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeOmpProvider(path); err != nil {
+		t.Fatal(err)
+	}
+	doc.Providers = nil
+	if err := yaml.Unmarshal(mustRead(t, path), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Providers["local"] == nil || doc.Providers[launch.OmpProvider] != nil {
+		t.Fatalf("disconnect changed the wrong providers: %+v", doc.Providers)
+	}
+	if got := string(mustRead(t, filepath.Join(dir, "models.json"))); got != legacy {
+		t.Fatalf("legacy JSON changed: %s", got)
+	}
+}
+
+func TestOmpConnectPrefersModelsYAMLToLegacyJSON(t *testing.T) {
+	ompHome(t)
+	dir := ompModelsPath(t)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	yamlSource := "providers:\n  yaml-local:\n    baseUrl: http://yaml.example\n"
+	legacy := `{"providers":{"json-local":{"baseUrl":"http://json.example"}}}`
+	if err := os.WriteFile(dir, []byte(yamlSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "models.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOmpProviderYAML(dir, ompRouter, "", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	got := string(mustRead(t, dir))
+	if !strings.Contains(got, "yaml-local:") || strings.Contains(got, "json-local:") {
+		t.Fatalf("models.yml did not take precedence over models.json:\n%s", got)
+	}
+	if got := string(mustRead(t, filepath.Join(filepath.Dir(dir), "models.json"))); got != legacy {
+		t.Fatalf("legacy JSON changed: %s", got)
+	}
+}
+
+func TestOmpConnectRefusesMalformedLegacyJSON(t *testing.T) {
+	ompHome(t)
+	path := ompModelsPath(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"providers":{"local":`
+	legacyPath := filepath.Join(filepath.Dir(path), "models.json")
+	if err := os.WriteFile(legacyPath, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err == nil {
+		t.Fatal("writer accepted malformed legacy models.json")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("writer created models.yml despite malformed legacy input: %v", err)
+	}
+	if got := string(mustRead(t, legacyPath)); got != legacy {
+		t.Errorf("malformed legacy JSON was modified: %q", got)
+	}
+}
+
+func TestOmpProviderEditsTightenExistingPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+	for _, operation := range []string{"connect", "disconnect"} {
+		t.Run(operation, func(t *testing.T) {
+			ompHome(t)
+			path := ompModelsPath(t)
+			if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(string(mustRead(t, path))+"private: true\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "connect" {
+				if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := removeOmpProvider(path); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Fatalf("%s left models.yml permissions at %04o", operation, info.Mode().Perm())
+			}
+		})
+	}
+}
+
+func TestOmpRedirectedConnectDoesNotRequireHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	dir := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", dir)
+	path, err := ompPath("models.yml")(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if !ompDetect() || !ompProviderPresent(filepath.Join(dir, "models.yml")) {
+		t.Fatal("redirected omp config not detected without a home directory")
 	}
 }

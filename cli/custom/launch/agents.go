@@ -6,7 +6,7 @@ import (
 )
 
 // AgentContext is everything an agent's Resolve needs, with injectable seams
-// for tests (Getenv, Fetch, ExecProbe).
+// for environment, home, filesystem, and network behavior.
 type AgentContext struct {
 	Creds  *Credentials
 	Getenv func(string) string
@@ -16,6 +16,8 @@ type AgentContext struct {
 	// ExecProbe runs a helper command and returns its stdout (codex model
 	// catalog).
 	ExecProbe func(binary string, args ...string) (string, error)
+	HomeDir   func() (string, error)
+	Symlink   func(oldname, newname string) error
 }
 
 // TempDir is a host directory holding config the agent reads. Declaring it lets

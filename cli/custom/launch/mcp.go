@@ -23,6 +23,12 @@ const MCPServerName = "orq-workspace"
 // so orq tools are available without manual per-harness setup.
 const DefaultMCPURL = DefaultGatewayAPIBaseURL + "/v2/mcp"
 
+// HTTPMCPEntry is the type/url-only server value shared by session launch
+// configuration and persistent agent configuration.
+func HTTPMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "http", "url": url}
+}
+
 // skillsPluginURL returns a plugin zip for claude to fetch, and normally
 // returns nothing: the default skill set ships inside this binary and is
 // linked into the agent's own skills directory for the session, so no network
@@ -153,18 +159,13 @@ func persistedMCPConfigured(agent string) bool {
 	return PersistedMCPHook(agent)
 }
 
-// httpMCPConfigJSON is the mcpServers payload for the agents that take the orq
-// MCP server as JSON: claude through --mcp-config, copilot through
-// --additional-mcp-config, omp through the session mcp.json in its agent dir.
-// All three authenticate the remote through their own OAuth flow, so no
-// credential appears in it.
+// httpMCPConfigJSON is the mcpServers payload used by claude and copilot.
+// All authenticate the remote through their own OAuth flow, so no credential
+// appears in it.
 func httpMCPConfigJSON(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
+			MCPServerName: HTTPMCPEntry(url),
 		},
 	})
 	return string(encoded)

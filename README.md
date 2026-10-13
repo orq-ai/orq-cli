@@ -373,7 +373,33 @@ The agent CLI itself must be installed — each subcommand prints an install hin
 
 Agents stay pinned to whatever `orq connect` wired them against. `orq connect --status` names that workspace per agent, and `orq doctor` says so too when it differs from your active one, with the commands to move it.
 
-The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it (kimi always gets the session entry: launch hands it its own config dir). Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. A launched omp session keeps everything in your omp agent directory — providers, MCP servers, logins, settings, skills, extensions and sessions — and adds orq to it: the orq provider is merged into a session copy of your `models.yml` and the orq MCP entry goes in a session `.mcp.json`, while your own files are only read. The orq MCP login is shared with your plain omp, so `/mcp` is needed once, not per session. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself. A persistent entry from `orq connect` suppresses the session wire for agents that support that check; kimi and omp still get session entries. omp preserves a same-named user entry, and its linked `mcp.json` takes precedence over the session `.mcp.json`. Point elsewhere with `ORQ_MCP_URL`. pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` keeps the quota for model calls.
+
+A launched omp session normally keeps your providers, MCP servers, logins,
+settings, skills, extensions and sessions. It merges orq into a session copy
+of `models.yml` and adds the orq MCP entry through a session `.mcp.json`; your
+existing config files are not rewritten. The MCP login is shared with plain
+omp, so `/mcp` is needed once, not per session.
+
+For a fresh or partly configured omp installation, launch creates persistent
+`agent.db` and `sessions/` entries in your omp agent directory before linking
+them into the session. Logins and conversations therefore survive cleanup.
+The default `~/.omp/agent` is treated as omp's even if it still has legacy
+`models.json`; its providers are retained when adding orq. The pi-owned
+directory check applies only outside that default location.
+
+If symlink creation fails — for example, on Windows without symlink
+privileges — launch warns and uses an isolated orq-only session instead of
+aborting. Your own providers, settings, MCP servers and login state are not
+carried over in that fallback, and its session history is discarded on exit.
+A malformed user `.mcp.json` is ignored for the launched session, matching
+omp's own reader; the original file is left untouched.
+
+If `OMP_PROFILE` or `PI_PROFILE` is set, launch warns and selects the default
+omp profile for this session so its temporary config is used. For more
+flexible persistent wiring, use `orq connect omp`, then start omp normally.
+Named profiles need their own directory wired; connect does not resolve them
+automatically.
 
 orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 

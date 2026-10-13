@@ -100,7 +100,7 @@ func agentRegistry() []agentSpec {
 			Label:      "Claude Code",
 			detect:     detectAny(".claude", ".claude.json"),
 			mcpConfig:  projectOrGlobalPath(".mcp.json", ".claude.json"),
-			writeMCP:   writeMCPJSON("mcpServers", claudeMCPEntry),
+			writeMCP:   writeMCPJSON("mcpServers", launch.HTTPMCPEntry),
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 			mcpLogin:   "run /mcp in Claude Code, or 'claude mcp login " + launch.MCPServerName + "'",
@@ -642,7 +642,7 @@ func writePiProviderJSON(path, routerURL, _ string, models []auth.RouterModel, _
 		return 0, err
 	}
 	refs, infos := launchCatalog(models)
-	built, err := launch.BuildPiModelsJSON(routerURL, refs, infos)
+	built, err := launch.BuildPiModelsJSON(routerURL, "$ORQ_API_KEY", refs, infos)
 	if err != nil {
 		return 0, err
 	}
@@ -832,12 +832,6 @@ func orqOwnedKimiTable(header, body string) bool {
 // ============================================================================
 // MCP entry writers — the orq-workspace server, no credential ever included.
 // ============================================================================
-
-// claudeMCPEntry is claude's mcpServers value: a plain streamable-HTTP remote.
-// Claude authenticates it via 'claude mcp login', not a config field.
-func claudeMCPEntry(url string) map[string]any {
-	return map[string]any{"type": "http", "url": url}
-}
 
 // kimiMCPEntry is kimi's mcpServers value — url only; kimi's own 'kimi mcp
 // auth' drives the OAuth flow, same as claude.

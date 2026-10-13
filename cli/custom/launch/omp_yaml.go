@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	yaml "go.yaml.in/yaml/v3"
 )
@@ -112,8 +113,8 @@ func plainStyle(n *yaml.Node) {
 // reach the router as the literal token. The key itself stays out of the file.
 const OmpAPIKeyRef = "ORQ_API_KEY"
 
-// ompProviderBlock pulls providers.orq out of BuildPiModelsJSON's output
-// (JSON, so valid YAML) and points its apiKey at OmpAPIKeyRef.
+// ompProviderBlock extracts providers.orq from BuildPiModelsJSON's output
+// (JSON, so valid YAML), preserving the apiKey reference supplied by its caller.
 func ompProviderBlock(generated string) (*yaml.Node, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(generated), &doc); err != nil {
@@ -131,21 +132,13 @@ func ompProviderBlock(generated string) (*yaml.Node, error) {
 		return nil, errors.New("generated omp provider config has no orq provider")
 	}
 	node := doc.Content[0].Content[providers].Content[block]
-	key := YAMLMapIndex(node, "apiKey")
-	if key < 0 {
-		return nil, errors.New("generated omp provider config has no apiKey")
-	}
-	node.Content[key].Value = OmpAPIKeyRef
 	plainStyle(node)
 	return node, nil
 }
 
-// OmpMergeProvider returns the models.yml at path (empty or missing = an
-// empty document) with providers.orq set to the block in generated,
-// BuildPiModelsJSON's output. The user's other providers, comments and key
-// order survive; an existing providers.orq is replaced in place so a rerun
-// neither merges into a stale model list nor moves the key. path itself is
-// only read.
+// OmpMergeProvider replaces providers.orq, retaining other providers, comments
+// and key order. A missing models.yml inherits legacy models.json; neither
+// source file is written.
 func OmpMergeProvider(path, generated string) ([]byte, error) {
 	block, err := ompProviderBlock(generated)
 	if err != nil {
@@ -153,6 +146,11 @@ func OmpMergeProvider(path, generated string) ([]byte, error) {
 	}
 	doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}}
 	if path != "" {
+		if filepath.Base(path) == "models.yml" {
+			if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+				path = filepath.Join(filepath.Dir(path), "models.json")
+			}
+		}
 		if doc, err = OmpReadDoc(path); err != nil {
 			return nil, err
 		}

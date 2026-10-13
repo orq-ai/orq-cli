@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+var errOmpSymlink = errors.New("omp user-state symlink failed")
+
 const (
 	DefaultOmpModel = "openai/gpt-5.6-terra"
 
@@ -33,12 +35,11 @@ func ompAgent() AgentDef {
 	}
 }
 
-// resolveOmp points PI_CODING_AGENT_DIR at a fresh temp dir that is the
-// user's own agent dir plus orq: every entry is symlinked in except
-// models.yml and .mcp.json, which the session owns as copies of the user's
-// with orq's provider and MCP entry merged in. The user's files are only
-// read; the provider's apiKey names ORQ_API_KEY (OmpAPIKeyRef), so the key
-// itself stays out of the file.
+// resolveOmp points PI_CODING_AGENT_DIR at a fresh temp dir that overlays the
+// user's agent dir with orq. models.yml and .mcp.json are session-owned merged
+// copies; other entries are symlinked so omp's persistent state carries over.
+// If linking is unavailable, the partial overlay is discarded and the session
+// runs with only orq's generated config.
 func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
 		AuthToken:         ctx.Creds.APIKey,
@@ -57,12 +58,16 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	config, err := BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)
+	config, err := BuildPiModelsJSON(resolved.BaseURL, OmpAPIKeyRef, resolved.GatewayModels, resolved.Infos)
+	if err != nil {
+		return nil, err
+	}
+	userDir, err := ompUserAgentDir(ctx)
 	if err != nil {
 		return nil, err
 	}
 	userModels := ""
-	userDir := ompUserAgentDir(ctx)
+
 	if userDir != "" {
 		userModels = filepath.Join(userDir, "models.yml")
 	}
@@ -93,9 +98,29 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 		}
 		owned[".mcp.json"] = true
 	}
-	if err := linkOmpAgentDir(userDir, dir, owned); err != nil {
-		cleanup()
-		return nil, err
+	if userDir != "" {
+		if err := prepareOmpState(userDir); err != nil {
+			cleanup()
+			return nil, err
+		}
+	}
+	symlink := ctx.Symlink
+	if symlink == nil {
+		symlink = os.Symlink
+	}
+	linkErr := linkOmpAgentDir(userDir, dir, owned, symlink)
+	isolatedFallback := false
+	if linkErr != nil {
+		if errors.Is(linkErr, errOmpSymlink) {
+			if resetErr := rebuildIsolatedOmpConfig(dir, string(config), mcpURL(ctx)); resetErr != nil {
+				cleanup()
+				return nil, fmt.Errorf("symlink omp user config: %w (isolated fallback: %v)", linkErr, resetErr)
+			}
+			isolatedFallback = true
+		} else {
+			cleanup()
+			return nil, linkErr
+		}
 	}
 
 	// Skills do not go in the temp dir: omp is a sharedReader reading
@@ -109,6 +134,14 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 		PreArgs:  []string{"--provider", OmpProvider, "--model", resolved.GatewayModel},
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
+	}
+	if isolatedFallback {
+		plan.Warnings = append(plan.Warnings, "Symlinks are unavailable; omp is using an isolated session config. User omp config, login state, and sessions are not carried over for this launch.")
+	}
+	if strings.TrimSpace(ctx.Getenv("OMP_PROFILE")) != "" || strings.TrimSpace(ctx.Getenv("PI_PROFILE")) != "" {
+		plan.Env["OMP_PROFILE"] = ""
+		plan.Env["PI_PROFILE"] = ""
+		plan.Warnings = append(plan.Warnings, "OMP_PROFILE/PI_PROFILE is set; orq launch omp uses the default profile for this session. For more flexible persistent wiring, use orq connect omp, then start omp normally (named profiles need their own directory wired).")
 	}
 	maybeInstallSessionSkills(ctx, plan, "omp")
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
@@ -129,39 +162,71 @@ func writeOmpConfigDir(models string) (dir string, cleanup func(), err error) {
 	return dir, cleanup, nil
 }
 
-// ompUserAgentDir is the directory omp itself would use — $PI_CODING_AGENT_DIR,
-// else ~/.omp/agent — or "" when it does not exist or belongs to pi, whose
-// files are not omp's state.
-func ompUserAgentDir(ctx *AgentContext) string {
-	dir := strings.TrimSpace(ctx.Getenv("PI_CODING_AGENT_DIR"))
+// ompUserAgentDir applies the pi ownership guard to the shared agent directory.
+func ompUserAgentDir(ctx *AgentContext) (string, error) {
+	home := ctx.HomeDir
+	if home == nil {
+		home = os.UserHomeDir
+	}
+	homeDir, _ := home()
+	dir, err := OmpAgentDir(ctx.Getenv, homeDir)
+	if err != nil {
+		return "", err
+	}
+	if OmpPiOwned(dir, homeDir) {
+		return "", nil
+	}
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		return "", fmt.Errorf("omp agent dir %s is not a directory", dir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return dir, nil
+}
+
+// OmpAgentDir resolves the shared pi/omp agent directory without consulting
+// process-global home state.
+func OmpAgentDir(getenv func(string) string, home string) (string, error) {
+	dir := strings.TrimSpace(getenv("PI_CODING_AGENT_DIR"))
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
+		if home == "" {
+			return "", errors.New("omp agent directory needs a home directory or PI_CODING_AGENT_DIR")
 		}
 		dir = filepath.Join(home, ".omp", "agent")
 	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() || OmpPiOwned(dir) {
-		return ""
+	return filepath.Abs(filepath.Clean(dir))
+}
+
+// Seed persistent state before linking, so a first login or conversation is
+// not created in the disposable session directory.
+func prepareOmpState(dir string) error {
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o700); err != nil {
+		return fmt.Errorf("create omp sessions dir: %w", err)
 	}
-	return dir
+	file, err := os.OpenFile(filepath.Join(dir, "agent.db"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("create omp state database: %w", err)
+	}
+	return file.Close()
 }
 
 // ompSessionMCP is the user's .mcp.json (if any) with the orq-workspace
-// entry added. A same-named entry of theirs is kept.
+// entry added. A same-named entry of theirs is kept. Invalid JSON values are
+// treated as absent and are never written back to the user's directory.
 func ompSessionMCP(userDir, url string) ([]byte, error) {
-	cfg := map[string]any{}
+	var cfg map[string]any
 	if userDir != "" {
 		path := filepath.Join(userDir, ".mcp.json")
 		raw, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
-		if len(strings.TrimSpace(string(raw))) > 0 {
-			if err := json.Unmarshal(raw, &cfg); err != nil {
-				return nil, fmt.Errorf("%s is not valid JSON: %w", path, err)
-			}
+		if err == nil && json.Unmarshal(raw, &cfg) != nil {
+			cfg = nil
 		}
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
 	}
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if servers == nil {
@@ -169,16 +234,14 @@ func ompSessionMCP(userDir, url string) ([]byte, error) {
 		cfg["mcpServers"] = servers
 	}
 	if _, ok := servers[MCPServerName]; !ok {
-		servers[MCPServerName] = map[string]any{"type": "http", "url": url}
+		servers[MCPServerName] = HTTPMCPEntry(url)
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-// linkOmpAgentDir symlinks every entry of userDir into sessionDir except the
-// ones the session owns: written through a link, those would rewrite the
-// user's files. Logins (agent.db), settings, mcp.json, extensions, skills
-// and sessions stay the user's own, and omp's writes to them land there.
-func linkOmpAgentDir(userDir, sessionDir string, owned map[string]bool) error {
+// linkOmpAgentDir symlinks user state into the session. The caller handles
+// symlink failure by discarding this overlay and rebuilding an isolated one.
+func linkOmpAgentDir(userDir, sessionDir string, owned map[string]bool, symlink func(string, string) error) error {
 	if userDir == "" {
 		return nil
 	}
@@ -188,19 +251,48 @@ func linkOmpAgentDir(userDir, sessionDir string, owned map[string]bool) error {
 	}
 	for _, e := range entries {
 		if name := e.Name(); !owned[name] {
-			if err := os.Symlink(filepath.Join(userDir, name), filepath.Join(sessionDir, name)); err != nil {
-				return fmt.Errorf("link %s into the omp session dir: %w", name, err)
+			if err := symlink(filepath.Join(userDir, name), filepath.Join(sessionDir, name)); err != nil {
+				return fmt.Errorf("link %s into the omp session dir: %w: %w", name, errOmpSymlink, err)
 			}
 		}
 	}
 	return nil
 }
 
-// OmpPiOwned reports a directory that belongs to pi: it holds models.json but
-// no models.yml. PI_CODING_AGENT_DIR is read by both agents, so a machine
-// that points it at pi's directory must not be offered omp, nor have omp's
-// files dropped into it, nor have pi's files overlaid into an omp session.
-func OmpPiOwned(dir string) bool {
+func rebuildIsolatedOmpConfig(dir, models, mcpURL string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "models.yml"), []byte(models), 0o600); err != nil {
+		return err
+	}
+	if mcpURL != "" {
+		data, err := json.Marshal(map[string]any{
+			"mcpServers": map[string]any{MCPServerName: HTTPMCPEntry(mcpURL)},
+		})
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), data, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// OmpPiOwned guards redirected directories holding pi's models.json but no
+// models.yml. The default ~/.omp/agent belongs to omp even before its JSON
+// config has been migrated to YAML.
+func OmpPiOwned(dir, home string) bool {
+	if absolute, err := filepath.Abs(dir); err == nil && absolute == filepath.Join(home, ".omp", "agent") {
+		return false
+	}
 	if _, err := os.Stat(filepath.Join(dir, "models.json")); err != nil {
 		return false
 	}

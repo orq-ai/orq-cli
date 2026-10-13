@@ -20,6 +20,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
+	os.Setenv("USERPROFILE", home)
 	// cwd too: a session links into cwd unless cwd is $HOME, and the package
 	// source directory is not where test links belong.
 	if err := os.Chdir(home); err != nil {
@@ -31,12 +32,14 @@ func TestMain(m *testing.M) {
 }
 
 func sessionSkillsCtx(flags GatewayFlags) *AgentContext {
+	home, _ := os.UserHomeDir()
 	return &AgentContext{
 		Creds:     &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv:    env(nil),
 		Flags:     flags,
 		Fetch:     fetcherOf("openai/gpt-5-mini"),
 		ExecProbe: okProbe,
+		HomeDir:   func() (string, error) { return home, nil },
 	}
 }
 
