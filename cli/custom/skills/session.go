@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -59,13 +60,21 @@ func InstallSession(agent string) (func(), error) {
 
 		var held []string
 		for _, target := range targets {
-			if err := os.MkdirAll(target.Dir, 0o755); err != nil {
-				return err
-			}
+			// No MkdirAll up front: project creates the directory when a link
+			// is actually needed, and an empty project .agents/skills is not
+			// harmless — pi asks the user to trust the project over it.
+			elsewhere := readElsewhere(target, cwd)
 			for _, name := range names {
 				path := filepath.Clean(filepath.Join(target.Dir, name))
 				existing := findLink(m, path)
 				switch {
+				case !exists(path) && anyHasSame(elsewhere, name):
+					// The agent already loads this exact skill from another
+					// directory it reads. A second copy only gets loaded twice
+					// (pi warns about a name collision for every one). A copy
+					// that differs is still linked: the session runs the bundled
+					// version, and the collision warning is the honest report.
+					continue
 				case existing != nil && existing.Session && exists(path) && isOurs(*existing):
 					// Another live session already put this here. Join its
 					// claim instead of reprojecting: the link stays until the
@@ -149,6 +158,119 @@ func InstallSession(agent string) (func(), error) {
 			released = true
 		}
 	}, nil
+}
+
+// readElsewhere is every other directory the agent reads target's skills
+// from: the global copy for a local target, plus, for the shared directory,
+// each ancestor up to the repository root — codex, opencode, pi and kilo walk
+// up from cwd. Claude's own directory is not walked: its ancestors are not
+// read.
+func readElsewhere(target Target, cwd string) []string {
+	if target.Global {
+		return nil
+	}
+	rel, err := filepath.Rel(cwd, target.Dir)
+	if err != nil {
+		return nil
+	}
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, rel))
+	}
+	if target.Agent != "" {
+		return dirs
+	}
+	root, ok := RepoRoot(cwd)
+	if !ok {
+		return dirs
+	}
+	// RepoRoot resolves symlinks, so walk the resolved cwd to meet it.
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return dirs
+	}
+	for dir != root {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+		dirs = append(dirs, filepath.Join(dir, rel))
+	}
+	return dirs
+}
+
+// anyHasSame reports whether one of dirs holds name with exactly the bundled
+// content.
+func anyHasSame(dirs []string, name string) bool {
+	want, err := bundledHash(name)
+	if err != nil {
+		return false
+	}
+	for _, d := range dirs {
+		if hashOf(d, name) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// bundledHash is the version of one bundled skill. Skills carry no version
+// field, so the tree hash is the version.
+func bundledHash(name string) (string, error) {
+	sub, err := fs.Sub(Assets(), name)
+	if err != nil {
+		return "", err
+	}
+	return hashFS(sub)
+}
+
+// hashOf is the tree hash of dir/name, or "" when it is missing, dangling or
+// unreadable. os.DirFS follows a link at the skill root.
+func hashOf(dir, name string) string {
+	sum, err := hashFS(os.DirFS(filepath.Join(dir, name)))
+	if err != nil {
+		return ""
+	}
+	return sum
+}
+
+// DifferingCopies lists the copies of bundled skills, in the other
+// directories agent reads beside its session target, whose content differs
+// from the bundle. A launch still links its own, so these show up in the agent
+// as name collisions; the caller turns them into a hint to update the CLI.
+func DifferingCopies(agent string) ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	targets, err := Targets([]string{agent}, ScopeFor(cwd))
+	if err != nil {
+		return nil, err
+	}
+	names, err := Names()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, target := range targets {
+		dirs := readElsewhere(target, cwd)
+		for _, name := range names {
+			want, err := bundledHash(name)
+			if err != nil {
+				return nil, err
+			}
+			if anyHasSame(dirs, name) {
+				continue
+			}
+			for _, d := range dirs {
+				if got := hashOf(d, name); got != "" && got != want {
+					out = append(out, filepath.Join(d, name))
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // ReleaseSession drops one session's claim and removes only the links no
