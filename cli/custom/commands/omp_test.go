@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"orq/cli/custom/launch"
+
 	yaml "go.yaml.in/yaml/v3"
 )
 
@@ -136,7 +138,7 @@ func TestOmpWriterCreatesAMissingFile(t *testing.T) {
 		t.Fatalf("written file is not YAML: %v\n%s", err, data)
 	}
 	orq := parsed.Providers["orq"]
-	if orq.BaseURL != ompRouter || orq.APIKey != "$ORQ_API_KEY" || len(orq.Models) != n {
+	if orq.BaseURL != ompRouter || orq.APIKey != launch.OmpAPIKeyRef || len(orq.Models) != n {
 		t.Errorf("provider block = %+v\n%s", orq, data)
 	}
 	if strings.Contains(data, "{") {

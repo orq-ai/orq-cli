@@ -115,7 +115,7 @@ func TestOmpResolvePlan(t *testing.T) {
 		t.Fatalf("models.yml is not valid YAML: %v\n%s", err, models)
 	}
 	prov := parsed.Providers[OmpProvider]
-	if prov.APIKey != "$ORQ_API_KEY" {
+	if prov.APIKey != OmpAPIKeyRef {
 		t.Fatalf("apiKey = %q", prov.APIKey)
 	}
 	found := false

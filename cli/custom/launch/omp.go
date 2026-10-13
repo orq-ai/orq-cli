@@ -21,7 +21,7 @@ func ompAgent() AgentDef {
 	return AgentDef{
 		Name:          "omp",
 		Binary:        "omp",
-		Label:         "omp",
+		Label:         "oh-my-pi (omp)",
 		InstallHint:   "npm install -g @oh-my-pi/pi-coding-agent (https://omp.sh)",
 		FetchesModels: true,
 		AllowModels:   true,
@@ -37,8 +37,8 @@ func ompAgent() AgentDef {
 // user's own agent dir plus orq: every entry is symlinked in except
 // models.yml and .mcp.json, which the session owns as copies of the user's
 // with orq's provider and MCP entry merged in. The user's files are only
-// read. apiKey uses omp's $ENV_VAR interpolation — the key itself stays out
-// of the file.
+// read; the provider's apiKey names ORQ_API_KEY (OmpAPIKeyRef), so the key
+// itself stays out of the file.
 func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
 		AuthToken:         ctx.Creds.APIKey,
@@ -61,12 +61,14 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	userModels := ""
 	userDir := ompUserAgentDir(ctx)
-	models := []byte(config)
 	if userDir != "" {
-		if models, err = OmpMergeProvider(filepath.Join(userDir, "models.yml"), config); err != nil {
-			return nil, err
-		}
+		userModels = filepath.Join(userDir, "models.yml")
+	}
+	models, err := OmpMergeProvider(userModels, config)
+	if err != nil {
+		return nil, err
 	}
 	dir, cleanup, err := writeOmpConfigDir(string(models))
 	if err != nil {

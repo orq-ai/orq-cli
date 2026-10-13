@@ -194,7 +194,7 @@ func agentRegistry() []agentSpec {
 		},
 		{
 			ID:     "omp",
-			Label:  "omp",
+			Label:  "oh-my-pi (omp)",
 			detect: ompDetect,
 			// omp reads models.yml and mcp.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.omp/agent) only,
 			// so both are global-only.

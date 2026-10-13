@@ -46,9 +46,9 @@ func ompMCPEntry(url string) map[string]any {
 // writeOmpProviderYAML registers the gateway in omp's models.yml, the durable
 // twin of the throwaway one `orq launch omp` writes. Spliced into the user's
 // document as yaml.Node so their comments, key order and other providers
-// survive. apiKey and defaultModel are unused for the reasons
-// writePiProviderJSON documents: the block carries "$ORQ_API_KEY" and omp
-// keeps the model it opens with in its own settings.
+// survive. apiKey and defaultModel are unused: the block names ORQ_API_KEY
+// (launch.OmpAPIKeyRef) rather than holding the key, and omp keeps the model
+// it opens with in its own settings.
 func writeOmpProviderYAML(path, routerURL, _ string, models []auth.RouterModel, _ string) (int, error) {
 	if len(models) == 0 {
 		return 0, errNoModelsToOffer
