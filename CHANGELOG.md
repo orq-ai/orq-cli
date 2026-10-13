@@ -11,8 +11,8 @@ What you may depend on, and what you may not:
 - **`-o json` output on stdout is the machine contract.** For commands backed
   directly by an orq API endpoint, field names and structure follow that
   endpoint's response. Documented transformation commands may instead expose
-  their own documented derived schema; for example, `orq traces thread`
-  returns a canonical normalized thread. Scripts should parse `-o json` and
+  their own documented derived schema; for example, `orq traces conversation`
+  returns a canonical normalized conversation. Scripts should parse `-o json` and
   nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
@@ -135,6 +135,26 @@ controls on surface changes, whichever side they originate from.
   selects the default profile for the session, and suggests
   `orq connect omp` for persistent wiring.
   Override the gateway URL with `ORQ_OMP_BASE_URL`.
+
+- **Fixed: `orq setup` no longer warns "could not confirm the key's workspace"
+  for a project-scoped key,** whether it was just minted or reused from an
+  earlier run. Such a key can't read workspace settings, and setup already
+  recorded its workspace when it minted the key. Keys passed with `--api-key`,
+  or saved for a different workspace, still warn.
+
+## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
+
+- **Changed: the command is `orq traces conversation` again,** with the short
+  alias `orq traces conv`, so the CLI matches the orq docs. Every flag
+  (including `-x`/`--exclude` and `--tool-max-chars`) and the `-o json` schema
+  are unchanged. The `xml` render frames the turns in `<conversation>` rather
+  than `<thread>`. That render is the human reading view, not the machine
+  contract above; anything matching the tag should read `-o json` instead.
+- **Deprecated:** `orq traces thread`. It still works for one release, hidden
+  from help, with the same flags and the same stdout as `orq traces
+  conversation`, and prints a deprecation warning on stderr naming the new
+  spelling; `-o json` output is untouched. It will be removed in a later
+  release: scripts should switch to `orq traces conversation` (or `conv`).
 
 ## [11.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.3.0) — 2026-10-02
 

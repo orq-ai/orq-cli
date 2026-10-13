@@ -32,7 +32,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create embeddings",
-			Long:    bartolocli.Markdown("Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `dimensions` (integer)\n- `encoding_format` (string)\n- `fallbacks` (array | null)\n- `input` (anyOf, required)\n- `load_balancer` (object)\n- `model` (string, required)\n- `name` (string)\n- ... and 4 more fields\n\nRequired fields: `input`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `dimensions` (integer)\n- `encoding_format` (string)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `input` (anyOf, required)\n- `load_balancer` (object)\n- `model` (string, required)\n- ... and 5 more fields\n\nRequired fields: `input`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,6 +64,12 @@ func registerembeddingsCommands(root *cobra.Command) {
 								"float",
 								"base64",
 							},
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 						},
 						{
 							Name:        "fallbacks",
@@ -164,6 +170,12 @@ func registerembeddingsCommands(root *cobra.Command) {
 						"float",
 						"base64",
 					},
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 				},
 				{
 					Name:        "fallbacks",

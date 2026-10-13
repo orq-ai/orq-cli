@@ -444,7 +444,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-span trace-id span-id",
 			Short:   "Get trace span",
-			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id`\n- `span-id`"),
+			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id` — Optional: queue items predating trace_id capture only have the span.\n- `span-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -814,7 +814,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search traces",
-			Long:    bartolocli.Markdown("Search trace summaries using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `limit` (integer)\n- `page_token` (string)\n- `query` (string)\n- `sort` (array)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Search trace summaries using the structured trace filter contract. See the [filter grammar](/ai-studio/observability/traces#filter-grammar) for the field and operator reference.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `limit` (integer)\n- `page_token` (string)\n- `query` (string)\n- `sort` (array)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {

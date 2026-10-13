@@ -14,7 +14,7 @@ func registeralertsCommands(root *cobra.Command) {
 	alertsCmd := &cobra.Command{
 		Use:   "alerts",
 		Short: "Alerts",
-		Long:  bartolocli.Markdown("Alerts evaluate a Reporting API metric on a fixed interval and fire notifications through notifiers when the value breaches a threshold. Each breach opens a trigger that tracks the incident until the value recovers."),
+		Long:  bartolocli.Markdown("Alerts"),
 	}
 	root.AddCommand(alertsCmd)
 

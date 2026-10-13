@@ -110,7 +110,7 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 	root.PersistentFlags().StringP("output-format", "o", "table", "")
 	bartolocli.Root = root
 	root.AddCommand(NewTracesThreadCommand(api))
-	root.SetArgs(append([]string{"thread"}, args...))
+	root.SetArgs(append([]string{"conversation"}, args...))
 	err := root.Execute()
 	return out.String(), err
 }
@@ -695,7 +695,7 @@ func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+		if !strings.Contains(out, "<conversation ") || !strings.Contains(out, "first") {
 			t.Fatalf("output = %q", out)
 		}
 	})
@@ -760,7 +760,7 @@ func assertThreadRendersXML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+	if !strings.Contains(out, "<conversation ") || !strings.Contains(out, "first") {
 		t.Fatalf("output = %q, want the render an unset environment and config get", out)
 	}
 }
@@ -803,7 +803,7 @@ func TestTracesThreadOutputFormat(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "## USER [0]") || !strings.Contains(out, "first") || strings.Contains(out, "<thread") {
+		if !strings.Contains(out, "## USER [0]") || !strings.Contains(out, "first") || strings.Contains(out, "<conversation") {
 			t.Fatalf("markdown = %q", out)
 		}
 	})
@@ -813,7 +813,7 @@ func TestTracesThreadOutputFormat(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "messages:") || strings.Contains(out, "<thread") {
+		if !strings.Contains(out, "messages:") || strings.Contains(out, "<conversation") {
 			t.Fatalf("yaml = %q", out)
 		}
 	})

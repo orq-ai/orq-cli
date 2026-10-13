@@ -1324,7 +1324,7 @@ func registermodelsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded, "refId", "model_type", "metadata.context_window", "metadata.max_output_tokens", "metadata.million_tokens_input_cost", "metadata.million_tokens_output_cost", "has_functions"); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 

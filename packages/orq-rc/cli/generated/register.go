@@ -76,6 +76,8 @@ func Register(root *cobra.Command) {
 	registerlogsCommands(root)
 	registermodelFusionsCommands(root)
 	registerclassifyCommands(root)
-	registersubmitFeedbackCommands(root)
+	registerdecisionsCommands(root)
 	registertelemetryCommands(root)
+	registerviewsCommands(root)
+	registerwebsearchCommands(root)
 }
