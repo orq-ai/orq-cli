@@ -1256,8 +1256,13 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	// hostname would eat.
 	keyName := sanitizeKeyName("orq-cli " + capGateway + " " + hostname)
 
+	// Without a user id the API mints against a service account, which only admins may create.
+	userID := ""
+	if state.session != nil && state.session.User != nil {
+		userID = state.session.User.ID
+	}
 	expiresAt := time.Now().Add(gatewayKeyLifetime)
-	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithProject(state.projectID))
+	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID), auth.WithProject(state.projectID))
 	if err != nil {
 		return "", false, err
 	}
