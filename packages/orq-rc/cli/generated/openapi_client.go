@@ -3124,6 +3124,87 @@ func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]in
 	return resp, decoded, nil
 }
 
+// OpenapiListDeploymentVersions List deployment versions
+func OpenapiListDeploymentVersions(paramKeyOrId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "deployments list-versions key-or-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/deployments/{keyOrID}/versions"
+	if paramKeyOrId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter keyOrID cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{keyOrID}", neturl.PathEscape(paramKeyOrId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--starting-after", paramStartingAfter, "ulid", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStartingAfter = normalized
+		}
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramEndingBefore := params.GetString("ending-before")
+	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--ending-before", paramEndingBefore, "ulid", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramEndingBefore = normalized
+		}
+		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramVariantId := params.GetString("variant-id")
+	if bartolocli.FlagPassed(params, "variant-id") || paramVariantId != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--variant-id", paramVariantId, "uuid", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramVariantId = normalized
+		}
+		req = req.AddQuery("variant_id", fmt.Sprintf("%v", paramVariantId))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiDeploymentStream Stream
 func OpenapiDeploymentStream(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "deployments stream"
