@@ -320,12 +320,23 @@ func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
 			bootstrapStatus = "warn"
 			bootstrapMsg = "Bootstrap token is expired and will need refresh"
 		}
+		storeLoc, storeDegraded := auth.SecretsLocation(os.Getenv)
+		storeStatus := "pass"
+		if storeDegraded {
+			storeStatus = "warn"
+		}
 		return []doctorCheck{
 			{
 				ID:      "session_file",
 				Status:  "pass",
 				Message: "Session file loaded",
 				Details: map[string]any{"session_file": inspect.Path},
+			},
+			{
+				ID:      "credential_store",
+				Status:  storeStatus,
+				Message: "Session secrets stored in: " + storeLoc,
+				Details: map[string]any{"credential_store": storeLoc},
 			},
 			{
 				ID:      "bootstrap_token",

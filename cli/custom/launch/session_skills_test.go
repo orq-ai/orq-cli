@@ -20,6 +20,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
+	// Keep session reads off the real OS keychain: ResolveCredentials reads the
+	// session through auth, which would otherwise shell out to a secure store on
+	// a dev box. Store behaviour is covered in the auth package.
+	os.Setenv("ORQ_CREDENTIAL_STORE", "file")
 	// cwd too: a session links into cwd unless cwd is $HOME, and the package
 	// source directory is not where test links belong.
 	if err := os.Chdir(home); err != nil {
