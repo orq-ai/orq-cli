@@ -736,7 +736,7 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			if !opts.finalScreen {
 				rep.ok("%-8s %-9s %s", id, capMCP, tilde(path))
 			}
-			if line := mcpLoginLine(id); line != "" {
+			if line := spec.mcpLogin; line != "" {
 				rep.info("%-8s %-9s %s", id, capMCP, line)
 			}
 			if id == "codex" && !global {
@@ -925,29 +925,6 @@ func mcpScopeAware(spec agentSpec) bool {
 	local, lerr := spec.mcpConfig(false)
 	global, gerr := spec.mcpConfig(true)
 	return lerr == nil && gerr == nil && local != global
-}
-
-// mcpLoginLine names the one manual step an entry leaves behind. The entry
-// carries no credential, so the agent logs in to the server itself; this says
-// how, per agent, without shelling out to a program that may not be running.
-//
-// One table for the whole binary: doctor names the same command when it finds
-// an entry, and two copies of this would drift the moment an agent renames its
-// subcommand.
-func mcpLoginLine(id string) string {
-	switch id {
-	case "claude":
-		return "run /mcp in Claude Code, or 'claude mcp login " + launch.MCPServerName + "'"
-	case "codex":
-		return "run 'codex mcp login " + launch.MCPServerName + "'"
-	case "opencode":
-		return "run 'opencode mcp auth " + launch.MCPServerName + "'"
-	case "kilo":
-		return "run 'kilo mcp auth " + launch.MCPServerName + "'"
-	case "kimi":
-		return "run 'kimi mcp auth " + launch.MCPServerName + "'"
-	}
-	return ""
 }
 
 // skillsPayload is the machine-readable view of an install: the directories

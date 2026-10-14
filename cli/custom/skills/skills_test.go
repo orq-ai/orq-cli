@@ -3,6 +3,7 @@ package skills
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -284,7 +285,7 @@ func TestTargets(t *testing.T) {
 	// Every non-claude agent maps to the shared directory and nothing else:
 	// codex and kimi read ~/.agents/skills too, and codex does not dedupe, so
 	// writing ~/.codex/skills as well listed every skill twice.
-	for _, agent := range []string{"codex", "kimi", "opencode", "pi", "kilo"} {
+	for _, agent := range []string{"codex", "kimi", "opencode", "pi", "omp", "kilo"} {
 		if got := dirs(ScopeGlobal, agent); got != "/.agents/skills" {
 			t.Errorf("%s global = %q, want only the shared directory", agent, got)
 		}
@@ -292,7 +293,7 @@ func TestTargets(t *testing.T) {
 			t.Errorf("%s local = %q, want only the shared directory", agent, got)
 		}
 	}
-	if got := dirs(ScopeGlobal, "claude", "codex", "kimi", "opencode", "pi", "kilo"); got != "/.agents/skills,/.claude/skills" {
+	if got := dirs(ScopeGlobal, "claude", "codex", "kimi", "opencode", "pi", "omp", "kilo"); got != "/.agents/skills,/.claude/skills" {
 		t.Errorf("everyone global = %q", got)
 	}
 	if got := dirs(ScopeBoth, "claude", "pi"); got != "/.agents/skills,/.agents/skills,/.claude/skills,/.claude/skills" {
@@ -604,6 +605,87 @@ func TestInstallSessionLinksLocallyOutsideHome(t *testing.T) {
 	release()
 	if exists(local) {
 		t.Error("session link survived release")
+	}
+}
+
+// A skill the agent already reads from somewhere else, with the same content,
+// is not linked again: pi reports a name collision for every duplicate, and an
+// empty project .agents/skills makes it ask to trust the project.
+func TestInstallSessionSkipsSkillsAlreadyVisible(t *testing.T) {
+	names, _ := Names()
+	plant := func(t *testing.T, dir string) {
+		t.Helper()
+		for _, n := range names {
+			sub, err := fs.Sub(Assets(), n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.CopyFS(filepath.Join(dir, n), sub); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cases := []struct {
+		agent, rel string
+		visible    func(home, repo string) string
+	}{
+		{"pi", filepath.Join(".agents", "skills"), func(home, _ string) string { return filepath.Join(home, ".agents", "skills") }},
+		{"pi", filepath.Join(".agents", "skills"), func(_, repo string) string { return filepath.Join(repo, ".agents", "skills") }},
+		{"claude", filepath.Join(".claude", "skills"), func(home, _ string) string { return filepath.Join(home, ".claude", "skills") }},
+	}
+	for _, c := range cases {
+		home := t.TempDir()
+		setHome(t, home)
+		repo := t.TempDir()
+		if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		sub := filepath.Join(repo, "sub")
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		plant(t, c.visible(home, repo))
+		t.Chdir(sub)
+		release, err := InstallSession(c.agent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if exists(filepath.Join(sub, c.rel)) {
+			t.Errorf("%s: session created %s although every skill was already visible", c.agent, c.rel)
+		}
+		release()
+	}
+}
+
+// A copy elsewhere that differs from the bundle is an older or newer version:
+// the session still links its own.
+func TestInstallSessionLinksOverADifferentVersion(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	names, _ := Names()
+	stale := filepath.Join(home, ".agents", "skills", names[0])
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	t.Chdir(project)
+	release, err := InstallSession("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if !exists(filepath.Join(project, ".agents", "skills", names[0])) {
+		t.Error("a different version in $HOME suppressed the session link")
+	}
+	got, err := DifferingCopies("pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != stale {
+		t.Errorf("DifferingCopies = %v, want [%s]", got, stale)
 	}
 }
 

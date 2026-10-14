@@ -23,6 +23,12 @@ const MCPServerName = "orq-workspace"
 // so orq tools are available without manual per-harness setup.
 const DefaultMCPURL = DefaultGatewayAPIBaseURL + "/v2/mcp"
 
+// HTTPMCPEntry is the type/url-only server value shared by session launch
+// configuration and persistent agent configuration.
+func HTTPMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "http", "url": url}
+}
+
 // skillsPluginURL returns a plugin zip for claude to fetch, and normally
 // returns nothing: the default skill set ships inside this binary and is
 // linked into the agent's own skills directory for the session, so no network
@@ -97,6 +103,46 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 		return
 	}
 	plan.AddCleanup(release)
+	if hint := differingSkillsHint(agent); hint != "" {
+		plan.Warnings = append(plan.Warnings, hint)
+	}
+}
+
+// SkillsUpdateHook says whether a newer CLI is out to suggest. The commands
+// package injects it, as with PersistedMCPHook: the update check lives there.
+// known=false means "cannot tell"; hint="" with known=true means this binary
+// is the latest, so there is no upgrade to suggest.
+var SkillsUpdateHook func() (hint string, known bool)
+
+// differingSkillsHint explains the name collisions an agent reports when a
+// skill it also reads elsewhere is a different version from the bundled one.
+// The bundle is pinned to the CLI release, so updating the CLI is the fix
+// when the other copy is the newer one — unless this is already the latest.
+func differingSkillsHint(agent string) string {
+	paths, err := skills.DifferingCopies(agent)
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	dirs := map[string]bool{}
+	var where []string
+	for _, p := range paths {
+		if d := filepath.Dir(p); !dirs[d] {
+			dirs[d] = true
+			where = append(where, d)
+		}
+	}
+	msg := fmt.Sprintf("%d orq skills in %s differ from the version this CLI bundles; this session uses the bundled ones",
+		len(paths), strings.Join(where, ", "))
+	suggestion := "if yours are newer, run 'orq update' to get a CLI that bundles them"
+	if SkillsUpdateHook != nil {
+		if hint, known := SkillsUpdateHook(); known {
+			suggestion = hint
+		}
+	}
+	if suggestion == "" {
+		return msg
+	}
+	return msg + "; " + suggestion
 }
 
 // MCPURLFor is the single derivation of the orq MCP endpoint: the explicit
@@ -141,9 +187,11 @@ var PersistedMCPHook func(agent string) bool
 // it. Unset hook means "cannot tell", which has to answer false — writing the
 // session entry is the recoverable mistake, suppressing it is not.
 //
-// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
-// persisted file is on its search path and the session entry must always be
-// written. pi has no MCP support at all.
+// kimi never asks: launch points its config home at a fresh temp dir, so the
+// persisted file is never on the search path. omp never needs to: its
+// session .mcp.json sits behind the user's linked-in mcp.json, and omp keeps
+// the first same-named entry, so a persisted one wins anyway. pi has no MCP
+// support at all.
 func persistedMCPConfigured(agent string) bool {
 	if PersistedMCPHook == nil {
 		return false
@@ -151,17 +199,13 @@ func persistedMCPConfigured(agent string) bool {
 	return PersistedMCPHook(agent)
 }
 
-// httpMCPConfigJSON is the mcpServers payload for the agents that take the orq
-// MCP server as JSON: claude through --mcp-config, copilot through
-// --additional-mcp-config. Both authenticate the remote through their own OAuth
-// flow, so no credential appears in it.
+// httpMCPConfigJSON is the mcpServers payload used by claude and copilot.
+// All authenticate the remote through their own OAuth flow, so no credential
+// appears in it.
 func httpMCPConfigJSON(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
+			MCPServerName: HTTPMCPEntry(url),
 		},
 	})
 	return string(encoded)

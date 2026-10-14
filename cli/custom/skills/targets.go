@@ -88,7 +88,7 @@ func SameDir(a, b string) bool {
 // sharedReaders read the agents-spec directory, so they get no directory of
 // their own. Codex and kimi read it too; codex does not dedupe against its
 // own directory, so writing both listed every skill twice in its catalog.
-var sharedReaders = map[string]bool{"opencode": true, "kilo": true, "pi": true, "codex": true, "kimi": true}
+var sharedReaders = map[string]bool{"opencode": true, "kilo": true, "pi": true, "omp": true, "codex": true, "kimi": true}
 
 // SharedReader reports whether agent reads the shared agents-spec directory,
 // so a caller outside the package (connect --status's missing-link warning,

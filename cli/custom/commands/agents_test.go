@@ -1098,6 +1098,9 @@ func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
 		{"pi", `{"providers":{"orq":{"models":[{"id":"openai/gpt-5"}]},"ollama":{"models":[]}}}`, func(p string) (int, error) {
 			return writePiProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
 		}},
+		{"omp", "providers:\n  orq:\n    models:\n      - id: openai/gpt-5\n  ollama:\n    models: []\n", func(p string) (int, error) {
+			return writeOmpProviderYAML(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config")
@@ -1652,6 +1655,9 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 				switch spec.ID {
 				case "codex":
 					ext = ".toml" // whole file ours: fresh case only
+				case "omp":
+					ext = ".yml"
+					user = []byte(ompUserModelsYAML)
 				case "kimi":
 					ext = ".toml"
 					user = []byte("[providers.mine]\napi_key = \"k\"\n\n[models.\"mine/model\"]\nprovider = \"mine\"\n")
@@ -1683,9 +1689,9 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 					t.Fatalf("remove: removed=%v err=%v", removed, err)
 				}
 				after := mustRead(t, path)
-				if ext == ".toml" {
+				if ext == ".toml" || ext == ".yml" {
 					if string(after) != string(user) {
-						t.Errorf("kimi config not byte-identical:\nbefore: %q\nafter:  %q", user, after)
+						t.Errorf("%s config not byte-identical:\nbefore: %q\nafter:  %q", spec.ID, user, after)
 					}
 				} else {
 					jsonEqual(t, user, after)

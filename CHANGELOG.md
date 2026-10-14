@@ -121,6 +121,45 @@ controls on surface changes, whichever side they originate from.
   returns (for example `owner: owner.type must be service_account`) instead of
   only the generic summary.
 
+## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
+
+- **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
+  Launch routes a session's model calls through the AI Router, wires the orq
+  MCP server, and links orq's skills for that session only. Connect persists
+  the same three: the `orq` provider in `~/.omp/agent/models.yml`, the orq MCP
+  server in `~/.omp/agent/mcp.json`, and the skills links. A launched omp
+  session normally keeps your providers, MCP servers, logins, settings,
+  skills, extensions and sessions, without rewriting your existing config.
+  Launch creates persistent login and session storage when missing, so the
+  MCP login made once with `/mcp` and conversation history survive cleanup.
+  If symlinks are unavailable, launch warns and uses an isolated orq-only
+  session instead of aborting; user config and state are not carried over.
+  Malformed user `.mcp.json` is ignored for the session and left untouched.
+  Legacy `models.json` in the default omp directory is accepted and its other
+  providers retained. Connect writes `models.yml` with private 0600
+  permissions. When `OMP_PROFILE` or `PI_PROFILE` is set, launch warns,
+  selects the default profile for the session, and suggests
+  `orq connect omp` for persistent wiring.
+  Override the gateway URL with `ORQ_OMP_BASE_URL`.
+
+- **Fixed: `orq setup` no longer warns "could not confirm the key's workspace"
+  for a project-scoped key,** whether it was just minted or reused from an
+  earlier run. Such a key can't read workspace settings, and setup already
+  recorded its workspace when it minted the key. Keys passed with `--api-key`,
+  or saved for a different workspace, still warn.
+- **Fixed: `orq launch` no longer links a skill the agent already loads, with
+  identical content, from another directory.** Launched from a project, it used to link every orq skill
+  into the project's `.agents/skills` (or `.claude/skills`) even when the same
+  skill was in `~/.agents/skills` or a parent directory up to the repository
+  root. Pi then reported a name collision for each one at startup. Launch now
+  skips a skill whose copy elsewhere matches the bundled one file for file, and
+  does not create the project skills directory when nothing is left to link. A
+  copy that differs is still linked, so the session runs the bundled version,
+  and launch prints a warning naming how many differ and where. The warning
+  suggests `orq update` only when a newer CLI release is out (checked against
+  the update cache, fetched if stale), and drops the suggestion when this CLI
+  is already the latest.
+
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 
 - **Changed: the command is `orq traces conversation` again,** with the short

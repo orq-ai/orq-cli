@@ -271,7 +271,7 @@ func TestFetchEnabledModelsHTTPError(t *testing.T) {
 // customer's network, authenticated with a key their own gateway issued.
 func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
 	const onprem = "https://orq.acme.internal"
-	for _, agent := range []string{"kimi", "opencode", "kilo", "codex", "pi", "claude"} {
+	for _, agent := range []string{"kimi", "opencode", "kilo", "codex", "pi", "omp", "claude"} {
 		t.Run(agent, func(t *testing.T) {
 			def := FindAgent(agent)
 			plan, err := def.Resolve(&AgentContext{
