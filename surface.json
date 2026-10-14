@@ -4363,6 +4363,10 @@
       "use": "kimi"
     },
     {
+      "path": "orq launch omp",
+      "use": "omp"
+    },
+    {
       "path": "orq launch opencode",
       "use": "opencode"
     },

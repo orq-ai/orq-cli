@@ -117,6 +117,25 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
+  Launch routes a session's model calls through the AI Router, wires the orq
+  MCP server, and links orq's skills for that session only. Connect persists
+  the same three: the `orq` provider in `~/.omp/agent/models.yml`, the orq MCP
+  server in `~/.omp/agent/mcp.json`, and the skills links. A launched omp
+  session normally keeps your providers, MCP servers, logins, settings,
+  skills, extensions and sessions, without rewriting your existing config.
+  Launch creates persistent login and session storage when missing, so the
+  MCP login made once with `/mcp` and conversation history survive cleanup.
+  If symlinks are unavailable, launch warns and uses an isolated orq-only
+  session instead of aborting; user config and state are not carried over.
+  Malformed user `.mcp.json` is ignored for the session and left untouched.
+  Legacy `models.json` in the default omp directory is accepted and its other
+  providers retained. Connect writes `models.yml` with private 0600
+  permissions. When `OMP_PROFILE` or `PI_PROFILE` is set, launch warns,
+  selects the default profile for the session, and suggests
+  `orq connect omp` for persistent wiring.
+  Override the gateway URL with `ORQ_OMP_BASE_URL`.
+
 - **Fixed: `orq setup` no longer warns "could not confirm the key's workspace"
   for a project-scoped key,** whether it was just minted or reused from an
   earlier run. Such a key can't read workspace settings, and setup already

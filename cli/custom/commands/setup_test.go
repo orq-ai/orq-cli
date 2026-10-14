@@ -85,7 +85,7 @@ func TestProviderConfigsResolveToOneAbsolutePath(t *testing.T) {
 }
 
 func TestAgentRegistryIsComplete(t *testing.T) {
-	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi"}
+	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi", "omp"}
 	got := agentIDs()
 	if len(got) != len(want) {
 		t.Fatalf("registry has %d agents, want %d", len(got), len(want))

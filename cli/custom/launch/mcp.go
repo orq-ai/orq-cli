@@ -23,6 +23,12 @@ const MCPServerName = "orq-workspace"
 // so orq tools are available without manual per-harness setup.
 const DefaultMCPURL = DefaultGatewayAPIBaseURL + "/v2/mcp"
 
+// HTTPMCPEntry is the type/url-only server value shared by session launch
+// configuration and persistent agent configuration.
+func HTTPMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "http", "url": url}
+}
+
 // skillsPluginURL returns a plugin zip for claude to fetch, and normally
 // returns nothing: the default skill set ships inside this binary and is
 // linked into the agent's own skills directory for the session, so no network
@@ -181,9 +187,11 @@ var PersistedMCPHook func(agent string) bool
 // it. Unset hook means "cannot tell", which has to answer false — writing the
 // session entry is the recoverable mistake, suppressing it is not.
 //
-// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
-// persisted file is on its search path and the session entry must always be
-// written. pi has no MCP support at all.
+// kimi never asks: launch points its config home at a fresh temp dir, so the
+// persisted file is never on the search path. omp never needs to: its
+// session .mcp.json sits behind the user's linked-in mcp.json, and omp keeps
+// the first same-named entry, so a persisted one wins anyway. pi has no MCP
+// support at all.
 func persistedMCPConfigured(agent string) bool {
 	if PersistedMCPHook == nil {
 		return false
@@ -191,17 +199,13 @@ func persistedMCPConfigured(agent string) bool {
 	return PersistedMCPHook(agent)
 }
 
-// httpMCPConfigJSON is the mcpServers payload for the agents that take the orq
-// MCP server as JSON: claude through --mcp-config, copilot through
-// --additional-mcp-config. Both authenticate the remote through their own OAuth
-// flow, so no credential appears in it.
+// httpMCPConfigJSON is the mcpServers payload used by claude and copilot.
+// All authenticate the remote through their own OAuth flow, so no credential
+// appears in it.
 func httpMCPConfigJSON(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
+			MCPServerName: HTTPMCPEntry(url),
 		},
 	})
 	return string(encoded)
