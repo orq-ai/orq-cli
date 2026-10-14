@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
+
 - **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
   Launch routes a session's model calls through the AI Router, wires the orq
   MCP server, and links orq's skills for that session only. Connect persists
