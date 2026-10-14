@@ -44,6 +44,7 @@ func Register(root *cobra.Command) {
 	registermemoryStoresCommands(root)
 	registermodelCatalogCommands(root)
 	registermodelsCommands(root)
+	registermonitorsCommands(root)
 	registernotifiersCommands(root)
 	registerpiiCommands(root)
 	registerpoliciesCommands(root)
@@ -78,6 +79,7 @@ func Register(root *cobra.Command) {
 	registerclassifyCommands(root)
 	registerdecisionsCommands(root)
 	registertelemetryCommands(root)
+	registerusersCommands(root)
 	registerviewsCommands(root)
 	registerwebsearchCommands(root)
 }
