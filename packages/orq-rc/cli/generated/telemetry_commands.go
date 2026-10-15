@@ -54,6 +54,8 @@ func registertelemetryCommands(root *cobra.Command) {
 		_ = cmd.RegisterFlagCompletionFunc("source", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"TELEMETRY_SOURCE_UNSPECIFIED", "TELEMETRY_SOURCE_TRACES", "TELEMETRY_SOURCE_METRICS", "TELEMETRY_SOURCE_LOGS"}, cobra.ShellCompDirectiveNoFileComp
 		})
+		cmd.Flags().String("project-id", "", "Restricts discovered runtime metrics to records attributed to this exact project. Projectless workspace metrics are excluded.")
+		cmd.Flags().Bool("workspace-wide", false, "Discovers runtime metrics across the complete workspace, including project-attributed and projectless records. Workspace-admin only.")
 
 		bartolocli.SetCustomFlags(cmd)
 

@@ -30,13 +30,13 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an alert",
-			Long:    bartolocli.Markdown("Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string, required)\n- `query` (allOf, required)\n- ... and 1 more fields\n\nRequired fields: `condition`, `display_name`, `project_id`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a project- or workspace-scoped threshold alert. The alert's query is validated against the selected telemetry source and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string)\n- `query` (allOf, required)\n- ... and 2 more fields\n\nRequired fields: `condition`, `display_name`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_UNSPECIFIED\"\n  },\n  \"scope\": \"ALERT_SCOPE_UNSPECIFIED\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -81,13 +81,24 @@ func registeralertsCommands(root *cobra.Command) {
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "Project that owns the alert. Required.",
+							Description: "Project that owns a project alert. Empty for a workspace alert.",
 						},
 						{
 							Name:        "query",
 							FlagName:    "query",
 							Type:        "json",
 							Description: "Metric query evaluated on each tick.",
+						},
+						{
+							Name:        "scope",
+							FlagName:    "scope",
+							Type:        "enum-string",
+							Description: "Ownership and telemetry evaluation boundary. Unspecified remains a\n project alert for compatibility with existing clients.",
+							Enum: []string{
+								"ALERT_SCOPE_UNSPECIFIED",
+								"ALERT_SCOPE_PROJECT",
+								"ALERT_SCOPE_WORKSPACE",
+							},
 						},
 						{
 							Name:        "signal",
@@ -159,13 +170,24 @@ func registeralertsCommands(root *cobra.Command) {
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "Project that owns the alert. Required.",
+					Description: "Project that owns a project alert. Empty for a workspace alert.",
 				},
 				{
 					Name:        "query",
 					FlagName:    "query",
 					Type:        "json",
 					Description: "Metric query evaluated on each tick.",
+				},
+				{
+					Name:        "scope",
+					FlagName:    "scope",
+					Type:        "enum-string",
+					Description: "Ownership and telemetry evaluation boundary. Unspecified remains a\n project alert for compatibility with existing clients.",
+					Enum: []string{
+						"ALERT_SCOPE_UNSPECIFIED",
+						"ALERT_SCOPE_PROJECT",
+						"ALERT_SCOPE_WORKSPACE",
+					},
 				},
 				{
 					Name:        "signal",
@@ -304,6 +326,10 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `alert_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `alert_id` of the first item from the previous page.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project.")
+		cmd.Flags().String("scope", "", "Restrict results by ownership boundary. Unspecified returns all alerts visible to the caller; non-admin callers never see workspace alerts. (one of: ALERT_SCOPE_UNSPECIFIED, ALERT_SCOPE_PROJECT, ALERT_SCOPE_WORKSPACE)")
+		_ = cmd.RegisterFlagCompletionFunc("scope", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"ALERT_SCOPE_UNSPECIFIED", "ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -413,13 +439,13 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update alert-id",
 			Short:   "Update an alert",
-			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `alert-id` — Alert ID to update."),
+			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. Alert scope, `project_id`, and telemetry source are immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `alert-id` — Alert ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\"\n  },\n  \"signal\": \"signal\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_UNSPECIFIED\"\n  },\n  \"signal\": \"signal\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -464,7 +490,7 @@ func registeralertsCommands(root *cobra.Command) {
 							Name:        "query",
 							FlagName:    "query",
 							Type:        "json",
-							Description: "Replacement query. Omit to keep the current query.",
+							Description: "Replacement query. Metric, operation, and filters may change within the\n current telemetry source. Source changes require creating a new alert.",
 						},
 						{
 							Name:        "signal",
@@ -536,7 +562,7 @@ func registeralertsCommands(root *cobra.Command) {
 					Name:        "query",
 					FlagName:    "query",
 					Type:        "json",
-					Description: "Replacement query. Omit to keep the current query.",
+					Description: "Replacement query. Metric, operation, and filters may change within the\n current telemetry source. Source changes require creating a new alert.",
 				},
 				{
 					Name:        "signal",

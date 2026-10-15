@@ -1134,6 +1134,17 @@ func OpenapiAlertList(params *viper.Viper) (*gentleman.Response, map[string]inte
 	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
 		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
+	paramScope := params.GetString("scope")
+	if bartolocli.FlagPassed(params, "scope") || paramScope != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--scope", paramScope, "", []string{"ALERT_SCOPE_UNSPECIFIED", "ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramScope = normalized
+		}
+		req = req.AddQuery("scope", fmt.Sprintf("%v", paramScope))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -16044,6 +16055,14 @@ func OpenapiTelemetryListCapabilities(params *viper.Viper) (*gentleman.Response,
 			paramSource = normalized
 		}
 		req = req.AddQuery("source", fmt.Sprintf("%v", paramSource))
+	}
+	paramProjectId := params.GetString("project-id")
+	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
+	}
+	paramWorkspaceWide := params.GetBool("workspace-wide")
+	if bartolocli.FlagPassed(params, "workspace-wide") || paramWorkspaceWide != false {
+		req = req.AddQuery("workspace_wide", fmt.Sprintf("%v", paramWorkspaceWide))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
