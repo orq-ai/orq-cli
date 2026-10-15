@@ -150,13 +150,13 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `context_management` (array | null)\n- `conversation` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- ... and 40 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `context_management` (array | null)\n- `conversation` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- ... and 41 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"service_tier\": \"auto\",\n  \"template_engine\": \"text\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"service_tier\": \"auto\",\n  \"speed\": \"standard\",\n  \"template_engine\": \"text\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -360,6 +360,16 @@ func registerresponsesCommands(root *cobra.Command) {
 								"ultrafast",
 								"scale",
 								"priority",
+							},
+						},
+						{
+							Name:        "speed",
+							FlagName:    "speed",
+							Type:        "enum-string",
+							Description: "Inference speed for direct Anthropic models. Fast mode is available on Claude Opus 4.8, Opus 5, and Opus 5.5 at premium pricing, and cannot be combined with batch or priority processing.",
+							Enum: []string{
+								"standard",
+								"fast",
 							},
 						},
 						{
@@ -686,6 +696,16 @@ func registerresponsesCommands(root *cobra.Command) {
 						"ultrafast",
 						"scale",
 						"priority",
+					},
+				},
+				{
+					Name:        "speed",
+					FlagName:    "speed",
+					Type:        "enum-string",
+					Description: "Inference speed for direct Anthropic models. Fast mode is available on Claude Opus 4.8, Opus 5, and Opus 5.5 at premium pricing, and cannot be combined with batch or priority processing.",
+					Enum: []string{
+						"standard",
+						"fast",
 					},
 				},
 				{
