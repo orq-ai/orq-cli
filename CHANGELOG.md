@@ -117,6 +117,14 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `orq setup --server <host>` now makes that host the default,** as
+  `orq server set <host>` would. Setup signed in, minted the gateway key and
+  wired agents against the typed host, but never saved it, so the next
+  `orq launch` or `orq connect` without `--server` went back to the hosted
+  service and missed that login. The host is saved only when setup completes.
+  A host from `ORQ_SERVER` or a profile is not saved, since it already applies
+  on every run that has it.
+
 ## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
 
 - **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).

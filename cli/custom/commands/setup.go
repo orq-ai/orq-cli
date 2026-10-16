@@ -371,6 +371,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if err := persistUnselectedSetupKey(rep, authState, opts, complete); err != nil {
 		return err
 	}
+	if err := persistSetupServer(rep, complete); err != nil {
+		return err
+	}
 
 	printFinalScreen(rep, agentResults, links, complete, opts)
 
@@ -852,6 +855,21 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 		return err
 	}
 	rep.ok("saved the key you passed")
+	return nil
+}
+
+// persistSetupServer makes a typed --server the default once setup completes,
+// because the login, gateway key and agent configs it wrote are keyed to that
+// host. An env or profile host already applies on every run that has it.
+func persistSetupServer(rep *reporter, complete bool) error {
+	host := auth.Server()
+	if !complete || auth.ServerSource() != "flag" || host == "" || viper.GetString("server-default") == host {
+		return nil
+	}
+	if err := persistServerDefault(host); err != nil {
+		return err
+	}
+	rep.ok("saved %s as the default server", host)
 	return nil
 }
 
