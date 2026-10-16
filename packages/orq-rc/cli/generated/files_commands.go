@@ -276,7 +276,7 @@ func registerfilesCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"content\": \"content\",\n  \"filename\": \"filename\",\n  \"purpose\": \"FILE_PURPOSE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"content\": \"content\",\n  \"filename\": \"filename\",\n  \"purpose\": \"FILE_PURPOSE_RETRIEVAL\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -311,7 +311,6 @@ func registerfilesCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
 							Enum: []string{
-								"FILE_PURPOSE_UNSPECIFIED",
 								"FILE_PURPOSE_RETRIEVAL",
 								"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
 								"FILE_PURPOSE_BATCH",
@@ -372,7 +371,6 @@ func registerfilesCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
 					Enum: []string{
-						"FILE_PURPOSE_UNSPECIFIED",
 						"FILE_PURPOSE_RETRIEVAL",
 						"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
 						"FILE_PURPOSE_BATCH",

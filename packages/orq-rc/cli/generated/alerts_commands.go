@@ -36,7 +36,7 @@ func registeralertsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_UNSPECIFIED\"\n  },\n  \"scope\": \"ALERT_SCOPE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_TRACES\"\n  },\n  \"scope\": \"ALERT_SCOPE_PROJECT\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -95,7 +95,6 @@ func registeralertsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "Ownership and telemetry evaluation boundary. Unspecified remains a\n project alert for compatibility with existing clients.",
 							Enum: []string{
-								"ALERT_SCOPE_UNSPECIFIED",
 								"ALERT_SCOPE_PROJECT",
 								"ALERT_SCOPE_WORKSPACE",
 							},
@@ -184,7 +183,6 @@ func registeralertsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "Ownership and telemetry evaluation boundary. Unspecified remains a\n project alert for compatibility with existing clients.",
 					Enum: []string{
-						"ALERT_SCOPE_UNSPECIFIED",
 						"ALERT_SCOPE_PROJECT",
 						"ALERT_SCOPE_WORKSPACE",
 					},
@@ -326,9 +324,9 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `alert_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `alert_id` of the first item from the previous page.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project.")
-		cmd.Flags().String("scope", "", "Restrict results by ownership boundary. Unspecified returns all alerts visible to the caller; non-admin callers never see workspace alerts. (one of: ALERT_SCOPE_UNSPECIFIED, ALERT_SCOPE_PROJECT, ALERT_SCOPE_WORKSPACE)")
+		cmd.Flags().String("scope", "", "Restrict results by ownership boundary. Unspecified returns all alerts visible to the caller; non-admin callers never see workspace alerts. (one of: ALERT_SCOPE_PROJECT, ALERT_SCOPE_WORKSPACE)")
 		_ = cmd.RegisterFlagCompletionFunc("scope", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"ALERT_SCOPE_UNSPECIFIED", "ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"}, cobra.ShellCompDirectiveNoFileComp
+			return []string{"ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"}, cobra.ShellCompDirectiveNoFileComp
 		})
 
 		bartolocli.SetCustomFlags(cmd)
@@ -445,7 +443,7 @@ func registeralertsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_UNSPECIFIED\"\n  },\n  \"signal\": \"signal\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\",\n    \"source\": \"ALERT_TELEMETRY_SOURCE_TRACES\"\n  },\n  \"signal\": \"signal\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

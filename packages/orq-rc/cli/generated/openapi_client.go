@@ -1137,7 +1137,7 @@ func OpenapiAlertList(params *viper.Viper) (*gentleman.Response, map[string]inte
 	paramScope := params.GetString("scope")
 	if bartolocli.FlagPassed(params, "scope") || paramScope != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--scope", paramScope, "", []string{"ALERT_SCOPE_UNSPECIFIED", "ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"})
+			normalized, err := bartolocli.NormalizeParam("--scope", paramScope, "", []string{"ALERT_SCOPE_PROJECT", "ALERT_SCOPE_WORKSPACE"})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -2227,7 +2227,7 @@ func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]int
 	paramSortBy := params.GetString("sort-by")
 	if bartolocli.FlagPassed(params, "sort-by") || paramSortBy != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"})
+			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -5345,7 +5345,7 @@ func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string
 	paramSortBy := params.GetString("sort-by")
 	if bartolocli.FlagPassed(params, "sort-by") || paramSortBy != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"})
+			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -6789,7 +6789,7 @@ func OpenapiManagementKeyList(params *viper.Viper) (*gentleman.Response, map[str
 	paramStatus := params.GetString("status")
 	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MANAGEMENT_KEY_STATUS_UNSPECIFIED", "MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"})
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -7033,7 +7033,7 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 	paramStatus := params.GetString("status")
 	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MCP_GATEWAY_STATUS_UNSPECIFIED", "MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"})
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -16048,7 +16048,7 @@ func OpenapiTelemetryListCapabilities(params *viper.Viper) (*gentleman.Response,
 	paramSource := params.GetString("source")
 	if bartolocli.FlagPassed(params, "source") || paramSource != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--source", paramSource, "", []string{"TELEMETRY_SOURCE_UNSPECIFIED", "TELEMETRY_SOURCE_TRACES", "TELEMETRY_SOURCE_METRICS", "TELEMETRY_SOURCE_LOGS"})
+			normalized, err := bartolocli.NormalizeParam("--source", paramSource, "", []string{"TELEMETRY_SOURCE_TRACES", "TELEMETRY_SOURCE_METRICS", "TELEMETRY_SOURCE_LOGS"})
 			if err != nil {
 				return nil, nil, err
 			}

@@ -367,7 +367,7 @@ func registermonitorsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"default_range\": \"default_range\",\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"update_mask\": \"update_mask\",\n  \"widgets\": [\n    {\n      \"layout\": {\n        \"h\": 0,\n        \"w\": 0,\n        \"x\": 0,\n        \"y\": 0\n      },\n      \"queries\": [\n        {\n          \"grain\": \"auto\",\n          \"metric\": \"metric\",\n          \"source\": \"MONITOR_TELEMETRY_SOURCE_UNSPECIFIED\"\n        }\n      ],\n      \"title\": \"title\",\n      \"type\": \"timeseries\",\n      \"widget_id\": \"widget_id\"\n    }\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"default_range\": \"default_range\",\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"update_mask\": \"update_mask\",\n  \"widgets\": [\n    {\n      \"layout\": {\n        \"h\": 0,\n        \"w\": 0,\n        \"x\": 0,\n        \"y\": 0\n      },\n      \"queries\": [\n        {\n          \"grain\": \"auto\",\n          \"metric\": \"metric\",\n          \"source\": \"MONITOR_TELEMETRY_SOURCE_TRACES\"\n        }\n      ],\n      \"title\": \"title\",\n      \"type\": \"timeseries\",\n      \"widget_id\": \"widget_id\"\n    }\n  ]\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

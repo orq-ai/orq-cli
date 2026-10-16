@@ -50,9 +50,9 @@ func registertelemetryCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().String("source", "", " (one of: TELEMETRY_SOURCE_UNSPECIFIED, TELEMETRY_SOURCE_TRACES, TELEMETRY_SOURCE_METRICS, TELEMETRY_SOURCE_LOGS)")
+		cmd.Flags().String("source", "", " (one of: TELEMETRY_SOURCE_TRACES, TELEMETRY_SOURCE_METRICS, TELEMETRY_SOURCE_LOGS)")
 		_ = cmd.RegisterFlagCompletionFunc("source", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"TELEMETRY_SOURCE_UNSPECIFIED", "TELEMETRY_SOURCE_TRACES", "TELEMETRY_SOURCE_METRICS", "TELEMETRY_SOURCE_LOGS"}, cobra.ShellCompDirectiveNoFileComp
+			return []string{"TELEMETRY_SOURCE_TRACES", "TELEMETRY_SOURCE_METRICS", "TELEMETRY_SOURCE_LOGS"}, cobra.ShellCompDirectiveNoFileComp
 		})
 		cmd.Flags().String("project-id", "", "Restricts discovered runtime metrics to records attributed to this exact project. Projectless workspace metrics are excluded.")
 		cmd.Flags().Bool("workspace-wide", false, "Discovers runtime metrics across the complete workspace, including project-attributed and projectless records. Workspace-admin only.")
@@ -83,7 +83,7 @@ func registertelemetryCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"source\": \"TELEMETRY_SOURCE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"source\": \"TELEMETRY_SOURCE_TRACES\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -130,7 +130,6 @@ func registertelemetryCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"TELEMETRY_SOURCE_UNSPECIFIED",
 								"TELEMETRY_SOURCE_TRACES",
 								"TELEMETRY_SOURCE_METRICS",
 								"TELEMETRY_SOURCE_LOGS",
@@ -208,7 +207,6 @@ func registertelemetryCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"TELEMETRY_SOURCE_UNSPECIFIED",
 						"TELEMETRY_SOURCE_TRACES",
 						"TELEMETRY_SOURCE_METRICS",
 						"TELEMETRY_SOURCE_LOGS",
@@ -249,7 +247,7 @@ func registertelemetryCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"timeseries\",\n  \"sort\": \"desc\",\n  \"source\": \"TELEMETRY_SOURCE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"timeseries\",\n  \"sort\": \"desc\",\n  \"source\": \"TELEMETRY_SOURCE_TRACES\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -358,7 +356,6 @@ func registertelemetryCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"TELEMETRY_SOURCE_UNSPECIFIED",
 								"TELEMETRY_SOURCE_TRACES",
 								"TELEMETRY_SOURCE_METRICS",
 								"TELEMETRY_SOURCE_LOGS",
@@ -504,7 +501,6 @@ func registertelemetryCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"TELEMETRY_SOURCE_UNSPECIFIED",
 						"TELEMETRY_SOURCE_TRACES",
 						"TELEMETRY_SOURCE_METRICS",
 						"TELEMETRY_SOURCE_LOGS",

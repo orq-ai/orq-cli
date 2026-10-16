@@ -36,7 +36,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -59,7 +59,6 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
-								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
 								"SMART_ROUTER_PROFILE_BALANCED",
 								"SMART_ROUTER_PROFILE_COST",
@@ -113,7 +112,6 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
-						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
 						"SMART_ROUTER_PROFILE_BALANCED",
 						"SMART_ROUTER_PROFILE_COST",
@@ -285,7 +283,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -302,7 +300,6 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
-								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
 								"SMART_ROUTER_PROFILE_BALANCED",
 								"SMART_ROUTER_PROFILE_COST",
@@ -350,7 +347,6 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
-						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
 						"SMART_ROUTER_PROFILE_BALANCED",
 						"SMART_ROUTER_PROFILE_COST",

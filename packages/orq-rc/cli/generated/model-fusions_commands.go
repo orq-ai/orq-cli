@@ -36,7 +36,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"judge_model\": \"judge_model\",\n  \"key\": \"key\",\n  \"panel_models\": [\n    \"panel_models\"\n  ],\n  \"preset\": \"MODEL_FUSION_PRESET_UNSPECIFIED\",\n  \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"judge_model\": \"judge_model\",\n  \"key\": \"key\",\n  \"panel_models\": [\n    \"panel_models\"\n  ],\n  \"preset\": \"MODEL_FUSION_PRESET_GENERAL\",\n  \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -83,7 +83,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"MODEL_FUSION_PRESET_UNSPECIFIED",
 								"MODEL_FUSION_PRESET_GENERAL",
 								"MODEL_FUSION_PRESET_QUALITY",
 								"MODEL_FUSION_PRESET_BUDGET",
@@ -97,7 +96,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED",
 								"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS",
 								"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL",
 							},
@@ -174,7 +172,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"MODEL_FUSION_PRESET_UNSPECIFIED",
 						"MODEL_FUSION_PRESET_GENERAL",
 						"MODEL_FUSION_PRESET_QUALITY",
 						"MODEL_FUSION_PRESET_BUDGET",
@@ -188,7 +185,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED",
 						"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS",
 						"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL",
 					},
@@ -429,7 +425,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"feed_raw_to_synth\": false,\n  \"judge_model\": \"judge_model\",\n  \"max_tool_calls\": 0,\n  \"panel_models\": [\n    \"panel_models\"\n  ],\n  \"preset\": \"MODEL_FUSION_PRESET_UNSPECIFIED\",\n  \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED\",\n  \"web_tools\": false\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"feed_raw_to_synth\": false,\n  \"judge_model\": \"judge_model\",\n  \"max_tool_calls\": 0,\n  \"panel_models\": [\n    \"panel_models\"\n  ],\n  \"preset\": \"MODEL_FUSION_PRESET_GENERAL\",\n  \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS\",\n  \"web_tools\": false\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -470,7 +466,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"MODEL_FUSION_PRESET_UNSPECIFIED",
 								"MODEL_FUSION_PRESET_GENERAL",
 								"MODEL_FUSION_PRESET_QUALITY",
 								"MODEL_FUSION_PRESET_BUDGET",
@@ -484,7 +479,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED",
 								"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS",
 								"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL",
 							},
@@ -555,7 +549,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"MODEL_FUSION_PRESET_UNSPECIFIED",
 						"MODEL_FUSION_PRESET_GENERAL",
 						"MODEL_FUSION_PRESET_QUALITY",
 						"MODEL_FUSION_PRESET_BUDGET",
@@ -569,7 +562,6 @@ func registermodelFusionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"MODEL_FUSION_SYNTHESIS_MODE_UNSPECIFIED",
 						"MODEL_FUSION_SYNTHESIS_MODE_ANALYSIS",
 						"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL",
 					},
