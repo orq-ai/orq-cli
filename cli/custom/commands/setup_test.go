@@ -457,6 +457,52 @@ func TestResolveAuthDefersUnselectedKeyUntilSetupCompletes(t *testing.T) {
 	}
 }
 
+// Setup keys its login to the --server host, so a later bare launch or connect
+// must resolve that host too.
+func TestSetupPersistsTypedServerOnlyWhenComplete(t *testing.T) {
+	credsHarness(t)
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
+	viper.Set("server-default", "")
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"server":"https://legacy.example","profile-selected":"ci"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep := &reporter{w: io.Discard}
+
+	auth.SetServer("https://env.example", "env")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("https://self.example", "flag")
+	if err := persistSetupServer(rep, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("env host or incomplete setup persisted %q", got)
+	}
+
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self.example" {
+		t.Errorf("server-default = %q, want the typed host", got)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["server-default"] != "https://self.example" || config["profile-selected"] != "ci" {
+		t.Errorf("config.json = %s, want server-default written and other keys kept", raw)
+	}
+	if _, ok := config["server"]; ok {
+		t.Errorf("config.json kept the legacy server key: %s", raw)
+	}
+}
+
 func TestResolveAuthNonpersistentKeyLeavesStoredLoginUntouched(t *testing.T) {
 	credsHarness(t)
 	viper.Set("profile", "")
