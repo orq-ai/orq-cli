@@ -32,6 +32,8 @@ jobs:
         # module rather than scanning it, and a glob that matches nothing exits
         # 0. A missing file here exits 1, which is what a rename should do.
         run: node --test .github/scripts/label-pr.test.js
+      - name: model-candidates self-test
+        run: python3 .github/scripts/model-candidates.py --self-test
       - name: actionlint
         env:
           # Bump both together: ACTIONLINT_SHA256 is the sha256 of
