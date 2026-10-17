@@ -13,9 +13,10 @@ import (
 // Run resolves and launches an agent, returning the child exit code.
 func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
-		Prompt:      def.Prompt,
-		AllowModels: def.AllowModels,
-		AllowTrace:  def.Traceable,
+		Prompt:       def.Prompt,
+		AllowModels:  def.AllowModels,
+		AllowTrace:   def.Traceable,
+		AllowChatGPT: def.ChatGPTAuth,
 	})
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
@@ -134,6 +135,12 @@ Flags:
                         again when it exits, leaving nothing behind. Not gated
                         on --mcp. For a permanent install, orq connect skills
 `)
+	if def.ChatGPTAuth {
+		fmt.Print(`  --chatgpt             Bill model calls to your ChatGPT subscription: the agent keeps
+                        its own ChatGPT login and orq traces the calls. openai/
+                        models only
+`)
+	}
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}

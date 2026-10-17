@@ -1325,6 +1325,10 @@
           "type": "stringSlice"
         },
         {
+          "name": "chatgpt",
+          "type": "bool"
+        },
+        {
           "name": "global",
           "type": "bool"
         },
@@ -1941,6 +1945,10 @@
         {
           "name": "api-key",
           "type": "string"
+        },
+        {
+          "name": "chatgpt",
+          "type": "bool"
         },
         {
           "name": "dry-run",
@@ -7812,6 +7820,10 @@
         {
           "name": "capability",
           "type": "stringSlice"
+        },
+        {
+          "name": "chatgpt",
+          "type": "bool"
         },
         {
           "name": "global",
