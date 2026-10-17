@@ -348,6 +348,7 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
 	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
+	f.BoolVar(&opts.chatGPT, "chatgpt", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only)")
 	addScopeFlags(f, &opts)
 	return cmd
 }
