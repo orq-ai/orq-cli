@@ -583,6 +583,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 }
 
 func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents, caps []string, dryRun bool) error {
+	opts.skillsInstalled = false
 	opts.agents = agents
 	opts.caps = caps
 	opts.noGateway = !hasCap(caps, capGateway)
@@ -643,18 +644,30 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	if hasCap(caps, capOtel) {
 		otelResults, otelFailed = connectOtel(rep, opts, agents)
 	}
+	failed := mcpFailed || otelFailed
+	completedCapability := false
+	for _, a := range agentResults {
+		failed = failed || a.Error != ""
+		completedCapability = completedCapability || (hasCap(caps, capGateway) && a.Provider != "")
+	}
+	completedCapability = completedCapability || (hasCap(caps, capSkills) && opts.skillsInstalled)
+	for _, result := range mcpResults {
+		completedCapability = completedCapability || result.Path != ""
+	}
+	for _, result := range otelResults {
+		completedCapability = completedCapability || result.Path != ""
+	}
+	var finalizeErr error
+	if opts.onConnectSuccess != nil && !failed && completedCapability {
+		finalizeErr = opts.onConnectSuccess(rep)
+	}
 	if !wantsHumanView(cmd) {
 		payload := map[string]any{"coding_agents": agentResults}
-		// The skills leg reports itself through rep.ok, which quiet mode (and
-		// therefore every non-TTY run) suppresses. Without this a script that
-		// just installed fourteen skills into the user's home read
-		// `coding_agents: null` and had no way to observe the capability at
-		// all.
+		// Credential-free capabilities report their results in JSON because
+		// informational progress is sent to stderr, outside the result shape.
 		if hasCap(caps, capSkills) {
 			payload[capSkills] = skillsPayload(agents, skillsWriteScope(opts))
 		}
-		// Same reason: rep.ok is invisible to a script, so without this the MCP
-		// entries this run wrote cannot be observed at all.
 		if hasCap(caps, capMCP) {
 			payload[capMCP] = mcpResults
 		}
@@ -665,15 +678,10 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 			return err
 		}
 	}
-	for _, a := range agentResults {
-		if a.Error != "" {
-			return errAgentFailed
-		}
-	}
-	if mcpFailed || otelFailed {
+	if failed {
 		return errAgentFailed
 	}
-	return nil
+	return finalizeErr
 }
 
 // mcpResult is one agent's MCP outcome for `-o json`. It is not folded into

@@ -125,7 +125,10 @@ controls on surface changes, whichever side they originate from.
   plugins are preserved. To remove a trace plugin installed by an older CLI,
   run `claude plugin uninstall orq-trace@orq-claude-plugin`. Re-run `orq
   connect claude otel` to configure native telemetry. `orq launch claude
-  --otel` continues to provide session tracing.
+  --otel` continues to provide session tracing. Disconnect stops native export
+  and retains recovery state if the collector endpoint or authorization header
+  was edited, so it cannot restore a saved credential to a different server.
+  Updating native settings also preserves unrelated JSON number precision.
 
 - **Fixed: `orq setup --server <host>` now makes that host the default,** as
   `orq server set <host>` would. Setup signed in, minted the gateway key and
@@ -136,7 +139,9 @@ controls on surface changes, whichever side they originate from.
   profile precedence cannot route the next bare command to an older host. A
   host from `ORQ_SERVER` is not saved, since it already applies on every run
   that has it. The success screen explains that `orq server clear` clears the
-  global default, while the active profile keeps its own server binding.
+  global default, while the active profile keeps its own server binding. This
+  also applies to successful capability-only setup, and the saved-server notice
+  remains visible under `--no-input`.
   `orq connect claude mcp` also uses the resolved server, so a persisted MCP
   entry no longer points at the hosted service when the configured default is
   self-hosted.

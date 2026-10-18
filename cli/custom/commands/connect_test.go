@@ -2898,7 +2898,6 @@ func TestConnectOtelRepairsEndpointAndAuthorizationHeader(t *testing.T) {
 		}
 	}
 	connect()
-
 	// Changing the resolved server and credential is a legitimate rerun when
 	// the current settings still match the Orq-owned tuple.
 	auth.SetServer("https://staging.example", "test")
@@ -3247,6 +3246,10 @@ func TestDisconnectOtelLeavesCustomCollectorAlone(t *testing.T) {
 
 func TestConnectOtelReconnectRefusesDriftUntilDisconnect(t *testing.T) {
 	settings := otelMachine(t)
+	initial := `{"env":{"OTEL_METRICS_EXPORTER":"otlp","OTEL_LOGS_EXPORTER":"otlp","OTEL_TRACES_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_ENDPOINT":"https://original.example/v1/otel","OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Bearer original-user-secret"}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	connect := func() {
 		t.Helper()
 		c := NewConnectCommand()
@@ -3297,15 +3300,57 @@ func TestConnectOtelReconnectRefusesDriftUntilDisconnect(t *testing.T) {
 
 	disconnect := NewDisconnectCommand()
 	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err == nil {
+		t.Fatal("disconnect silently retired ownership after endpoint and header drift")
+	}
+	_, safeEnv := claudeSettings(t, settings)
+	if safeEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-updated" {
+		t.Errorf("conflict did not preserve the user's edits: %#v", safeEnv)
+	}
+	if safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer original-user-secret" {
+		t.Fatal("conflict restored the original credential")
+	}
+	if safeEnv["OTEL_METRICS_EXPORTER"] != "none" || safeEnv["OTEL_LOGS_EXPORTER"] != "none" || safeEnv["OTEL_TRACES_EXPORTER"] != "none" || safeEnv["CLAUDE_CODE_ENABLE_TELEMETRY"] != "0" {
+		t.Errorf("conflict did not explicitly disable native telemetry: %#v", safeEnv)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("conflict did not retain ownership for recovery: %v", err)
+	}
+	// A second attempt remains safe and retains the snapshot until the user
+	// restores the connected destination and credential recorded in it.
+	retry := NewDisconnectCommand()
+	retry.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := retry.Execute(); err == nil {
+		t.Fatal("repeated conflict unexpectedly retired ownership")
+	}
+	_, safeEnv = claudeSettings(t, settings)
+	if safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer original-user-secret" || safeEnv["OTEL_METRICS_EXPORTER"] != "none" {
+		t.Fatalf("repeated conflict restored the original credential or enabled exporting: %#v", safeEnv)
+	}
+	// Resolve the conflict using the recorded Orq tuple, then retry. Only now
+	// is it safe to restore the original active collector and credential.
+	ownership, _, err := readClaudeOtelOwnership(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, safeEnv = claudeSettings(t, settings)
+	safeEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] = *ownership.Written["OTEL_EXPORTER_OTLP_ENDPOINT"]
+	safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] = *ownership.Written["OTEL_EXPORTER_OTLP_HEADERS"]
+	cfg["env"] = safeEnv
+	if err := writeJSONConfig(settings, cfg); err != nil {
+		t.Fatal(err)
+	}
+	disconnect = NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
 	if err := disconnect.Execute(); err != nil {
-		t.Fatalf("disconnect: %v", err)
+		t.Fatalf("resolved disconnect: %v", err)
 	}
 	_, restoredEnv := claudeSettings(t, settings)
-	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-updated" {
-		t.Errorf("disconnect did not preserve the user's latest edits: %#v", restoredEnv)
+	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://original.example/v1/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer original-user-secret" || restoredEnv["OTEL_METRICS_EXPORTER"] != "otlp" || restoredEnv["OTEL_LOGS_EXPORTER"] != "otlp" || restoredEnv["OTEL_TRACES_EXPORTER"] != "otlp" {
+		t.Errorf("resolved disconnect did not restore the original active tuple: %#v", restoredEnv)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Errorf("disconnect left the ownership marker behind: err=%v", err)
+		t.Errorf("disconnect left ownership marker: %v", err)
 	}
 	connect()
 	disconnect = NewDisconnectCommand()
@@ -3314,7 +3359,7 @@ func TestConnectOtelReconnectRefusesDriftUntilDisconnect(t *testing.T) {
 		t.Fatalf("second disconnect: %v", err)
 	}
 	_, restoredEnv = claudeSettings(t, settings)
-	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-updated" {
+	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://original.example/v1/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer original-user-secret" {
 		t.Errorf("disconnect after explicit reconnect did not restore the user's prior settings: %#v", restoredEnv)
 	}
 }
@@ -3341,9 +3386,8 @@ func TestDisconnectOtelRetiresOwnershipAfterEnvWasDeleted(t *testing.T) {
 		t.Fatalf("disconnect after env deletion: %v", err)
 	}
 	if _, err := os.Stat(claudeOtelOwnershipPath(settings)); !os.IsNotExist(err) {
-		t.Errorf("disconnect left a stale ownership marker: err=%v", err)
+		t.Errorf("disconnect left ownership after env deletion: err=%v", err)
 	}
-
 	// Later user settings must not be compared with the retired snapshot.
 	if err := writeJSONConfig(settings, map[string]any{"env": map[string]any{
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "https://collector.example/v2/otel",
@@ -3358,7 +3402,47 @@ func TestDisconnectOtelRetiresOwnershipAfterEnvWasDeleted(t *testing.T) {
 	}
 	_, env := claudeSettings(t, settings)
 	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer later-user-value" {
-		t.Errorf("a retired ownership marker restored stale state over later user settings: %#v", env)
+		t.Errorf("retired ownership restored stale state over later user settings: %#v", env)
+	}
+}
+
+func TestDisconnectOtelDisablesExportersForSingleTupleDrift(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(map[string]any)
+	}{
+		{"endpoint edited", func(env map[string]any) { env["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://user.example/otel" }},
+		{"header edited", func(env map[string]any) { env["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer user-edited" }},
+		{"endpoint removed", func(env map[string]any) { delete(env, "OTEL_EXPORTER_OTLP_ENDPOINT") }},
+		{"header removed", func(env map[string]any) { delete(env, "OTEL_EXPORTER_OTLP_HEADERS") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := filepath.Join(t.TempDir(), "settings.json")
+			if err := writeClaudeNativeOtel(settings, claudeNativeOtelEnv("https://orq.example/otel", "sk-test")); err != nil {
+				t.Fatal(err)
+			}
+			cfg, env := claudeSettings(t, settings)
+			tc.edit(env)
+			cfg["env"] = env
+			if err := writeJSONConfig(settings, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := removeClaudeNativeOtel(settings); err == nil {
+				t.Fatal("disconnect did not report tuple drift")
+			}
+			_, env = claudeSettings(t, settings)
+			for key, want := range map[string]string{"OTEL_METRICS_EXPORTER": "none", "OTEL_LOGS_EXPORTER": "none", "OTEL_TRACES_EXPORTER": "none", "CLAUDE_CODE_ENABLE_TELEMETRY": "0"} {
+				if env[key] != want {
+					t.Errorf("%s = %v, want %q", key, env[key], want)
+				}
+			}
+			if _, err := os.Stat(claudeOtelOwnershipPath(settings)); err != nil {
+				t.Errorf("ownership was not retained: %v", err)
+			}
+			if tc.name == "endpoint edited" && env["OTEL_EXPORTER_OTLP_HEADERS"] != nil {
+				t.Errorf("endpoint drift retained the still-Orq-owned credential: %#v", env)
+			}
+		})
 	}
 }
 

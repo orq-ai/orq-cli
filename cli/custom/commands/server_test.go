@@ -146,11 +146,14 @@ func TestPersistSetupServerRepairsExistingProfileEvenWhenDefaultMatches(t *testi
 	}
 	auth.SetServer("https://self.example", "flag")
 	var out strings.Builder
-	if err := persistSetupServer(&reporter{w: &out}, true); err != nil {
+	if err := persistSetupServer(&reporter{w: &out, quiet: true}, true); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "orq server clear") {
-		t.Errorf("missing undo guidance: %q", out.String())
+	if !strings.Contains(out.String(), "saved https://self.example") || !strings.Contains(out.String(), "orq server clear") {
+		t.Errorf("quiet mode must report the saved server and undo guidance: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "profile ci") {
+		t.Errorf("active profile save was not reported: %q", out.String())
 	}
 	if got := bartolocli.Creds.GetString("profiles.ci.server"); got != "https://self.example" {
 		t.Errorf("profile server=%q", got)

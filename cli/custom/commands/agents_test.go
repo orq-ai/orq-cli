@@ -1779,3 +1779,41 @@ func TestWriteClaudeNativeOtelCreatesMissingSettingsDirectory(t *testing.T) {
 		t.Fatalf("ownership snapshot was not created: %v", err)
 	}
 }
+
+func TestReadJSONConfigPreservesLargeIntegerPrecision(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	const integer = "123456789012345678901234567890123456789"
+	if err := os.WriteFile(path, []byte(`{"unowned":{"large":`+integer+`}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg["unowned"].(map[string]any)["large"].(json.Number).String(); got != integer {
+		t.Fatalf("large integer = %s, want %s", got, integer)
+	}
+}
+
+func TestClaudeOtelOwnershipRestoresLargeIntegerExactly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	const integer = "123456789012345678901234567890123456789"
+	initial := `{"env":{"OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_PROTOCOL":` + integer + `}}`
+	if err := os.WriteFile(path, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudeNativeOtel(path, claudeNativeOtelEnv("https://orq.example/otel", "sk-test")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeClaudeNativeOtel(path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg["env"].(map[string]any)["OTEL_EXPORTER_OTLP_PROTOCOL"].(json.Number).String()
+	if got != integer {
+		t.Fatalf("restored integer = %s, want %s", got, integer)
+	}
+}

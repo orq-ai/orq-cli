@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -519,15 +520,62 @@ func removeClaudeNativeOtel(path string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", path, err)
 	}
-	if env == nil {
-		env = map[string]any{}
-	}
 	ownership, _, err := readClaudeOtelOwnership(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 		return false, fmt.Errorf("%s: %w", claudeOtelOwnershipPath(path), err)
+	}
+	if env == nil {
+		// Removing the whole env object is an explicit user removal. Retire
+		// ownership without resurrecting any pre-connect values.
+		if err := os.Remove(claudeOtelOwnershipPath(path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+		return false, nil
+	}
+	// The collector destination and Authorization header are one security
+	// boundary. Restoring either half after the other has drifted could send a
+	// previously configured credential to a user-edited destination.
+	endpointKey, headerKey := "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"
+	endpointDrift := claudeOtelFieldDrift(ownership, env, endpointKey)
+	headerDrift := claudeOtelFieldDrift(ownership, env, headerKey)
+	if endpointDrift || headerDrift {
+		changed := false
+		for key, value := range map[string]string{"OTEL_METRICS_EXPORTER": "none", "OTEL_LOGS_EXPORTER": "none", "OTEL_TRACES_EXPORTER": "none", "CLAUDE_CODE_ENABLE_TELEMETRY": "0"} {
+			if env[key] != value {
+				changed = true
+			}
+			env[key] = value
+			valueCopy := value
+			safe := &valueCopy
+			ownership.Written[key] = safe
+		}
+		cfg["env"] = env
+		// If the destination changed, discard the still-Orq-owned credential.
+		// A user-edited header is preserved for them to resolve explicitly.
+		if endpointDrift && !headerDrift {
+			delete(env, headerKey)
+			ownership.Written[headerKey] = nil
+			changed = true
+		}
+		if changed {
+			if err := writeJSONConfig(path, cfg); err != nil {
+				return false, err
+			}
+		}
+		if err := writeClaudeOtelOwnership(path, ownership); err != nil {
+			return changed, err
+		}
+		keys := make([]string, 0, 2)
+		if endpointDrift {
+			keys = append(keys, endpointKey)
+		}
+		if headerDrift {
+			keys = append(keys, headerKey)
+		}
+		return changed, fmt.Errorf("Claude native OTel settings %s changed after Orq connected; exporters are disabled and ownership is retained. Restore the changed settings to the recorded 'written' values in %s, then run 'orq disconnect claude otel' again", strings.Join(keys, ", "), claudeOtelOwnershipPath(path))
 	}
 	changed := false
 	for key, want := range ownership.Written {
@@ -539,7 +587,9 @@ func removeClaudeNativeOtel(path string) (bool, error) {
 		}
 		if old, had := ownership.Original[key]; had {
 			var restored any
-			if err := json.Unmarshal(old, &restored); err != nil {
+			decoder := json.NewDecoder(bytes.NewReader(old))
+			decoder.UseNumber()
+			if err := decoder.Decode(&restored); err != nil {
 				return false, fmt.Errorf("invalid prior value for %s in native OTel ownership file: %w", key, err)
 			}
 			env[key] = restored
@@ -560,6 +610,20 @@ func removeClaudeNativeOtel(path string) (bool, error) {
 		return changed, err
 	}
 	return changed, nil
+}
+
+func claudeOtelFieldDrift(ownership *claudeOtelOwnership, env map[string]any, key string) bool {
+	want, owned := ownership.Written[key]
+	if !owned {
+		return false
+	}
+	current, exists := env[key]
+	if exists != (want != nil) {
+		return true
+	}
+	currentEncoded, _ := json.Marshal(current)
+	wantEncoded, _ := json.Marshal(want)
+	return !bytes.Equal(currentEncoded, wantEncoded)
 }
 
 // errAgentNotInstalled is used by capability removals that need the agent binary.
@@ -677,7 +741,16 @@ func readJSONConfig(path string) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	var out map[string]any
-	if err := json.Unmarshal(data, &out); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&out); err != nil {
+		return nil, fmt.Errorf("%s is not valid JSON — left untouched: %w", path, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+		}
 		return nil, fmt.Errorf("%s is not valid JSON — left untouched: %w", path, err)
 	}
 	// Valid JSON that is not an object: `null` unmarshals into a nil map, which then panics on assignment.
