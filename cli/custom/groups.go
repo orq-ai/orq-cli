@@ -93,8 +93,6 @@ var commandGroup = map[string]string{
 	"human-review-sets": groupOptimization,
 	"annotation-queues": groupOptimization,
 
-	"wikis":        groupFactory,
-	"environments": groupFactory,
 	"file-systems": groupFactory,
 
 	"workspace":          groupAdmin,

@@ -120,10 +120,10 @@ controls on surface changes, whichever side they originate from.
 - **Added:** the generated commands catch up with the orq API after five weeks
   without a stable schema: `orq decisions`, `orq websearch`, `orq hub`,
   `orq model-fusions`, `orq sessions`, `orq telemetry`, `orq views`,
-  `orq wikis`, `orq environments`, `orq file-systems` and `orq workspaces`,
+  `orq file-systems` and `orq workspaces`,
   plus `orq feedback submit`, `orq datasets create-datapoints` (bulk) and
   `orq datasets delete-datapoints`. The root help gains a **Factory** section
-  (`wikis`, `environments`, `file-systems`).
+  (`file-systems`).
 - **Breaking: removed commands.** `orq documentation` and `orq finder` are
   private API and no longer in the public schema, and so are `orq model-sharing`
   and the `orq traces insights-service-*` commands (15 in all). There is no
