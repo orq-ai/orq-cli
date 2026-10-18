@@ -2558,7 +2558,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m52hq7rysfw5spsy1trxjyzg"
+              default: "reasoning_01m57ntt13n9k451sa9nhqmb4n"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -13534,6 +13534,248 @@ components:
         trace_id:
           type: "string"
       description: "Span reference accepted by AddAnnotationQueueItems."
+    ListAuditLogDestinationsResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditLogDestination"
+        has_more:
+          type: "boolean"
+    CreateAuditLogDestinationRequest:
+      required:
+        - "display_name"
+        - "url"
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "Required. Human-readable destination name, unique within the workspace."
+        description:
+          type: "string"
+          description: "Optional. Description of the receiving system."
+        url:
+          type: "string"
+          description: "Required. Absolute HTTPS URL. Private and loopback addresses are rejected."
+    CreateAuditLogDestinationResponse:
+      required:
+        - "destination"
+        - "signing_secret"
+      type: "object"
+      properties:
+        destination:
+          $ref: "#/components/schemas/AuditLogDestination"
+        signing_secret:
+          type: "string"
+          description: "Signing secret for verifying deliveries. Shown only in this response; store it securely."
+    GetAuditLogDestinationResponse:
+      required:
+        - "destination"
+      type: "object"
+      properties:
+        destination:
+          $ref: "#/components/schemas/AuditLogDestination"
+    DeleteAuditLogDestinationResponse:
+      type: "object"
+      properties: {}
+    UpdateAuditLogDestinationRequest:
+      required: []
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "Optional. New destination name."
+        description:
+          type: "string"
+          description: "Optional. New description. An empty string clears it."
+        url:
+          type: "string"
+          description: "Optional. New HTTPS endpoint. Accepted only while the destination is paused."
+        status:
+          description: "Optional. Pause or resume deliveries."
+          $ref: "#/components/schemas/AuditLogDestinationStatus"
+    UpdateAuditLogDestinationResponse:
+      required:
+        - "destination"
+      type: "object"
+      properties:
+        destination:
+          $ref: "#/components/schemas/AuditLogDestination"
+    AuditLogDeliveryStatus:
+      type: "string"
+      enum:
+        - "AUDIT_LOG_DELIVERY_STATUS_PENDING"
+        - "AUDIT_LOG_DELIVERY_STATUS_DELIVERING"
+        - "AUDIT_LOG_DELIVERY_STATUS_SUCCEEDED"
+        - "AUDIT_LOG_DELIVERY_STATUS_FAILED"
+        - "AUDIT_LOG_DELIVERY_STATUS_CANCELLED"
+    ListAuditLogDeliveriesResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AuditLogDelivery"
+        has_more:
+          type: "boolean"
+    ReplayAuditLogDeliveriesRequest:
+      required:
+        - "from"
+        - "to"
+      type: "object"
+      properties:
+        from:
+          type: "string"
+          description: "Required. Start of the window (inclusive)."
+          format: "date-time"
+        to:
+          type: "string"
+          description: "Required. End of the window (exclusive). The window may span at most 31 days."
+          format: "date-time"
+    ReplayAuditLogDeliveriesResponse:
+      required:
+        - "replay_id"
+        - "queued"
+      type: "object"
+      properties:
+        replay_id:
+          type: "string"
+        queued:
+          type: "integer"
+          description: "Number of deliveries queued by this replay."
+          format: "int32"
+    RotateAuditLogDestinationSecretResponse:
+      required:
+        - "destination"
+        - "signing_secret"
+      type: "object"
+      properties:
+        destination:
+          $ref: "#/components/schemas/AuditLogDestination"
+        signing_secret:
+          type: "string"
+          description: "New signing secret. Shown only in this response; store it securely."
+    TestAuditLogDestinationResponse:
+      required:
+        - "delivery"
+      type: "object"
+      properties:
+        delivery:
+          $ref: "#/components/schemas/AuditLogDelivery"
+    AuditLogDestination:
+      required:
+        - "id"
+        - "display_name"
+        - "url"
+        - "status"
+        - "created_at"
+        - "updated_at"
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        display_name:
+          type: "string"
+          description: "Human-readable destination name, unique within the workspace."
+        description:
+          type: "string"
+          description: "Optional description of the receiving system."
+        url:
+          type: "string"
+          description: "HTTPS endpoint that receives signed audit log events."
+        status:
+          description: "`AUDIT_LOG_DESTINATION_STATUS_ACTIVE` delivers events; `AUDIT_LOG_DESTINATION_STATUS_PAUSED` retains them for later delivery."
+          $ref: "#/components/schemas/AuditLogDestinationStatus"
+        signing_secret_hint:
+          type: "string"
+          description: "Last four characters of the current signing secret, to tell rotations apart."
+        secret_rotated_at:
+          type: "string"
+          description: "Time the current signing secret was issued."
+          format: "date-time"
+        created_at:
+          type: "string"
+          format: "date-time"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        created_by_id:
+          type: "string"
+        updated_by_id:
+          type: "string"
+    AuditLogDestinationStatus:
+      type: "string"
+      enum:
+        - "AUDIT_LOG_DESTINATION_STATUS_ACTIVE"
+        - "AUDIT_LOG_DESTINATION_STATUS_PAUSED"
+    AuditLogDelivery:
+      required:
+        - "id"
+        - "destination_id"
+        - "event_id"
+        - "kind"
+        - "status"
+        - "attempts"
+        - "created_at"
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        destination_id:
+          type: "string"
+        event_id:
+          type: "string"
+          description: "Audit log entry ID carried in the payload. Replays reuse the original event ID."
+        kind:
+          $ref: "#/components/schemas/AuditLogDeliveryKind"
+        status:
+          $ref: "#/components/schemas/AuditLogDeliveryStatus"
+        attempts:
+          type: "integer"
+          description: "Number of HTTP attempts made so far."
+          format: "int32"
+        next_attempt_at:
+          type: "string"
+          description: "When the next attempt is due, while pending."
+          format: "date-time"
+        last_attempt_at:
+          type: "string"
+          format: "date-time"
+        last_status_code:
+          type: "integer"
+          description: "HTTP status of the last attempt, 0 when the request never completed."
+          format: "int32"
+        last_error:
+          type: "string"
+          description: "Short description of the last failure."
+        delivered_at:
+          type: "string"
+          format: "date-time"
+        created_at:
+          type: "string"
+          format: "date-time"
+        replay_id:
+          type: "string"
+          description: "Replay request that queued this delivery, empty for live deliveries."
+    AuditLogDeliveryKind:
+      type: "string"
+      enum:
+        - "AUDIT_LOG_DELIVERY_KIND_EVENT"
+        - "AUDIT_LOG_DELIVERY_KIND_REPLAY"
+        - "AUDIT_LOG_DELIVERY_KIND_TEST"
     BudgetScopeKind:
       type: "string"
       enum:
@@ -18353,6 +18595,8 @@ components:
           type: "array"
           items:
             type: "string"
+        user_permissions:
+          $ref: "#/components/schemas/EffectiveUserPermissions"
     ChatKitResource:
       type: "object"
       properties:
@@ -18364,6 +18608,13 @@ components:
           type: "string"
         resource_type:
           type: "string"
+    EffectiveUserPermissions:
+      type: "object"
+      properties:
+        permissions:
+          type: "array"
+          items:
+            type: "string"
     ListDomainsResponse:
       required:
         - "domains"
@@ -25993,7 +26244,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M52HQ7QJ50DNDM3Z230QKB7M"
+                                default: "01M57NTSZY8F1TJCXRXPVZCNSN"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -35350,7 +35601,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M52HQ7TSW2DAXF6KVHA2N955"
+                                          default: "01M57NTT2VMC8RH1GNQNHFJXTG"
                                         name:
                                           type: "string"
                                         description:
@@ -36969,7 +37220,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M52HQ7VG6WFSEJ12KYNHWRZT"
+                                          default: "01M57NTT3GY4G1XDCTKCYDPYD9"
                                         name:
                                           type: "string"
                                         description:
@@ -45983,7 +46234,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M52HQ7X6AA42NR0XVZJ2W9KY"
+                              default: "tool_01M57NTT52JB3Y8TQQQ4VE7T8E"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46084,7 +46335,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M52HQ7X7NQYS472PCDK9AP9G"
+                              default: "tool_01M57NTT536YRWBH66K7G7YP8V"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46187,7 +46438,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M52HQ7X81BMTGBEGJTWDKVCS"
+                              default: "tool_01M57NTT54CDDHPXAXE6Q9V4ZW"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46331,7 +46582,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M52HQ7X9AJ7HJJG0AFNNK9JH"
+                              default: "tool_01M57NTT549BWN6TFQKEE4NPP0"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46818,7 +47069,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XDWAY2G9K3TM47VZV2"
+                        default: "tool_01M57NTT5B2CH0FNDRZBED9MCG"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46919,7 +47170,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XEYC3MVPFZ79BHB8CH"
+                        default: "tool_01M57NTT5BSMB916NSPV21NZKH"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47022,7 +47273,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XF5N00N7BV1N9G3D51"
+                        default: "tool_01M57NTT5CBE7SWS95X07TTN7E"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47166,7 +47417,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XGSV59VM595S4RXXY4"
+                        default: "tool_01M57NTT5DF6JEYNHJB51MPGHR"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47670,7 +47921,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XK5239TXAMDA37T1ZT"
+                        default: "tool_01M57NTT5FY92JC4V951MPTZW7"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47771,7 +48022,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XKRF2H5105J9GD92ZW"
+                        default: "tool_01M57NTT5G9J34MT0DPMEVG9KP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47874,7 +48125,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XMDNT9EPKPT36BF2S0"
+                        default: "tool_01M57NTT5HJJZE391DA0AH965X"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48018,7 +48269,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XN7YTJQH55318YDXWF"
+                        default: "tool_01M57NTT5J51CZDR9PFWFSZJZ8"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48185,7 +48436,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XY33HP8J8Y0NE24VA6"
+                        default: "tool_01M57NTT5RMXP86RKGW6WG7CKK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48286,7 +48537,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XYAEMXDVW4TVJVFNSW"
+                        default: "tool_01M57NTT5RRX6KMDEYVSEF5BMN"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48389,7 +48640,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7XZJHFJ5E33Z3YXKH4G"
+                        default: "tool_01M57NTT5S43GHX3ZQ0SXW7MTZ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48533,7 +48784,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M52HQ7Y09JB1APZK2NM4B2SH"
+                        default: "tool_01M57NTT5TM3ZF6ZBB8SQVJ4TM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -55059,7 +55310,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-10-16T14:26:40.750Z"
+                      default: "2026-10-18T14:14:44.198Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55101,7 +55352,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-10-16T14:26:40.750Z"
+                      default: "2026-10-18T14:14:44.199Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55143,7 +55394,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-10-16T14:26:40.750Z"
+                      default: "2026-10-18T14:14:44.199Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55185,7 +55436,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-10-16T14:26:40.750Z"
+                      default: "2026-10-18T14:14:44.199Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55295,7 +55546,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-16T14:26:32.701Z"
+                          default: "2026-10-18T14:14:36.440Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55303,7 +55554,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-16T14:26:32.701Z"
+                              default: "2026-10-18T14:14:36.441Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55373,7 +55624,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-16T14:26:32.701Z"
+                          default: "2026-10-18T14:14:36.440Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55381,7 +55632,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-16T14:26:32.701Z"
+                              default: "2026-10-18T14:14:36.441Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55564,7 +55815,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55572,7 +55823,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55642,7 +55893,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55650,7 +55901,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55751,7 +56002,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55759,7 +56010,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55829,7 +56080,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55837,7 +56088,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56034,7 +56285,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56042,7 +56293,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56112,7 +56363,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-16T14:26:32.701Z"
+                        default: "2026-10-18T14:14:36.440Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56120,7 +56371,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-16T14:26:32.701Z"
+                            default: "2026-10-18T14:14:36.441Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -67564,6 +67815,402 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\n\nconst item = await client.annotationQueues.retrieveItem({\n  annotationQueueId: '01HXXXXXXXXXXXXXXXXXXXXXXX',\n  itemId: 'item_01',\n});\n\nconsole.log(item.spanId);\n"
       security:
         - ApiKey: []
+  /v3/audit-log-destinations:
+    get:
+      tags:
+        - "Audit Log Destinations"
+      summary: "List audit log destinations"
+      description: "Returns the audit log destinations of the workspace, newest first, with cursor pagination."
+      operationId: "AuditLogDestinationList"
+      parameters:
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditLogDestinationsResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "list"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - List audit log destinations"
+          source: "curl --get 'https://my.orq.ai/v3/audit-log-destinations' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+        - lang: "python"
+          label: "Python - List audit log destinations"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\npage = client.audit_log_destinations.list(limit=25)\n\nfor destination in page.data:\n    print(destination.id, destination.display_name, destination.status)\n"
+        - lang: "typescript"
+          label: "Node.js - List audit log destinations"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst page = await client.auditLogDestinations.list({ limit: 25 });\n\nfor (const destination of page.data) {\n  console.log(destination.id, destination.displayName, destination.status);\n}\n"
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Create an audit log destination"
+      description: "Creates a signed webhook destination that receives every audit log event recorded in the workspace from this point on. The signing secret is returned once in this response and never again."
+      operationId: "AuditLogDestinationCreate"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAuditLogDestinationRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAuditLogDestinationResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "create"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Create an audit log destination"
+          source: "curl --request POST 'https://my.orq.ai/v3/audit-log-destinations' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Splunk HEC\",\n    \"url\": \"https://siem.example.com/orq/audit\"\n  }'\n"
+        - lang: "python"
+          label: "Python - Create an audit log destination"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\ncreated = client.audit_log_destinations.create(\n    display_name=\"Splunk HEC\",\n    url=\"https://siem.example.com/orq/audit\",\n)\n\nprint(created.destination.id, created.signing_secret)\n"
+        - lang: "typescript"
+          label: "Node.js - Create an audit log destination"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst created = await client.auditLogDestinations.create({\n  displayName: 'Splunk HEC',\n  url: 'https://siem.example.com/orq/audit',\n});\n\nconsole.log(created.destination.id, created.signingSecret);\n"
+      security:
+        - ApiKey: []
+  /v3/audit-log-destinations/{destination_id}:
+    get:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Retrieve an audit log destination"
+      description: "Retrieves an audit log destination by ID. The signing secret is never returned."
+      operationId: "AuditLogDestinationGet"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetAuditLogDestinationResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "get"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Retrieve an audit log destination"
+          source: "curl --get 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\"\n"
+        - lang: "python"
+          label: "Python - Retrieve an audit log destination"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nresult = client.audit_log_destinations.get(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n)\n\nprint(result.destination.url, result.destination.signing_secret_hint)\n"
+        - lang: "typescript"
+          label: "Node.js - Retrieve an audit log destination"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst result = await client.auditLogDestinations.get({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n});\n\nconsole.log(result.destination.url, result.destination.signingSecretHint);\n"
+      security:
+        - ApiKey: []
+    delete:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Delete an audit log destination"
+      description: "Deletes a destination and cancels its pending deliveries."
+      operationId: "AuditLogDestinationDelete"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAuditLogDestinationResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "delete"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Delete an audit log destination"
+          source: "curl --request DELETE 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\"\n"
+        - lang: "python"
+          label: "Python - Delete an audit log destination"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nclient.audit_log_destinations.delete(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n)\n"
+        - lang: "typescript"
+          label: "Node.js - Delete an audit log destination"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nawait client.auditLogDestinations.delete({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n});\n"
+      security:
+        - ApiKey: []
+    patch:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Update an audit log destination"
+      description: "Partially updates a destination. Set `status` to `AUDIT_LOG_DESTINATION_STATUS_PAUSED` to stop deliveries while retaining the backlog, and back to `AUDIT_LOG_DESTINATION_STATUS_ACTIVE` to drain it. The URL can only change while the destination is paused."
+      operationId: "AuditLogDestinationUpdate"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAuditLogDestinationRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateAuditLogDestinationResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "update"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Pause an audit log destination"
+          source: "curl --request PATCH 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"status\": \"AUDIT_LOG_DESTINATION_STATUS_PAUSED\" }'\n"
+        - lang: "python"
+          label: "Python - Pause an audit log destination"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nresult = client.audit_log_destinations.update(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n    status=\"AUDIT_LOG_DESTINATION_STATUS_PAUSED\",\n)\n\nprint(result.destination.status)\n"
+        - lang: "typescript"
+          label: "Node.js - Pause an audit log destination"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst result = await client.auditLogDestinations.update({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n  status: 'AUDIT_LOG_DESTINATION_STATUS_PAUSED',\n});\n\nconsole.log(result.destination.status);\n"
+      security:
+        - ApiKey: []
+  /v3/audit-log-destinations/{destination_id}/deliveries:
+    get:
+      tags:
+        - "Audit Log Destinations"
+      summary: "List deliveries"
+      description: "Returns the delivery history of a destination, newest first, optionally filtered by status."
+      operationId: "AuditLogDestinationListDeliveries"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          schema:
+            type: "string"
+        - name: "status"
+          in: "query"
+          schema:
+            type: "array"
+            items:
+              $ref: "#/components/schemas/AuditLogDeliveryStatus"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAuditLogDeliveriesResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "listDeliveries"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - List failed deliveries"
+          source: "curl --get 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000/deliveries' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\" \\\n  --data-urlencode 'status=AUDIT_LOG_DELIVERY_STATUS_FAILED' \\\n  --data-urlencode 'limit=25'\n"
+        - lang: "python"
+          label: "Python - List failed deliveries"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\npage = client.audit_log_destinations.list_deliveries(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n    status=[\"AUDIT_LOG_DELIVERY_STATUS_FAILED\"],\n    limit=25,\n)\n\nfor delivery in page.data:\n    print(delivery.event_id, delivery.last_status_code, delivery.last_error)\n"
+        - lang: "typescript"
+          label: "Node.js - List failed deliveries"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst page = await client.auditLogDestinations.listDeliveries({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n  status: ['AUDIT_LOG_DELIVERY_STATUS_FAILED'],\n  limit: 25,\n});\n\nfor (const delivery of page.data) {\n  console.log(delivery.eventId, delivery.lastStatusCode, delivery.lastError);\n}\n"
+      security:
+        - ApiKey: []
+  /v3/audit-log-destinations/{destination_id}/replay:
+    post:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Replay audit events"
+      description: "Queues a new delivery for every retained audit event recorded in the time window, up to 10,000 events per request. Replays keep the original event IDs and never extend event retention."
+      operationId: "AuditLogDestinationReplay"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplayAuditLogDeliveriesRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayAuditLogDeliveriesResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "replay"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Replay a day of events"
+          source: "curl --request POST 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000/replay' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"from\": \"2026-10-01T00:00:00Z\", \"to\": \"2026-10-02T00:00:00Z\" }'\n"
+        - lang: "python"
+          label: "Python - Replay a day of events"
+          source: "import os\nfrom datetime import datetime, timezone\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nresult = client.audit_log_destinations.replay(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n    from_=datetime(2026, 10, 1, tzinfo=timezone.utc),\n    to=datetime(2026, 10, 2, tzinfo=timezone.utc),\n)\n\nprint(result.replay_id, result.queued)\n"
+        - lang: "typescript"
+          label: "Node.js - Replay a day of events"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst result = await client.auditLogDestinations.replay({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n  from: new Date('2026-10-01T00:00:00Z'),\n  to: new Date('2026-10-02T00:00:00Z'),\n});\n\nconsole.log(result.replayId, result.queued);\n"
+      security:
+        - ApiKey: []
+  /v3/audit-log-destinations/{destination_id}/rotate-secret:
+    post:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Rotate the signing secret"
+      description: "Generates a new signing secret for the destination. Deliveries attempted after the rotation are signed with the new secret. The new secret is returned once in this response and never again."
+      operationId: "AuditLogDestinationRotateSecret"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateAuditLogDestinationSecretResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "rotateSecret"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Rotate the signing secret"
+          source: "curl --request POST 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000/rotate-secret' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\"\n"
+        - lang: "python"
+          label: "Python - Rotate the signing secret"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nrotated = client.audit_log_destinations.rotate_secret(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n)\n\nprint(rotated.signing_secret)\n"
+        - lang: "typescript"
+          label: "Node.js - Rotate the signing secret"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst rotated = await client.auditLogDestinations.rotateSecret({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n});\n\nconsole.log(rotated.signingSecret);\n"
+      security:
+        - ApiKey: []
+  /v3/audit-log-destinations/{destination_id}/test:
+    post:
+      tags:
+        - "Audit Log Destinations"
+      summary: "Send a test event"
+      description: "Sends a signed synthetic `audit_log.test` event to the destination synchronously and returns the receiver outcome. Test deliveries appear in the delivery history."
+      operationId: "AuditLogDestinationTest"
+      parameters:
+        - name: "destination_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestAuditLogDestinationResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "auditLogDestinations"
+      x-speakeasy-name-override: "test"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Send a test event"
+          source: "curl --request POST 'https://my.orq.ai/v3/audit-log-destinations/auditdest_01k7abcde00000000000000000/test' \\\n  --header \"Authorization: Bearer $ORQ_MANAGEMENT_KEY\"\n"
+        - lang: "python"
+          label: "Python - Send a test event"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_MANAGEMENT_KEY\"])\n\nresult = client.audit_log_destinations.test(\n    destination_id=\"auditdest_01k7abcde00000000000000000\",\n)\n\nprint(result.delivery.status, result.delivery.last_status_code)\n"
+        - lang: "typescript"
+          label: "Node.js - Send a test event"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_MANAGEMENT_KEY,\n});\n\nconst result = await client.auditLogDestinations.test({\n  destinationId: 'auditdest_01k7abcde00000000000000000',\n});\n\nconsole.log(result.delivery.status, result.delivery.lastStatusCode);\n"
+      security:
+        - ApiKey: []
   /v2/budgets:
     get:
       tags:
@@ -76921,7 +77568,7 @@ paths:
         - ApiKey: []
   /v3/websearch:
     post:
-      description: "Search with Exa, Ceramic, Linkup, Tavily, Serper, OpenAI, or Perplexity and return page URLs, titles, and descriptions in one response format. Authenticate with an API key that grants **websearch.execute** and send **Content-Type: application/json**.\n\n### Provider and credentials\n\nEach request uses the selected provider. Exa uses **auto** search, Linkup uses **standard** depth, Tavily uses **basic** depth, and Perplexity uses its standard Search API. OpenAI runs one forced **web_search** tool call on gpt-5.6-luna through the Responses API and returns the raw search results.\n\nCredentials are selected from the authenticated workspace. A configured provider integration takes precedence over ORQ-managed credentials: the default integration is used, or the first configured integration if no default is set. Configure BYOK in the workspace integrations settings. Invalid integration credentials cause an error.\n\n### Billing\n\nManaged searches use the same credits as the **AI Gateway** and charge the provider cost plus **US$0.001 per search** (US$1 per 1,000 searches). BYOK searches consume no ORQ credits and add no ORQ markup; the provider bills the integration owner directly.\n\nExa's published auto rate is **US$7 per 1,000 requests** for up to 10 results, or **US$8 per 1,000** including the ORQ markup. Exa charges use the actual cost reported by the provider.\n\nPerplexity's published Search API rate is **US$5 per 1,000 requests**. OpenAI web search costs **US$10 per 1,000 tool calls** plus the gpt-5.6-luna tokens of the Responses call, computed from the usage reported by OpenAI, so each search is typically US$0.012 to US$0.015 before the ORQ markup.\n\nA successful managed search is billable even if an output guardrail or output redaction failure prevents the results from being returned.\n\n### Policies and observability\n\nPII Redaction is the only supported request plugin. Workspace PII settings and matching guardrail rules also apply. Query redaction runs before input guardrails and the provider call; result redaction runs before output guardrails and the response.\n\nSearch spans and metrics record the provider, latency, result count, and cost. Use the **x-orq-trace-id** response header to find the trace."
+      description: "Search with Exa, Ceramic, Linkup, Tavily, Serper, OpenAI, Perplexity, or DeepSeek and return page URLs, titles, and descriptions in one response format. Authenticate with an API key that grants **websearch.execute** and send **Content-Type: application/json**.\n\n### Provider and credentials\n\nEach request uses the selected provider. Exa uses **auto** search, Linkup uses **standard** depth, Tavily uses **basic** depth, and Perplexity and DeepSeek use their standard Search APIs. DeepSeek accepts queries of at most 128 characters. OpenAI runs one forced **web_search** tool call on gpt-5.6-luna through the Responses API and returns the raw search results.\n\nCredentials are selected from the authenticated workspace. A configured provider integration takes precedence over ORQ-managed credentials: the default integration is used, or the first configured integration if no default is set. Configure BYOK in the workspace integrations settings. Invalid integration credentials cause an error.\n\n### Billing\n\nManaged searches use the same credits as the **AI Gateway** and charge the provider cost plus **US$0.001 per search** (US$1 per 1,000 searches). BYOK searches consume no ORQ credits and add no ORQ markup; the provider bills the integration owner directly.\n\nExa's published auto rate is **US$7 per 1,000 requests** for up to 10 results, or **US$8 per 1,000** including the ORQ markup. Exa charges use the actual cost reported by the provider.\n\nPerplexity's published Search API rate is **US$5 per 1,000 requests** and DeepSeek's is **US$0.75 per 1,000 requests**. OpenAI web search costs **US$10 per 1,000 tool calls** plus the gpt-5.6-luna tokens of the Responses call, computed from the usage reported by OpenAI, so each search is typically US$0.012 to US$0.015 before the ORQ markup.\n\nA successful managed search is billable even if an output guardrail or output redaction failure prevents the results from being returned.\n\n### Policies and observability\n\nPII Redaction is the only supported request plugin. Workspace PII settings and matching guardrail rules also apply. Query redaction runs before input guardrails and the provider call; result redaction runs before output guardrails and the response.\n\nSearch spans and metrics record the provider, latency, result count, and cost. Use the **x-orq-trace-id** response header to find the trace."
       operationId: "search-web"
       requestBody:
         content:
@@ -77026,9 +77673,10 @@ paths:
                     - "serper"
                     - "openai"
                     - "perplexity"
+                    - "deepseek"
                   type: "string"
                 query:
-                  description: "Search text. Must not be blank or exceed 10,000 characters. Ceramic accepts at most 50 words."
+                  description: "Search text. Must not be blank or exceed 10,000 characters. Ceramic accepts at most 50 words and DeepSeek at most 128 characters."
                   maxLength: 10000
                   minLength: 1
                   type: "string"
@@ -77103,6 +77751,7 @@ paths:
                           - "serper"
                           - "openai"
                           - "perplexity"
+                          - "deepseek"
                         type: "string"
                       query:
                         description: "Query sent to the provider after any required PII redaction."
@@ -77329,6 +77978,8 @@ tags:
     description: "Alerts evaluate a telemetry metric on a fixed interval and fire notifications through notifiers when the value breaches a threshold. Each breach opens a trigger that tracks the incident until the value recovers."
   - name: "Annotation Queues"
     description: "Annotation queues collect spans for human review."
+  - name: "Audit Log Destinations"
+    description: "Signed webhook destinations that receive workspace audit log events, for SIEM and compliance pipelines."
   - name: "Budgets"
     description: "Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, API key, provider, and model. Every applicable budget is enforced, and the most restrictive limit applies per dimension."
   - name: "Environments"
