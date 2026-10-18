@@ -131,6 +131,37 @@ controls on surface changes, whichever side they originate from.
 - **Changed:** `orq classify` is hidden. It is deprecated in favour of
   `orq decisions` and still works if you call it.
 
+## [11.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.6.0) — 2026-10-18
+
+- **Changed: `orq connect claude otel` configures native
+  OpenTelemetry metrics and logs instead of installing trace hooks.** It writes
+  Claude's user settings using the resolved server's `/v2/otel` endpoint and a
+  configured durable API key when available. `--status` and `orq disconnect
+  claude otel` now inspect and remove the native settings; existing hooks and
+  plugins are preserved. To remove a trace plugin installed by an older CLI,
+  run `claude plugin uninstall orq-trace@orq-claude-plugin`. Re-run `orq
+  connect claude otel` to configure native telemetry. `orq launch claude
+  --otel` continues to provide session tracing. Disconnect stops native export
+  and retains recovery state if the collector endpoint or authorization header
+  was edited, so it cannot restore a saved credential to a different server.
+  Updating native settings also preserves unrelated JSON number precision.
+
+- **Fixed: `orq setup --server <host>` now makes that host the default,** as
+  `orq server set <host>` would. Setup signed in, minted the gateway key and
+  wired agents against the typed host, but never saved it, so the next
+  `orq launch` or `orq connect` without `--server` went back to the hosted
+  service and missed that login. The host is saved only when setup completes.
+  When a profile is in force, its existing server binding is also updated so
+  profile precedence cannot route the next bare command to an older host. A
+  host from `ORQ_SERVER` is not saved, since it already applies on every run
+  that has it. The success screen explains that `orq server clear` clears the
+  global default, while the active profile keeps its own server binding. This
+  also applies to successful capability-only setup, and the saved-server notice
+  remains visible under `--no-input`.
+  `orq connect claude mcp` also uses the resolved server, so a persisted MCP
+  entry no longer points at the hosted service when the configured default is
+  self-hosted.
+
 ## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
 
 - **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
