@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.0) — 2026-10-18
+
 - **Added:** the generated commands catch up with the orq API after five weeks
   without a stable schema: `orq decisions`, `orq websearch`, `orq hub`,
   `orq model-fusions`, `orq sessions`, `orq telemetry`, `orq views`,
