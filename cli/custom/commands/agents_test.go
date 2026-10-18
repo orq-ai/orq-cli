@@ -1766,3 +1766,16 @@ func TestStaleEmbeddedKeyNeedsBothSides(t *testing.T) {
 		t.Error("codex references ORQ_API_KEY rather than embedding it, so it can never be stale")
 	}
 }
+
+func TestWriteClaudeNativeOtelCreatesMissingSettingsDirectory(t *testing.T) {
+	settings := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	if err := writeClaudeNativeOtel(settings, claudeNativeOtelEnv("https://self.example/v2/otel", "sk-orq-test")); err != nil {
+		t.Fatalf("write native OTel settings without an existing Claude directory: %v", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("settings file was not created: %v", err)
+	}
+	if _, err := os.Stat(claudeOtelOwnershipPath(settings)); err != nil {
+		t.Fatalf("ownership snapshot was not created: %v", err)
+	}
+}

@@ -100,7 +100,7 @@ func agentReceives(spec agentSpec, caps []string) bool {
 	return (hasCap(caps, capGateway) && spec.writeProvider != nil) ||
 		(hasCap(caps, capSkills) && skills.Receives(spec.ID)) ||
 		(hasCap(caps, capMCP) && spec.writeMCP != nil) ||
-		(hasCap(caps, capOtel) && spec.installOtel != nil)
+		(hasCap(caps, capOtel) && spec.writeOtel != nil)
 }
 
 // agentsToConnect is the agent set a bare command writes to.
@@ -189,9 +189,8 @@ func credentialFreeCaps(caps []string) []string {
 	return out
 }
 
-// capOtel joins them: the install is two `claude plugin` commands and the
-// plugin resolves ORQ_API_KEY from the environment at trace time, so nothing
-// this command writes for it needs a key either.
+// capOtel joins them: the settings write is local file I/O and remains useful
+// offline even when no durable credential is available.
 func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP || c == capOtel }
 
 // capsNeedCredential reports whether any requested capability talks to orq.
@@ -200,9 +199,9 @@ func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP || 
 // front of an operation that is pure file I/O — and makes the offline install
 // the spec promises impossible. An MCP entry is credential-free for a different
 // reason: it is a URL and nothing else, and the agent logs in to that server
-// itself over OAuth, so nothing this command writes needs a key either. Tracing
-// installs a plugin and writes no key at all: the plugin reads ORQ_API_KEY from
-// the environment at session time, which is the file `orq setup` already wrote.
+// itself over OAuth, so nothing this command writes needs a key either. Native
+// telemetry can also write its non-secret exporter settings without a key, then
+// warns when no durable auth value can be configured.
 func capsNeedCredential(caps []string) bool {
 	for _, c := range caps {
 		if !credentialFreeCap(c) {
@@ -280,8 +279,8 @@ func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
 			rep.info("%-8s no MCP support in this agent — nothing to configure", id)
 			unreachable++
 		}
-		if wantOtel && spec.installOtel == nil {
-			rep.info("%-8s no plugin mechanism in this agent to trace sessions with — nothing to configure", id)
+		if wantOtel && spec.writeOtel == nil {
+			rep.info("%-8s no native OTel settings for this agent — nothing to configure", id)
 			unreachable++
 		}
 		// Each count above implies its capability was requested, so an
@@ -317,10 +316,10 @@ Capabilities:
             session can reach your workspace's tools. The entry is a URL and
             nothing else: the agent logs in to the server itself, over OAuth, so
             this needs no credential either.
-  otel      Installs the orq tracing plugin, so every session the agent runs is
-            captured as a trace in your workspace, not only the ones started
-            through orq launch. Claude Code only for now. The plugin posts with
-            the ORQ_API_KEY your shell exports, so nothing writes a key here.
+  otel      Configures Claude Code's native metrics and logs exporters to send
+            telemetry to your resolved orq server. Claude Code only for now.
+            A durable credential is written into its user settings when one is
+            available; without one, exporter settings are saved with a warning.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
 instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
@@ -770,133 +769,122 @@ func envFileExports(sh shellSetup) bool {
 	return profileSourcesEnvFile(sh)
 }
 
-// otelResult is one agent's tracing outcome for `-o json`. Path is the file the
-// agent records the install in, so a script can read the same place `--status`
-// reads rather than shelling out to the agent itself.
+// otelResult is one agent's native telemetry outcome for `-o json`. Path is the
+// settings file the agent reads, which is also what `--status` inspects.
 type otelResult struct {
 	Agent string `json:"agent"`
 	Path  string `json:"path,omitempty"`
 	Error string `json:"error,omitempty"`
-	// Already separates a run that installed from a run that found the plugin
-	// there, which the human view says as "(already installed)".
+	// Already reports whether native settings already matched this server.
 	Already bool `json:"already_installed,omitempty"`
-	// ShellExportsKey is false for an install that will not post: the plugin
-	// takes ORQ_API_KEY from the shell, so a script needs the same warning the
-	// human view prints rather than a bare path that reads as finished.
+	// ShellExportsKey reports the shell export separately from native auth,
+	// which may use a durable saved credential.
 	ShellExportsKey bool `json:"shell_exports_key"`
 	// Skipped is the entry that was never attempted, as opposed to Error's
 	// entry that was attempted and failed.
 	Skipped string `json:"skipped,omitempty"`
 }
 
-// connectOtel installs the agent's tracing plugin so sessions the user starts
-// on their own, not only the ones `orq launch` starts, land in the workspace.
-// Nothing here writes a credential: the plugin resolves ORQ_API_KEY from the
-// environment, which is why an install with no key in the shell says so instead
-// of looking finished.
+// connectOtel configures Claude Code's native metrics and logs exporters. It
+// writes only the user's settings file and never invokes Claude's plugin CLI.
 func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []otelResult, failed bool) {
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
 			continue
 		}
-		if spec.installOtel == nil || spec.otelConfig == nil {
-			rep.info("%-8s %-9s no plugin mechanism in this agent to trace sessions with, nothing to configure", id, capOtel)
-			results = append(results, otelResult{Agent: id, Skipped: "no plugin mechanism in this agent to trace sessions with"})
+		if spec.writeOtel == nil || spec.otelConfig == nil {
+			rep.info("%-8s %-9s native OTel settings are not supported for this agent", id, capOtel)
+			results = append(results, otelResult{Agent: id, Skipped: "native OTel settings are not supported for this agent"})
 			continue
 		}
-		// Global only: a plugin installs per user, and the agent keeps no
-		// project-level equivalent of its enabled-plugin list.
 		path, err := spec.otelConfig(true)
-		switch {
-		case err != nil:
+		if err != nil || path == "" {
+			if err == nil {
+				err = errors.New("OTel settings path resolved empty")
+			}
 			rep.fail("%-8s %-9s %v", id, capOtel, err)
 			results = append(results, otelResult{Agent: id, Error: err.Error()})
 			failed = true
 			continue
-		case path == "":
-			rep.fail("%-8s %-9s no config path for this agent", id, capOtel)
-			results = append(results, otelResult{Agent: id, Error: "otel config path resolved empty"})
+		}
+		// Validate the document before deciding whether to update it. A host or
+		// auth mismatch is repairable; unreadable JSON is not safe to overwrite.
+		if _, err := readJSONConfig(path); err != nil {
+			rep.fail("%-8s %-9s %v", id, capOtel, err)
+			results = append(results, otelResult{Agent: id, Error: err.Error()})
 			failed = true
 			continue
 		}
-		// The read has to work before anything is installed: without it the
-		// run can neither skip an existing install nor confirm a new one, and
-		// the same file read three ways by connect, --status and disconnect
-		// would give three verdicts on one machine.
-		already := false
-		if spec.otelPresent != nil {
-			on, perr := spec.otelPresent(path)
-			if perr != nil {
-				rep.fail("%-8s %-9s %v", id, capOtel, perr)
-				results = append(results, otelResult{Agent: id, Error: perr.Error()})
-				failed = true
-				continue
-			}
-			already = on
+		endpoint := launch.OTLPEndpoint(launch.APIBaseFor(os.Getenv))
+		already, _ := spec.otelPresent(path)
+		key, keyErr := nativeOtelCredential(opts)
+		if keyErr != nil {
+			rep.fail("%-8s %-9s could not read the saved API-key login: %v", id, capOtel, keyErr)
+			results = append(results, otelResult{Agent: id, Error: keyErr.Error()})
+			failed = true
+			continue
 		}
-		if !already {
-			ierr := spec.installOtel()
-			switch {
-			case errors.Is(ierr, errAgentNotInstalled):
-				// Same shape as an agent that has no plugin mechanism at all:
-				// there is nothing to configure, and failing the run would mean
-				// a bare `orq connect` could not finish on a machine that
-				// merely has a leftover config directory.
-				rep.info("%-8s %-9s %v, nothing to configure", id, capOtel, ierr)
-				results = append(results, otelResult{Agent: id, Skipped: ierr.Error()})
-				continue
-			case ierr != nil:
-				rep.fail("%-8s %-9s %v", id, capOtel, ierr)
-				results = append(results, otelResult{Agent: id, Error: ierr.Error()})
-				failed = true
-				continue
-			}
-		}
-		// The installer's exit code is not the install: the agent writes the
-		// entry itself, and a plugin manager that exits 0 having recorded
-		// nothing this code can read leaves `--status` contradicting the ✓ that
-		// the same run just printed. Reading it back is the only evidence.
-		if !already && spec.otelPresent != nil {
-			on, perr := spec.otelPresent(path)
-			switch {
-			case perr != nil:
-				rep.fail("%-8s %-9s installed, but reading it back failed: %v", id, capOtel, perr)
-				results = append(results, otelResult{Agent: id, Error: perr.Error()})
-				failed = true
-				continue
-			case !on:
-				rep.fail("%-8s %-9s the install reported success, but %s does not record %s as enabled", id, capOtel, tilde(path), launch.TracePluginRef)
-				results = append(results, otelResult{Agent: id, Error: "the install left no enabled plugin in " + path})
-				failed = true
-				continue
-			}
+		values := claudeNativeOtelEnv(endpoint, key)
+		if err := spec.writeOtel(path, values); err != nil {
+			rep.fail("%-8s %-9s %v", id, capOtel, err)
+			results = append(results, otelResult{Agent: id, Error: err.Error()})
+			failed = true
+			continue
 		}
 		if !opts.finalScreen {
 			if already {
-				rep.ok("%-8s %-9s %s  (already installed)", id, capOtel, tilde(path))
+				rep.ok("%-8s %-9s %s  (already configured)", id, capOtel, tilde(path))
 			} else {
 				rep.ok("%-8s %-9s %s", id, capOtel, tilde(path))
 			}
 		}
-		// Installed but inert: the plugin posts with the ORQ_API_KEY the user's
-		// shell exports, which is a different question from the key this process
-		// resolved from the saved login, and silence here reads as a finished
-		// wire. The shell is asked the same way `orq setup` and doctor ask it.
-		sh := detectShell(viper.GetString("config-directory"))
-		exports := envFileExports(sh)
-		if !exports {
-			// An unrecognised shell has no profile to name, only a line to run,
-			// which is how `orq setup` words the same remedy.
-			where := "source it from " + tilde(sh.Profile)
-			if sh.Profile == "" {
-				where = "run '" + sh.displayLine() + "' in your shell"
-			}
-			rep.info("%-8s %-9s the plugin posts with the ORQ_API_KEY your shell exports, and orq cannot see where yours would come from: run 'orq setup' to write %s and %s. Ignore this if you export the key yourself", id, capOtel, tilde(sh.EnvFile), where)
+		if key == "" {
+			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you run 'orq connect claude otel' with a configured credential", id, capOtel)
 		}
-		results = append(results, otelResult{Agent: id, Path: path, Already: already, ShellExportsKey: exports})
+		sh := detectShell(viper.GetString("config-directory"))
+		results = append(results, otelResult{
+			Agent: id, Path: path, Already: already, ShellExportsKey: envFileExports(sh),
+		})
 	}
 	return results, failed
+}
+
+// nativeOtelCredential selects a durable credential suitable for a persistent
+// Claude settings file. PreRun's injected short-lived browser token is excluded.
+func nativeOtelCredential(opts *setupOptions) (string, error) {
+	if key := strings.TrimSpace(opts.apiKey); key != "" {
+		if !auth.IsSessionMinted(key) {
+			return key, nil
+		}
+	}
+	if profileInForce() {
+		key, _ := ConfiguredCredential()
+		if key != "" && !auth.IsSessionMinted(key) {
+			return key, nil
+		}
+		return "", nil
+	}
+	if key, _ := ConfiguredCredential(); key != "" {
+		if !auth.IsSessionMinted(key) {
+			return key, nil
+		}
+	}
+	if login, err := auth.ReadAPIKeyLogin(); err == nil && login != nil {
+		if key := strings.TrimSpace(login.APIKey); key != "" {
+			if !auth.IsSessionMinted(key) {
+				return key, nil
+			}
+		}
+	} else if err != nil {
+		return "", err
+	}
+	key, _ := savedAPIKey()
+	key = strings.TrimSpace(key)
+	if auth.IsSessionMinted(key) {
+		return "", nil
+	}
+	return key, nil
 }
 
 // mcpEntryPresent answers launch's "is this agent already wired?" from the
@@ -986,8 +974,8 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 		}
 		if hasCap(caps, capOtel) {
 			switch {
-			case spec.installOtel == nil || spec.otelConfig == nil:
-				rep.info("%-8s otel      no plugin mechanism in this agent to trace sessions with", id)
+			case spec.writeOtel == nil || spec.otelConfig == nil:
+				rep.info("%-8s otel      native OTel settings are not supported for this agent", id)
 			default:
 				path, err := spec.otelConfig(true)
 				switch {
@@ -999,14 +987,12 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 				case path == "":
 					rep.warn("%-8s otel      no config path for this agent", id)
 				default:
-					// The preview says what the run would do, and for an
-					// install that is already there the run installs nothing.
-					what := "installs " + launch.TracePluginRef
+					what := "writes Claude native OTel exporter settings"
 					if spec.otelPresent != nil {
 						if on, perr := spec.otelPresent(path); perr != nil {
-							what = "cannot read this file, so the run would report that instead"
+							what = "native OTel check: " + perr.Error()
 						} else if on {
-							what = launch.TracePluginRef + " is already installed, so nothing would change"
+							what = "native OTel settings are already configured for this server"
 						}
 					}
 					rep.info("%-8s otel      %s  (%s)", id, tilde(path), what)
@@ -1099,7 +1085,7 @@ func NewDisconnectCommand() *cobra.Command {
 			`wrote, and nothing else: the ` + "`gateway`" + ` provider entries in your agents' own ` +
 			`config files, the ` + "`skills`" + ` this CLI installed into your agents' skills ` +
 			`directories, the ` + "`mcp`" + ` server entry named ` + "`" + launch.MCPServerName + "`" + `, ` +
-			`and the ` + "`otel`" + ` tracing plugin. ` +
+			`and Claude Code's native ` + "`otel`" + ` exporter settings. ` +
 			`Only paths this CLI recorded are ever touched — a skill you installed ` +
 			`yourself, or one of ours you have since replaced, is reported and left alone.
 
@@ -1277,7 +1263,7 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 				case err != nil:
 					// Listed, so a disconnect reaches the read and reports it.
 					// Left out, an unreadable config exits the run clean over a
-					// plugin that may well still be enabled and tracing.
+					// possibly active exporter.
 					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "warn"})
 				case on:
 					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "pass"})
@@ -1484,9 +1470,8 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 				removed, err := remover(path)
 				switch {
 				case errors.Is(err, errAgentNotInstalled):
-					// Same reading as the install side: the agent is gone, so
-					// there is no plugin manager to remove anything with, and
-					// that is not a failed disconnect.
+					// The agent is gone, so there is no executable needed to
+					// complete this removal; that is not a failed disconnect.
 					rep.info("%-8s %-9s %v, nothing to remove", id, cap, err)
 					r.Skipped = err.Error()
 				case err != nil:
@@ -1522,11 +1507,6 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		}
 		if hasCap(caps, capOtel) {
 			remove(capOtel, spec.otelConfig, spec.removeOtel)
-			if slices.Contains(removedFrom, capOtel) {
-				// The marketplace stays: the other orq plugins are installed
-				// from it, so removing it here would uninstall them too.
-				rep.info("%-8s %-9s the %s marketplace is left in place for the other orq plugins", id, capOtel, launch.TraceMarketplace)
-			}
 		}
 		r.Removed = removedFrom
 		rows = append(rows, r)
@@ -1884,8 +1864,8 @@ func applyMCPResults(results []agentResult, mcp []mcpResult) []agentResult {
 }
 
 // applyOtelResults preserves the gateway and MCP outcomes while adding the
-// tracing install to setup's final screen and setup_complete verdict. A skip
-// for an agent without a plugin mechanism is informational, like connect.
+// native telemetry write to setup's final screen and setup_complete verdict.
+// A skip for an unsupported agent is informational, like connect.
 func applyOtelResults(results []agentResult, otel []otelResult) []agentResult {
 	for _, o := range otel {
 		if o.Error == "" && o.Path == "" {

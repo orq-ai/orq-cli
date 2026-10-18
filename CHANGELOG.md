@@ -117,6 +117,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: `orq connect claude otel` configures native
+  OpenTelemetry metrics and logs instead of installing trace hooks.** It writes
+  Claude's user settings using the resolved server's `/v2/otel` endpoint and a
+  configured durable API key when available. `--status` and `orq disconnect
+  claude otel` now inspect and remove the native settings; existing hooks and
+  plugins are preserved. To remove a trace plugin installed by an older CLI,
+  run `claude plugin uninstall orq-trace@orq-claude-plugin`. Re-run `orq
+  connect claude otel` to configure native telemetry. `orq launch claude
+  --otel` continues to provide session tracing.
+
 - **Fixed: `orq setup --server <host>` now makes that host the default,** as
   `orq server set <host>` would. Setup signed in, minted the gateway key and
   wired agents against the typed host, but never saved it, so the next

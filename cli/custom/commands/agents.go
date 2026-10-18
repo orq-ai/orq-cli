@@ -1,22 +1,19 @@
 package commands
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 	"orq/cli/custom/skills"
 
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 )
@@ -71,17 +68,13 @@ type agentSpec struct {
 	// credential, so the agent logs in to the server itself; one string per spec means
 	// connect and doctor cannot drift when an agent renames its subcommand.
 	mcpLogin string
-	// otelConfig returns the file recording which plugins the agent has enabled; nil when the agent cannot be instrumented.
+	// otelConfig returns the agent's machine-wide settings file; nil when the agent cannot be instrumented.
 	otelConfig func(global bool) (string, error)
-	// installOtel installs and enables the orq-trace plugin through the agent's own CLI. No credential
-	// argument, for the same reason writeMCP has none: the plugin resolves ORQ_API_KEY from the
-	// environment ~/.orq/env exports, so no key reaches the agent's config.
-	installOtel func() error
-	// otelPresent is installOtel's read-side pair; required whenever the installer is set. It
-	// returns an error rather than false when the config cannot be read, because "nothing is
-	// installed" and "I could not look" are different answers to a disconnect.
+	// writeOtel writes Claude's native exporter environment into its settings file.
+	writeOtel func(path string, env map[string]string) error
+	// otelPresent recognizes a sidecar-owned native Orq endpoint and its exporter settings.
 	otelPresent func(path string) (bool, error)
-	// removeOtel is installOtel's inverse; required whenever the installer is set.
+	// removeOtel restores only native settings still matching the sidecar's last write.
 	removeOtel func(path string) (bool, error)
 }
 
@@ -104,13 +97,12 @@ func agentRegistry() []agentSpec {
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 			mcpLogin:   "run /mcp in Claude Code, or 'claude mcp login " + launch.MCPServerName + "'",
-			// claude is the only agent with a plugin mechanism to install the
-			// trace hooks into, the same reason it is the only Traceable agent
-			// in the launcher.
-			otelConfig:  claudeSettingsPath(),
-			installOtel: installClaudeTracePlugin,
-			otelPresent: claudeTracePluginState,
-			removeOtel:  removeClaudeTracePlugin,
+			otelConfig: claudeSettingsPath(),
+			writeOtel:  writeClaudeNativeOtel,
+			otelPresent: func(path string) (bool, error) {
+				return claudeNativeOtelState(path, launch.OTLPEndpoint(launch.APIBaseFor(os.Getenv)))
+			},
+			removeOtel: removeClaudeNativeOtel,
 		},
 		{
 			ID:    "codex",
@@ -268,10 +260,9 @@ func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error
 	}
 }
 
-// claudeSettingsPath is where claude records the plugins it has enabled: under
-// $CLAUDE_CONFIG_DIR when set, ~/.claude otherwise, the same order claude
-// resolves it. Global only, both because a plugin installs per user and
-// because claude keeps no project equivalent of enabledPlugins.
+// claudeSettingsPath is Claude Code's user settings file: under
+// $CLAUDE_CONFIG_DIR when set, ~/.claude otherwise, the same order Claude
+// resolves it. Native telemetry is machine-wide, with no project-level write.
 func claudeSettingsPath() func(bool) (string, error) {
 	return func(bool) (string, error) {
 		if dir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); dir != "" {
@@ -285,105 +276,294 @@ func claudeSettingsPath() func(bool) (string, error) {
 	}
 }
 
-// agentCommandTimeout bounds the install: the marketplace step clones a
-// repository, which claude itself bounds at 120s, so a shorter limit here would
-// cut off a clone that was going to succeed.
-const agentCommandTimeout = 3 * time.Minute
+var claudeOtelSettings = map[string]string{
+	"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+	"OTEL_METRICS_EXPORTER":        "otlp",
+	"OTEL_LOGS_EXPORTER":           "otlp",
+	"OTEL_TRACES_EXPORTER":         "none",
+	"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
+}
 
-// runAgentCommand is the seam tests replace so no test invokes a coding agent,
-// in the shape runOrqiCommand already established. Child output goes to stderr:
-// it is the agent CLI's own progress, while stdout carries orq's own output.
-var runAgentCommand = realRunAgentCommand
+// claudeOtelOwnership records only the env fields connect owns, so disconnect
+// can restore their exact prior JSON values without relying on the generic
+// settings backup (which may have been created by another command).
+type claudeOtelOwnership struct {
+	Version  int                        `json:"version"`
+	Original map[string]json.RawMessage `json:"original"`
+	Written  map[string]*string         `json:"written"`
+}
 
-func realRunAgentCommand(name string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), agentCommandTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
-	// The CLI puts the saved login in its own environment (installSessionPreRun),
-	// and a plugin manager has no use for it, so the child runs without it, as
-	// runOrqiCommand already does.
-	cmd.Env = withoutOrqCredentials(os.Environ())
-	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
-	if err := cmd.Run(); err != nil {
-		// A killed child reports "signal: killed" and says nothing about why,
-		// which reads as the agent crashing rather than as orq's own deadline.
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("%s did not finish within %s", name, agentCommandTimeout)
+func claudeOtelOwnershipPath(path string) string { return path + ".orq-otel.json" }
+
+func readClaudeOtelOwnership(path string) (*claudeOtelOwnership, []byte, error) {
+	raw, err := os.ReadFile(claudeOtelOwnershipPath(path))
+	if err != nil {
+		return nil, nil, err
+	}
+	var ownership claudeOtelOwnership
+	if err := json.Unmarshal(raw, &ownership); err != nil {
+		return nil, nil, fmt.Errorf("invalid native OTel ownership file: %w", err)
+	}
+	if ownership.Version != 1 || ownership.Original == nil || ownership.Written == nil {
+		return nil, nil, errors.New("invalid native OTel ownership file")
+	}
+	return &ownership, raw, nil
+}
+
+func writeClaudeOtelOwnership(path string, ownership *claudeOtelOwnership) error {
+	raw, err := json.MarshalIndent(ownership, "", "  ")
+	if err != nil {
+		return err
+	}
+	return auth.WriteSecretFile(claudeOtelOwnershipPath(path), raw)
+}
+
+func claudeNativeOtelEnv(endpoint, apiKey string) map[string]string {
+	env := make(map[string]string, len(claudeOtelSettings)+2)
+	for key, value := range claudeOtelSettings {
+		env[key] = value
+	}
+	env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
+	if apiKey != "" {
+		env["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer " + apiKey
+	}
+	return env
+}
+
+func writeClaudeNativeOtel(path string, values map[string]string) error {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return err
+	}
+	env, err := claudeSettingsEnv(cfg)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if env == nil {
+		env = map[string]any{}
+		cfg["env"] = env
+	}
+	if conflict := claudeOtelConflict(cfg, env); conflict != nil {
+		return fmt.Errorf("%s: %w", path, conflict)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	ownership, oldOwnership, ownershipErr := readClaudeOtelOwnership(path)
+	if ownershipErr != nil && !errors.Is(ownershipErr, os.ErrNotExist) {
+		return fmt.Errorf("%s: %w", claudeOtelOwnershipPath(path), ownershipErr)
+	}
+	if ownership == nil {
+		ownership = &claudeOtelOwnership{Version: 1, Original: map[string]json.RawMessage{}}
+		for _, key := range claudeOtelManagedKeys() {
+			if raw, exists := env[key]; exists {
+				encoded, marshalErr := json.Marshal(raw)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				ownership.Original[key] = encoded
+			}
+		}
+	} else if key := claudeOtelOwnershipChangedKey(ownership, env); key != "" {
+		return fmt.Errorf("%s was changed after Orq connected; run 'orq disconnect claude otel' before reconnecting", key)
+	}
+	if ownership.Written == nil {
+		ownership.Written = map[string]*string{}
+	}
+	for _, key := range claudeOtelManagedKeys() {
+		value, exists := values[key]
+		if exists && value != "" {
+			env[key] = value
+			valueCopy := value
+			ownership.Written[key] = &valueCopy
+		} else {
+			delete(env, key)
+			ownership.Written[key] = nil
+		}
+	}
+	if err := writeClaudeOtelOwnership(path, ownership); err != nil {
+		return err
+	}
+	if err := writeJSONConfig(path, cfg); err != nil {
+		if oldOwnership == nil {
+			_ = os.Remove(claudeOtelOwnershipPath(path))
+		} else {
+			_ = auth.WriteSecretFile(claudeOtelOwnershipPath(path), oldOwnership)
 		}
 		return err
 	}
 	return nil
 }
 
-// errAgentNotInstalled marks the one failure that is not this machine's problem
-// to report: the agent's own binary is absent, so its plugin manager cannot be
-// reached. An agent is detected from the config directory it left behind, which
-// outlives an uninstall, so a bare `orq connect` meets this on any machine that
-// once had the agent. The caller reports it as a capability the agent cannot
-// receive, not as a failed wire.
-var errAgentNotInstalled = errors.New("the agent's own binary is not installed")
+func claudeOtelManagedKeys() []string {
+	keys := make([]string, 0, len(claudeOtelSettings)+2)
+	for key := range claudeOtelSettings {
+		keys = append(keys, key)
+	}
+	keys = append(keys, "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS")
+	sort.Strings(keys)
+	return keys
+}
 
-// installClaudeTracePlugin installs the published orq-trace plugin rather than
-// unpacking the copy this binary embeds: an installed plugin updates with
-// `claude plugin update`, and a directory orq wrote into ~/.claude would be a
-// second, silently stale copy of something claude already knows how to manage.
-//
-// Both steps are idempotent and exit 0 when the marketplace or the plugin is
-// already there, so a rerun repairs a half-finished install instead of
-// refusing one.
-func installClaudeTracePlugin() error {
-	if _, err := lookPath("claude"); err != nil {
-		return fmt.Errorf("claude is not on PATH, so its plugin cannot be installed: %w", errAgentNotInstalled)
+func claudeOtelOwnershipChangedKey(ownership *claudeOtelOwnership, env map[string]any) string {
+	for _, key := range claudeOtelManagedKeys() {
+		want, owned := ownership.Written[key]
+		if !owned {
+			continue
+		}
+		current, exists := env[key]
+		if exists != (want != nil) {
+			return key
+		}
+		currentEncoded, _ := json.Marshal(current)
+		wantEncoded, _ := json.Marshal(want)
+		if !bytes.Equal(currentEncoded, wantEncoded) {
+			return key
+		}
 	}
-	if err := runAgentCommand("claude", "plugin", "marketplace", "add", launch.TraceMarketplaceRepo); err != nil {
-		return fmt.Errorf("adding the %s marketplace: %w", launch.TraceMarketplace, err)
+	return ""
+}
+
+func claudeSettingsEnv(cfg map[string]any) (map[string]any, error) {
+	value, exists := cfg["env"]
+	if !exists {
+		return nil, nil
 	}
-	if err := runAgentCommand("claude", "plugin", "install", launch.TracePluginRef); err != nil {
-		return fmt.Errorf("installing %s: %w", launch.TracePluginRef, err)
+	env, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("the env setting is not an object; left untouched")
+	}
+	return env, nil
+}
+
+func claudeOtelConflict(cfg map[string]any, env map[string]any) error {
+	if raw, exists := cfg["otelHeadersHelper"]; exists {
+		helper, ok := raw.(string)
+		if !ok || strings.TrimSpace(helper) != "" {
+			return errors.New("otelHeadersHelper may override Orq's Authorization header; remove it before connecting")
+		}
+	}
+	for key, raw := range env {
+		if key == "OTEL_EXPORTER_OTLP_ENDPOINT" || key == "OTEL_EXPORTER_OTLP_HEADERS" {
+			continue
+		}
+		if !strings.HasPrefix(key, "OTEL_") || (!strings.Contains(key, "ENDPOINT") && !strings.Contains(key, "HEADERS")) {
+			continue
+		}
+		if value, ok := raw.(string); ok && strings.TrimSpace(value) != "" {
+			return fmt.Errorf("%s overrides the native Orq exporter endpoint or credentials; remove it before connecting", key)
+		}
 	}
 	return nil
 }
 
-// claudeTracePluginState reads the install back from settings.json. The value
-// has to be true, not merely present: claude leaves the key behind set to false
-// when the plugin is disabled, and a disabled plugin traces nothing. A missing
-// file reads as not installed; a file that cannot be read or parsed is returned
-// as the error it is, because "nothing to remove" and "I could not look" are
-// different answers to `orq disconnect`.
-func claudeTracePluginState(path string) (bool, error) {
+func claudeNativeOtelState(path, endpoint string) (bool, error) {
 	cfg, err := readJSONConfig(path)
 	if err != nil {
-		// readJSONConfig already names the file it could not read.
 		return false, err
 	}
-	enabled, _ := cfg["enabledPlugins"].(map[string]any)
-	on, _ := enabled[launch.TracePluginRef].(bool)
-	return on, nil
-}
-
-// removeClaudeTracePlugin uninstalls the plugin and leaves the marketplace
-// entry alone: it is shared with the other orq plugins, and removing it would
-// uninstall them by a side effect nobody asked for.
-//
-// The presence check comes first because `claude plugin uninstall` exits 1 when
-// the plugin is not installed, which would report a failure for a machine that
-// simply has nothing to remove.
-func removeClaudeTracePlugin(path string) (bool, error) {
-	on, err := claudeTracePluginState(path)
+	env, err := claudeSettingsEnv(cfg)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%s: %w", path, err)
 	}
-	if !on {
+	if env == nil {
+		env = map[string]any{}
+	}
+	ownership, _, err := readClaudeOtelOwnership(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%s: %w", claudeOtelOwnershipPath(path), err)
+	}
+	if key := claudeOtelOwnershipChangedKey(ownership, env); key != "" {
+		return false, fmt.Errorf("Claude OTel setting %s has changed; run 'orq disconnect claude otel' before reconnecting", key)
+	}
+	if conflict := claudeOtelConflict(cfg, env); conflict != nil {
+		return false, conflict
+	}
+	seen := false
+	for key, want := range claudeOtelSettings {
+		if got, ok := env[key].(string); ok && got == want {
+			seen = true
+		}
+	}
+	gotEndpoint, _ := env["OTEL_EXPORTER_OTLP_ENDPOINT"].(string)
+	if gotEndpoint != "" && gotEndpoint != endpoint {
+		return false, fmt.Errorf("OTel endpoint is %s; expected %s for the resolved orq server", gotEndpoint, endpoint)
+	}
+	if !seen {
 		return false, nil
 	}
-	if _, err := lookPath("claude"); err != nil {
-		return false, fmt.Errorf("claude is not on PATH, so its plugin cannot be uninstalled: %w", errAgentNotInstalled)
+	if gotEndpoint == "" {
+		return false, errors.New("OTel endpoint is missing")
 	}
-	if err := runAgentCommand("claude", "plugin", "uninstall", launch.TracePluginRef); err != nil {
-		return false, fmt.Errorf("uninstalling %s: %w", launch.TracePluginRef, err)
+	header, _ := env["OTEL_EXPORTER_OTLP_HEADERS"].(string)
+	if !strings.HasPrefix(strings.TrimSpace(header), "Authorization=Bearer ") || strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(header), "Authorization=Bearer ")) == "" {
+		return false, errors.New("OTel Authorization header is missing; run 'orq connect claude otel' with a configured credential")
+	}
+	for key, want := range claudeOtelSettings {
+		if got, _ := env[key].(string); got != want {
+			return false, fmt.Errorf("Claude OTel setting %s is missing or changed", key)
+		}
 	}
 	return true, nil
 }
+
+func removeClaudeNativeOtel(path string) (bool, error) {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return false, err
+	}
+	env, err := claudeSettingsEnv(cfg)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+	if env == nil {
+		env = map[string]any{}
+	}
+	ownership, _, err := readClaudeOtelOwnership(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("%s: %w", claudeOtelOwnershipPath(path), err)
+	}
+	changed := false
+	for key, want := range ownership.Written {
+		current, exists := env[key]
+		currentEncoded, _ := json.Marshal(current)
+		wantEncoded, _ := json.Marshal(want)
+		if exists != (want != nil) || !bytes.Equal(currentEncoded, wantEncoded) {
+			continue
+		}
+		if old, had := ownership.Original[key]; had {
+			var restored any
+			if err := json.Unmarshal(old, &restored); err != nil {
+				return false, fmt.Errorf("invalid prior value for %s in native OTel ownership file: %w", key, err)
+			}
+			env[key] = restored
+		} else {
+			delete(env, key)
+		}
+		changed = true
+	}
+	if changed && len(env) == 0 {
+		delete(cfg, "env")
+	}
+	if changed {
+		if err := writeJSONConfig(path, cfg); err != nil {
+			return false, err
+		}
+	}
+	if err := os.Remove(claudeOtelOwnershipPath(path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return changed, err
+	}
+	return changed, nil
+}
+
+// errAgentNotInstalled is used by capability removals that need the agent binary.
+var errAgentNotInstalled = errors.New("the agent's own binary is not installed")
 
 // piPath resolves inside pi's agent directory: $PI_CODING_AGENT_DIR when set,
 // ~/.pi/agent otherwise — the same order pi itself resolves it, and the same
