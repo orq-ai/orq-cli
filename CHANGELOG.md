@@ -124,8 +124,6 @@ controls on surface changes, whichever side they originate from.
   plus `orq feedback submit`, `orq datasets create-datapoints` (bulk) and
   `orq datasets delete-datapoints`. The root help gains a **Factory** section
   (`wikis`, `environments`, `file-systems`).
-- **Breaking: `orq datasets create-datapoint` is now `orq datasets create-item`.**
-  Same endpoint (`POST /v2/datasets/{dataset_id}/datapoints`), same flags.
 - **Breaking: removed commands.** `orq documentation` and `orq finder` are
   private API and no longer in the public schema, and so are `orq model-sharing`
   and the `orq traces insights-service-*` commands (15 in all). There is no

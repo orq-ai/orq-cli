@@ -2043,6 +2043,24 @@
       ]
     },
     {
+      "path": "orq datasets create-datapoint",
+      "use": "create-datapoint dataset-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq datasets create-datapoints",
       "use": "create-datapoints dataset-id",
       "flags": [
@@ -2056,24 +2074,6 @@
         },
         {
           "name": "items",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq datasets create-item",
-      "use": "create-item dataset-id",
-      "flags": [
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
           "type": "string"
         },
         {

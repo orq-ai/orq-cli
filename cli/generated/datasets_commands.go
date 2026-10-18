@@ -151,6 +151,62 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " create-datapoint dataset-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "create-datapoint dataset-id",
+			Short:   "Create datapoints",
+			Long:    bartolocli.Markdown("Creates one or more datapoints in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": []\n  }\n]") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiCreateDatasetItem(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := datasetsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		examples += "  " + parent.CommandPath() + " create-datapoints dataset-id --example\n"
 
 		cmd := &cobra.Command{
@@ -204,62 +260,6 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Description: "",
 				},
 			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := datasetsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " create-item dataset-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "create-item dataset-id",
-			Short:   "Create datapoints",
-			Long:    bartolocli.Markdown("Creates one or more datapoints in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": []\n  }\n]") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiCreateDatasetItem(args[0], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
