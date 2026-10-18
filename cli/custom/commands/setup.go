@@ -74,6 +74,12 @@ type setupOptions struct {
 	// default — so the answer the user is most likely to regret (declining a
 	// replacement, accepting a workspace switch) had no way to be exercised.
 	confirmFn func(message string, def bool) bool
+	// onConnectSuccess runs setup persistence after a real connect completes,
+	// before connect emits its machine-readable success result.
+	onConnectSuccess func(*reporter) error
+	// skillsInstalled records actual links written during this connect call;
+	// a target directory alone does not mean a foreign conflict was replaced.
+	skillsInstalled bool
 }
 
 // configScope is where a scope-capable capability writes. scopeUnset is the
@@ -189,8 +195,8 @@ type agentResult struct {
 	// final screen labels each row with the capability that produced it, so a
 	// shared field would make it name the wrong one.
 	MCP string `json:"mcp,omitempty"`
-	// Otel is the persistent plugin path when setup selected tracing. An
-	// install failure needs its own field so it cannot overwrite a gateway or
+	// Otel is the native telemetry config path when setup selected tracing. A
+	// write failure needs its own field so it cannot overwrite a gateway or
 	// MCP failure on the same agent.
 	Otel      string `json:"otel,omitempty"`
 	OtelError string `json:"otel_error,omitempty"`
@@ -294,6 +300,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// connect already is that run, credential gate and all, so hand it over
 	// rather than growing a second credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
+		opts.onConnectSuccess = func(rep *reporter) error { return persistSetupServer(rep, true) }
 		if !opts.noInput {
 			return runCredentialFreeSetup(cmd, opts)
 		}
@@ -369,6 +376,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	complete := setupComplete(verified, agentResults)
 	result["setup_complete"] = complete
 	if err := persistUnselectedSetupKey(rep, authState, opts, complete); err != nil {
+		return err
+	}
+	if err := persistSetupServer(rep, complete); err != nil {
 		return err
 	}
 
@@ -852,6 +862,34 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 		return err
 	}
 	rep.ok("saved the key you passed")
+	return nil
+}
+
+// persistSetupServer makes a typed --server the default once setup completes,
+// because the login, gateway key and agent configs it wrote are keyed to that
+// host. An env or profile host already applies on every run that has it.
+func persistSetupServer(rep *reporter, complete bool) error {
+	host := auth.Server()
+	if !complete || auth.ServerSource() != "flag" || host == "" {
+		return nil
+	}
+	profileName := ""
+	if profileInForce() {
+		profileName = bartoloProfileName()
+		if strings.TrimSpace(bartolocli.GetProfile()["server"]) != host {
+			bartolocli.Creds.Set("profiles."+profileName+".server", host)
+			if err := saveCreds(); err != nil {
+				return err
+			}
+		}
+	}
+	if err := persistServerDefault(host); err != nil {
+		return err
+	}
+	rep.info("saved %s as the default server; run `orq server clear` to clear it", host)
+	if profileName != "" {
+		rep.info("saved %s on profile %s; `orq server clear` only clears the default", host, profileName)
+	}
 	return nil
 }
 
@@ -1477,6 +1515,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	skillDirs := map[string]string{}
 
 	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
+		opts.skillsInstalled = false
 		scope := skillsWriteScope(opts)
 		conflicts, err := skills.Conflicts(selected, scope)
 		if err != nil {
@@ -1496,6 +1535,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			// failed, so it is fatal here. launch degrades instead.
 			return nil, fmt.Errorf("installing skills: %w", err)
 		}
+		opts.skillsInstalled = len(res.Added) > 0
 		targets := skillTargetsFor(selected, scope)
 		if !opts.finalScreen {
 			for _, target := range targets {

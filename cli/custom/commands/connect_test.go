@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -2706,18 +2705,17 @@ func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
 }
 
 func TestSetupConnectsOtelAndReportsItOnTheFinalScreen(t *testing.T) {
-	settings, calls := otelMachine(t)
+	settings := otelMachine(t)
+	SetUserEnvAPIKey("sk-live")
+	t.Cleanup(ResetUserEnvAPIKey)
 	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
 	var progress strings.Builder
 	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
-	if len(*calls) != 2 {
-		t.Fatalf("setup did not install the tracing plugin: calls=%v", *calls)
-	}
 	if len(results) != 1 || results[0].Agent != "claude" || results[0].Otel != settings {
-		t.Fatalf("setup omitted the tracing result: %+v", results)
+		t.Fatalf("setup omitted the native telemetry result: %+v", results)
 	}
 	if !setupComplete(true, results) {
-		t.Fatal("successful tracing install marked setup incomplete")
+		t.Fatal("successful native telemetry config marked setup incomplete")
 	}
 	var screen strings.Builder
 	printFinalScreen(&reporter{w: &screen}, results, nil, true, opts)
@@ -2726,22 +2724,22 @@ func TestSetupConnectsOtelAndReportsItOnTheFinalScreen(t *testing.T) {
 	}
 }
 
-func TestSetupReportsOtelInstallFailure(t *testing.T) {
-	_, _ = otelMachine(t)
-	runAgentCommand = func(string, ...string) error { return errors.New("plugin install failed") }
+func TestSetupReportsOtelWithoutCredential(t *testing.T) {
+	otelMachine(t)
+	ResetUserEnvAPIKey()
 	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
 	var progress strings.Builder
 	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
-	if len(results) != 1 || !strings.Contains(results[0].OtelError, "plugin install failed") {
-		t.Fatalf("setup omitted tracing failure: %+v", results)
+	if len(results) != 1 || results[0].OtelError != "" {
+		t.Fatalf("missing credential should not fail native setup: %+v", results)
 	}
-	if setupComplete(true, results) {
-		t.Fatal("failed tracing install marked setup complete")
+	if !setupComplete(true, results) {
+		t.Fatal("offline native settings marked setup incomplete")
 	}
 	var screen strings.Builder
-	printFinalScreen(&reporter{w: &screen}, results, nil, false, opts)
-	if !strings.Contains(screen.String(), capOtel) || !strings.Contains(screen.String(), "plugin install failed") || strings.Contains(screen.String(), capGateway) {
-		t.Fatalf("setup's final screen misreported tracing failure: %s", screen.String())
+	printFinalScreen(&reporter{w: &screen}, results, nil, true, opts)
+	if !strings.Contains(screen.String(), capOtel) || strings.Contains(screen.String(), capGateway) {
+		t.Fatalf("setup's final screen omitted native settings: %s", screen.String())
 	}
 }
 
@@ -2819,59 +2817,44 @@ func TestStatusCountsSharedSkillsAsWiredForEveryReader(t *testing.T) {
 	}
 }
 
-// otelMachine is an mcpMachine with the agent's plugin install stubbed: no test
-// may invoke claude, and CLAUDE_CONFIG_DIR keeps every read and write inside
-// the temp home even for a machine that has a real ~/.claude.
-func otelMachine(t *testing.T) (settings string, calls *[]string) {
+// otelMachine creates an isolated Claude settings file and a durable test key.
+// OTel configuration is native to Claude Code, so these tests never invoke its
+// CLI or alter enabled plugins and hooks.
+func otelMachine(t *testing.T) (settings string) {
 	t.Helper()
 	home, _ := mcpMachine(t, ".claude")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
-	t.Setenv("ORQ_API_KEY", "sk-live")
-	orqiFakeLookPathFunc(t, func(name string) (string, error) {
-		return filepath.Join("/usr/local/bin", name), nil
-	})
-	recorded := []string{}
-	orig := runAgentCommand
-	t.Cleanup(func() { runAgentCommand = orig })
-	settings = filepath.Join(home, ".claude", "settings.json")
-	// The stub records the install the way the real plugin manager does, so a
-	// test exercises the read-back rather than only the exit code. A stub that
-	// wrote nothing would let a connect that installs nothing still report ok.
-	runAgentCommand = func(name string, args ...string) error {
-		recorded = append(recorded, strings.Join(append([]string{name}, args...), " "))
-		if len(args) > 1 && args[1] == "install" {
-			if err := os.WriteFile(settings,
-				[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return settings, &recorded
+	t.Setenv("ORQ_API_KEY", "")
+	SetUserEnvAPIKey("sk-live")
+	t.Cleanup(ResetUserEnvAPIKey)
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer("https://api.example.test", "test")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	return filepath.Join(home, ".claude", "settings.json")
 }
 
-// exportingShell gives the temp home the setup `orq setup` would have left: an
-// env file holding the key and a profile that sources it.
-func exportingShell(t *testing.T) shellSetup {
+func claudeSettings(t *testing.T, path string) (map[string]any, map[string]any) {
 	t.Helper()
-	sh := detectShell(viper.GetString("config-directory"))
-	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
-		t.Fatal(err)
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		t.Fatalf("read Claude settings: %v", err)
 	}
-	if err := os.WriteFile(sh.EnvFile, []byte("export ORQ_API_KEY=sk-live\n"), 0o600); err != nil {
-		t.Fatal(err)
+	env, err := claudeSettingsEnv(cfg)
+	if err != nil {
+		t.Fatalf("read Claude settings env: %v", err)
 	}
-	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
-		t.Fatal(err)
+	if env == nil {
+		env = map[string]any{}
 	}
-	return sh
+	return cfg, env
 }
 
-// The install goes through the agent's own plugin manager, and the marketplace
-// is added first: `claude plugin install orq-trace@orq-claude-plugin` cannot
-// resolve a marketplace the agent has never heard of.
-func TestConnectOtelInstallsThePublishedPlugin(t *testing.T) {
-	settings, calls := otelMachine(t)
+func TestConnectOtelWritesNativeExporterSettingsAndPreservesClaudeConfig(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":{"CUSTOM_SETTING":"keep","OTEL_METRICS_EXPORTER":"console","OTEL_EXPORTER_OTLP_ENDPOINT":"https://collector.example/v1"},"enabledPlugins":{"user-plugin@market":true},"hooks":{"PostToolUse":[{"command":"user-hook"}]}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
@@ -2880,286 +2863,175 @@ func TestConnectOtelInstallsThePublishedPlugin(t *testing.T) {
 			t.Fatalf("connect: %v", err)
 		}
 	})
-	if len(*calls) != 2 ||
-		!strings.Contains((*calls)[0], "plugin marketplace add "+launch.TraceMarketplaceRepo) ||
-		!strings.Contains((*calls)[1], "plugin install "+launch.TracePluginRef) {
-		t.Fatalf("install did not add the marketplace then install the plugin: %v", *calls)
+	cfg, env := claudeSettings(t, settings)
+	endpoint := launch.OTLPEndpoint(auth.Server())
+	for key, want := range claudeNativeOtelEnv(endpoint, "sk-live") {
+		if got := env[key]; got != want {
+			t.Errorf("settings env[%q] = %v, want %q", key, got, want)
+		}
+	}
+	if env["OTEL_TRACES_EXPORTER"] != "none" {
+		t.Errorf("native Claude traces were not disabled: env=%#v", env)
+	}
+	if env["CUSTOM_SETTING"] != "keep" {
+		t.Errorf("unrelated env setting was lost: %#v", env)
+	}
+	if cfg["enabledPlugins"] == nil || cfg["hooks"] == nil {
+		t.Errorf("native telemetry changed plugins or hooks: %#v", cfg)
+	}
+	if strings.Contains(string(mustRead(t, settings)), launch.TracePluginRef) {
+		t.Errorf("native telemetry wrote the old trace plugin reference:\n%s", mustRead(t, settings))
 	}
 	if !strings.Contains(out, tilde(settings)) {
-		t.Errorf("the reported path is not the file the agent records the install in:\n%s", out)
+		t.Errorf("connect did not report the native settings path:\n%s", out)
 	}
 }
 
-// An install that is already there is reported, not repeated: `claude plugin
-// install` on an installed plugin is a no-op, but the run must not read as
-// having changed something.
+func TestConnectOtelRepairsEndpointAndAuthorizationHeader(t *testing.T) {
+	settings := otelMachine(t)
+	connect := func() {
+		t.Helper()
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	}
+	connect()
+	// Changing the resolved server and credential is a legitimate rerun when
+	// the current settings still match the Orq-owned tuple.
+	auth.SetServer("https://staging.example", "test")
+	SetUserEnvAPIKey("sk-staging")
+	connect()
+
+	_, env := claudeSettings(t, settings)
+	if got, want := env["OTEL_EXPORTER_OTLP_ENDPOINT"], launch.OTLPEndpoint(auth.Server()); got != want {
+		t.Errorf("repaired endpoint = %v, want %q", got, want)
+	}
+	if got, want := env["OTEL_EXPORTER_OTLP_HEADERS"], "Authorization=Bearer sk-staging"; got != want {
+		t.Errorf("repaired Authorization header = %v, want %q", got, want)
+	}
+}
+
+func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *testing.T) {
+	settings := otelMachine(t)
+	ResetUserEnvAPIKey()
+	t.Setenv("ORQ_API_KEY", "")
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("offline native settings should not require login: %v", err)
+		}
+	})
+	_, env := claudeSettings(t, settings)
+	for key, want := range claudeOtelSettings {
+		if env[key] != want {
+			t.Errorf("settings env[%q] = %v, want %q", key, env[key], want)
+		}
+	}
+	if _, exists := env["OTEL_EXPORTER_OTLP_HEADERS"]; exists {
+		t.Errorf("missing credential produced an Authorization header: %#v", env)
+	}
+	if !strings.Contains(out, "no durable Orq credential") || !strings.Contains(out, "will not authenticate") {
+		t.Errorf("missing credential warning was absent or unclear:\n%s", out)
+	}
+	if strings.Contains(out, "login") {
+		t.Errorf("credential-free native setup unexpectedly offered a login:\n%s", out)
+	}
+}
+
+func TestConnectOtelSkipsUnsupportedAgent(t *testing.T) {
+	var out strings.Builder
+	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{}, []string{"codex"})
+	if failed {
+		t.Fatal("an agent without native OTel support failed connect")
+	}
+	if len(results) != 1 || results[0].Agent != "codex" || results[0].Skipped == "" || results[0].Path != "" {
+		t.Fatalf("unsupported agent result = %+v, want an informational skip", results)
+	}
+	if !strings.Contains(out.String(), "not supported") {
+		t.Errorf("unsupported native OTel was not explained: %s", out.String())
+	}
+}
+
 func TestConnectOtelIsIdempotent(t *testing.T) {
-	settings, calls := otelMachine(t)
-	if err := os.WriteFile(settings,
-		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-		t.Fatal(err)
+	settings := otelMachine(t)
+	run := func() string {
+		t.Helper()
+		return captureOutput(t, func() {
+			c := NewConnectCommand()
+			c.SetArgs([]string{"claude", "otel"})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+		})
 	}
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("connect: %v", err)
-		}
-	})
-	if len(*calls) != 0 {
-		t.Errorf("an installed plugin was installed again: %v", *calls)
+	run()
+	out := run()
+	if !strings.Contains(out, "already configured") {
+		t.Errorf("an existing native configuration was not reported as such:\n%s", out)
 	}
-	if !strings.Contains(out, "already installed") {
-		t.Errorf("the existing install went unsaid:\n%s", out)
-	}
-}
-
-// The plugin posts with the ORQ_API_KEY the user's shell exports, so an install
-// into a shell that exports none is inert. Silence there reads as a finished
-// wire. The temp home of this test has no env file and no profile sourcing one,
-// which is exactly the machine the line is for.
-func TestConnectOtelSaysTheKeyIsMissing(t *testing.T) {
-	otelMachine(t)
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("connect: %v", err)
-		}
-	})
-	if !strings.Contains(out, "ORQ_API_KEY") {
-		t.Errorf("an install with no key in the shell did not say so:\n%s", out)
+	if on, err := claudeNativeOtelState(settings, launch.OTLPEndpoint(auth.Server())); err != nil || !on {
+		t.Errorf("rerun left native telemetry unconfigured: on=%v err=%v", on, err)
 	}
 }
 
-// Uninstall runs only when the plugin is there: the agent exits non-zero when
-// asked to remove a plugin it does not have, which would report a failure for a
-// machine with nothing to remove.
-func TestDisconnectOtelRemovesOnlyWhatIsInstalled(t *testing.T) {
-	settings, calls := otelMachine(t)
-
-	c := NewDisconnectCommand()
-	c.SetArgs([]string{"claude", "otel", "--yes"})
-	if err := c.Execute(); err != nil {
-		t.Fatalf("disconnect with nothing installed: %v", err)
+func TestConnectOtelJSONKeepsResultFieldsAndDoesNotExposeKey(t *testing.T) {
+	settings := otelMachine(t)
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+	run := func() string {
+		t.Helper()
+		return captureStdout(t, func() {
+			c := NewConnectCommand()
+			c.SetArgs([]string{"claude", "otel"})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+		})
 	}
-	if len(*calls) != 0 {
-		t.Errorf("uninstall ran with no plugin installed: %v", *calls)
+	decode := func(out string) otelResult {
+		t.Helper()
+		var payload struct {
+			Otel []otelResult `json:"otel"`
+		}
+		if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
+			t.Fatalf("invalid connect JSON: %v\n%s", err, out)
+		}
+		if len(payload.Otel) != 1 {
+			t.Fatalf("got %d OTel results, want 1:\n%s", len(payload.Otel), out)
+		}
+		var shape struct {
+			Otel []map[string]json.RawMessage `json:"otel"`
+		}
+		if err := json.Unmarshal([]byte(jsonPayload(t, out)), &shape); err != nil {
+			t.Fatalf("invalid result shape: %v", err)
+		}
+		if _, ok := shape.Otel[0]["shell_exports_key"]; !ok {
+			t.Errorf("native result dropped shell_exports_key: %s", jsonPayload(t, out))
+		}
+		return payload.Otel[0]
 	}
-
-	if err := os.WriteFile(settings,
-		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-		t.Fatal(err)
+	first := run()
+	row := decode(first)
+	if row.Agent != "claude" || row.Path != settings || row.Already || row.ShellExportsKey {
+		t.Errorf("first native OTel JSON row = %+v", row)
 	}
-	c = NewDisconnectCommand()
-	c.SetArgs([]string{"claude", "otel", "--yes"})
-	if err := c.Execute(); err != nil {
-		t.Fatalf("disconnect: %v", err)
+	if strings.Contains(first, "sk-live") {
+		t.Errorf("machine-readable result exposed the key:\n%s", first)
 	}
-	if len(*calls) != 1 || !strings.Contains((*calls)[0], "plugin uninstall "+launch.TracePluginRef) {
-		t.Fatalf("uninstall did not run for the installed plugin: %v", *calls)
+	if row = decode(run()); !row.Already {
+		t.Errorf("rerun JSON row did not report already configured: %+v", row)
 	}
 }
 
-// An agent is detected from the config directory it left behind, which outlives
-// an uninstall, so a bare connect meets agents whose binary is gone. Reported as
-// a failure, that made `orq connect` exit non-zero on any machine with a
-// leftover ~/.claude and no claude, taking the skills and MCP legs down with it.
-// Caught by CI, whose runners have no coding agent installed.
-func TestConnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
-	_, calls := otelMachine(t)
-	orqiFakeLookPathFunc(t, func(name string) (string, error) {
-		return "", exec.ErrNotFound
-	})
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("a missing agent binary failed the run: %v", err)
-		}
-	})
-	if len(*calls) != 0 {
-		t.Errorf("an absent agent was invoked anyway: %v", *calls)
+func TestConnectOtelDryRunDoesNotWriteOrLeakCredential(t *testing.T) {
+	settings := otelMachine(t)
+	_, err := os.ReadFile(settings)
+	if !os.IsNotExist(err) {
+		t.Fatalf("settings unexpectedly exist before dry run: err=%v", err)
 	}
-	if !strings.Contains(out, "not on PATH") {
-		t.Errorf("the skip went unexplained:\n%s", out)
-	}
-}
-
-// The same reading as the install side, on the way out: a machine whose claude
-// is gone still has the enabledPlugins entry in its settings, and disconnect
-// has no plugin manager to remove it with. Reported as a failure, that made
-// `orq disconnect` exit non-zero with nothing it could have done differently.
-func TestDisconnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
-	settings, calls := otelMachine(t)
-	if err := os.WriteFile(settings,
-		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	orqiFakeLookPathFunc(t, func(name string) (string, error) {
-		return "", exec.ErrNotFound
-	})
-
-	out := captureOutput(t, func() {
-		c := NewDisconnectCommand()
-		c.SetArgs([]string{"claude", "otel", "--yes"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("a missing agent binary failed the run: %v", err)
-		}
-	})
-	if len(*calls) != 0 {
-		t.Errorf("an absent agent was invoked anyway: %v", *calls)
-	}
-	if !strings.Contains(out, "nothing to remove") {
-		t.Errorf("the skip went unexplained:\n%s", out)
-	}
-}
-
-// A settings file that cannot be parsed is not a machine with nothing
-// installed: the plugin may well be enabled in there and keep tracing. Saying
-// so is the difference between a disconnect that failed and one that found
-// nothing.
-func TestDisconnectOtelReportsAnUnreadableConfig(t *testing.T) {
-	settings, calls := otelMachine(t)
-	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	c := NewDisconnectCommand()
-	c.SetArgs([]string{"claude", "otel", "--yes"})
-	if err := c.Execute(); err == nil {
-		t.Fatal("an unreadable settings file disconnected successfully")
-	}
-	if len(*calls) != 0 {
-		t.Errorf("uninstall ran against a config that could not be read: %v", *calls)
-	}
-}
-
-// --status is read from the same file the install writes and the disconnect
-// reads, so a settings.json it cannot parse has to show there too. Listed as a
-// warn rather than dropped: a row left out reads as "otel is not wired here",
-// which is the one thing an unreadable file cannot establish.
-func TestStatusOtelWarnsOnAnUnreadableConfig(t *testing.T) {
-	settings, _ := otelMachine(t)
-	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureOutput(t, func() {
-		s := NewConnectCommand()
-		s.SetArgs([]string{"claude", "otel", "--status"})
-		if err := s.Execute(); err != nil {
-			t.Fatalf("status: %v", err)
-		}
-	})
-	row := ""
-	for _, l := range strings.Split(out, "\n") {
-		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, "settings.json") && !strings.Contains(l, "not valid JSON") {
-			row = l
-		}
-	}
-	if row == "" {
-		t.Fatalf("status listed no otel row for an unreadable config:\n%s", out)
-	}
-	if !strings.Contains(row, "!") {
-		t.Errorf("the otel row did not carry the warn glyph: %q", row)
-	}
-	if !strings.Contains(out, "is not valid JSON") {
-		t.Errorf("the warn glyph came with no cause:\n%s", out)
-	}
-}
-
-// An enabled plugin is the one state --status exists to confirm, so it has to
-// read as wired, pointing at the file the agent records the install in.
-func TestStatusOtelReportsAnInstalledPlugin(t *testing.T) {
-	settings, _ := otelMachine(t)
-	if err := os.WriteFile(settings,
-		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureOutput(t, func() {
-		s := NewConnectCommand()
-		s.SetArgs([]string{"claude", "otel", "--status"})
-		if err := s.Execute(); err != nil {
-			t.Fatalf("status: %v", err)
-		}
-	})
-	row := ""
-	for _, l := range strings.Split(out, "\n") {
-		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, tilde(settings)) {
-			row = l
-		}
-	}
-	if row == "" {
-		t.Fatalf("status listed no otel row for an installed plugin:\n%s", out)
-	}
-	if strings.Contains(row, "!") {
-		t.Errorf("an installed plugin carried the warn glyph: %q", row)
-	}
-}
-
-// `orq auth logout` clears the env file but leaves it on disk, holding only a
-// comment. A check that asks whether the file exists reads that as a key the
-// shell exports, and the install then says nothing about the one thing that
-// stops it working.
-func TestConnectOtelSaysTheKeyIsMissingAfterLogout(t *testing.T) {
-	otelMachine(t)
-	sh := detectShell(viper.GetString("config-directory"))
-	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(sh.EnvFile, []byte("# Cleared by 'orq auth logout'.\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("connect: %v", err)
-		}
-	})
-	if !strings.Contains(out, "ORQ_API_KEY") {
-		t.Errorf("a cleared env file was read as a key the shell exports:\n%s", out)
-	}
-}
-
-// Status is the reader people check an install with, so the capability has to
-// show up there as wired, not only in the output of the run that installed it.
-func TestConnectStatusReportsTheInstalledPlugin(t *testing.T) {
-	settings, _ := otelMachine(t)
-	if err := os.WriteFile(settings,
-		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel", "--status"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("status: %v", err)
-		}
-	})
-	if strings.Contains(out, "nothing wired") {
-		t.Fatalf("an installed plugin is reported as nothing wired:\n%s", out)
-	}
-	if !strings.Contains(out, "otel") {
-		t.Errorf("status does not name the capability:\n%s", out)
-	}
-}
-
-// A dry run names the plugin it would install and runs the agent's plugin
-// manager not at all, like every other writer in this command.
-func TestConnectOtelDryRunInstallsNothing(t *testing.T) {
-	_, calls := otelMachine(t)
-
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel", "--dry-run"})
@@ -3167,166 +3039,488 @@ func TestConnectOtelDryRunInstallsNothing(t *testing.T) {
 			t.Fatalf("dry run: %v", err)
 		}
 	})
-	if len(*calls) != 0 {
-		t.Errorf("a dry run invoked the agent: %v", *calls)
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Errorf("dry run wrote Claude settings: err=%v", err)
 	}
-	if !strings.Contains(out, launch.TracePluginRef) {
-		t.Errorf("the dry run does not say what it would install:\n%s", out)
+	if strings.Contains(out, "sk-live") {
+		t.Errorf("dry run exposed the durable key:\n%s", out)
+	}
+	if !strings.Contains(out, tilde(settings)) || !strings.Contains(out, "native OTel exporter settings") {
+		t.Errorf("dry run did not preview the native settings path and action:\n%s", out)
 	}
 }
 
-// The installer's exit code is not the install: the agent records the entry
-// itself. A plugin manager that exits 0 and writes nothing this code can read
-// leaves `--status` contradicting the tick the same run printed, so the run has
-// to read it back and fail.
-func TestConnectOtelFailsWhenTheInstallLeavesNoRecord(t *testing.T) {
-	_, calls := otelMachine(t)
-	orig := runAgentCommand
-	t.Cleanup(func() { runAgentCommand = orig })
-	runAgentCommand = func(name string, args ...string) error {
-		*calls = append(*calls, strings.Join(append([]string{name}, args...), " "))
-		return nil // exits 0, records nothing
+func TestConnectOtelFailsOnUnreadableConfig(t *testing.T) {
+	settings := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel"})
 		if err := c.Execute(); err == nil {
-			t.Fatal("an install that recorded nothing reported success")
+			t.Fatal("an unreadable config connected successfully")
 		}
 	})
-	if !strings.Contains(out, "does not record") {
-		t.Errorf("the unverified install went unexplained:\n%s", out)
+	if !strings.Contains(out, "not valid JSON") {
+		t.Fatalf("connect did not explain the unreadable config:\n%s", out)
+	}
+	if got := string(mustRead(t, settings)); got != "{not json" {
+		t.Errorf("connect changed the unreadable settings: %q", got)
 	}
 }
 
-// The mirror of the missing-key tests: on the setup `orq setup` leaves behind,
-// the warning must not fire. Without this, always printing the nag passes every
-// other test in this file.
-func TestConnectOtelIsQuietWhenTheShellExportsTheKey(t *testing.T) {
-	otelMachine(t)
-	exportingShell(t)
-
+func TestConnectOtelReportsAndPreservesInvalidEnvSetting(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":["not","an","object"],"keep":"untouched"}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("connect: %v", err)
+		if err := c.Execute(); err == nil {
+			t.Fatal("connect rewrote an env value that is not an object")
 		}
 	})
-	if strings.Contains(out, "cannot see where yours would come from") {
-		t.Errorf("a shell that exports the key was told it does not:\n%s", out)
+	if !strings.Contains(out, "env setting is not an object") {
+		t.Fatalf("connect did not explain why writing was refused:\n%s", out)
+	}
+	if got := string(mustRead(t, settings)); got != initial {
+		t.Errorf("connect changed the invalid env setting: %s", got)
 	}
 }
 
-// An unrecognised shell has no profile to name. The remedy has to be the line
-// to run, not a sentence that trails off into an empty path.
-func TestConnectOtelNamesTheLineWhenThereIsNoProfile(t *testing.T) {
-	otelMachine(t)
-	t.Setenv("SHELL", "/opt/homebrew/bin/nu")
-
-	out := captureOutput(t, func() {
-		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("connect: %v", err)
-		}
-	})
-	if !strings.Contains(out, "in your shell") {
-		t.Errorf("no runnable remedy for a shell with no profile:\n%s", out)
+func TestDisconnectOtelReportsUnreadableConfig(t *testing.T) {
+	settings := otelMachine(t)
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
 	}
-	if strings.Contains(out, "source it from \n") || strings.HasSuffix(strings.TrimSpace(out), "source it from") {
-		t.Errorf("the remedy trails off into an empty profile path:\n%s", out)
-	}
-}
-
-// A config that cannot be read is not a machine with nothing installed, and
-// connect has to answer it the way disconnect and --status now do. Three
-// verdicts on one file was the defect.
-func TestConnectOtelFailsOnAnUnreadableConfig(t *testing.T) {
-	settings, calls := otelMachine(t)
 	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	c := NewConnectCommand()
-	c.SetArgs([]string{"claude", "otel"})
-	if err := c.Execute(); err == nil {
-		t.Fatal("an unreadable settings file connected successfully")
-	}
-	if len(*calls) != 0 {
-		t.Errorf("the agent ran against a config that could not be read: %v", *calls)
+	out := captureOutput(t, func() {
+		c := NewDisconnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--yes"})
+		if err := c.Execute(); err == nil {
+			t.Fatal("an unreadable config disconnected successfully")
+		}
+	})
+	if !strings.Contains(out, "not valid JSON") {
+		t.Fatalf("disconnect did not explain the unreadable config:\n%s", out)
 	}
 }
 
-// `-o json` is the machine contract, so the otel leg has to carry the two facts
-// the human view prints: whether it installed or found the plugin there, and
-// whether the install will post at all.
-func TestConnectOtelJSONCarriesTheInstallFacts(t *testing.T) {
-	otelMachine(t)
-	exportingShell(t)
+func TestStatusOtelWarnsOnUnreadableOrIncompleteConfig(t *testing.T) {
+	settings := otelMachine(t)
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "is not valid JSON") || !strings.Contains(out, "!") {
+		t.Errorf("status did not explain the unreadable settings warning:\n%s", out)
+	}
 
-	out := captureStdout(t, func() {
+	settings = otelMachine(t)
+	connect = NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	cfg, env := claudeSettings(t, settings)
+	delete(env, "OTEL_EXPORTER_OTLP_HEADERS")
+	cfg["env"] = env
+	if err := writeJSONConfig(settings, cfg); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "OTEL_EXPORTER_OTLP_HEADERS") || !strings.Contains(out, "changed") || !strings.Contains(out, "!") {
+		t.Errorf("status did not explain incomplete native settings:\n%s", out)
+	}
+}
+
+func TestStatusOtelReportsNativeSettingsAsWired(t *testing.T) {
+	settings := otelMachine(t)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "otel"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, capOtel) || !strings.Contains(out, tilde(settings)) || strings.Contains(out, "nothing wired") || strings.Contains(out, "!") {
+		t.Errorf("status did not report clean native telemetry wiring:\n%s", out)
+	}
+}
+
+func TestDisconnectOtelRestoresOnlyOrqNativeSettings(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":{"CUSTOM_SETTING":"keep","OTEL_METRICS_EXPORTER":"console","OTEL_LOGS_EXPORTER":"console","OTEL_TRACES_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_ENDPOINT":"https://collector.example/v1","OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Bearer user-owned"},"enabledPlugins":{"user-plugin@market":true},"hooks":{"PostToolUse":[{"command":"user-hook"}]}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	_, connectedEnv := claudeSettings(t, settings)
+	if connectedEnv["OTEL_TRACES_EXPORTER"] != "none" {
+		t.Errorf("connect left native trace export active: %#v", connectedEnv)
+	}
+
+	disconnect := NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	cfg, env := claudeSettings(t, settings)
+	if env["CUSTOM_SETTING"] != "keep" || env["OTEL_METRICS_EXPORTER"] != "console" || env["OTEL_LOGS_EXPORTER"] != "console" || env["OTEL_TRACES_EXPORTER"] != "otlp" || env["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v1" || env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-owned" {
+		t.Errorf("disconnect did not restore the user's previous env values: %#v", env)
+	}
+	if cfg["enabledPlugins"] == nil || cfg["hooks"] == nil {
+		t.Errorf("disconnect changed plugins or hooks: %#v", cfg)
+	}
+	if _, err := os.Stat(settings + ".orq-bak"); err != nil {
+		t.Errorf("disconnect unexpectedly removed the safety backup: %v", err)
+	}
+}
+
+func TestDisconnectOtelLeavesCustomCollectorAlone(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":{"OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_ENDPOINT":"https://collector.example/v2/otel","OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Bearer user-owned"}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := lookupAgent("claude")
+	if !ok {
+		t.Fatal("claude agent spec is missing")
+	}
+	if on, err := spec.otelPresent(settings); err != nil || on {
+		t.Errorf("unowned custom collector state = (%v, %v), want (false, nil)", on, err)
+	}
+	status := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--status"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(status, "nothing wired for claude") || strings.Contains(status, "!") || strings.Contains(status, "expected https://") {
+		t.Errorf("status treated an unowned collector as Orq wiring or warned about it:\n%s", status)
+	}
+	c := NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	_, env := claudeSettings(t, settings)
+	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-owned" || env["OTEL_METRICS_EXPORTER"] != "otlp" {
+		t.Errorf("disconnect removed the user's custom collector: %#v", env)
+	}
+}
+
+func TestConnectOtelReconnectRefusesDriftUntilDisconnect(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":{"OTEL_METRICS_EXPORTER":"otlp","OTEL_LOGS_EXPORTER":"otlp","OTEL_TRACES_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_ENDPOINT":"https://original.example/v1/otel","OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Bearer original-user-secret"}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	connect := func() {
+		t.Helper()
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel"})
 		if err := c.Execute(); err != nil {
 			t.Fatalf("connect: %v", err)
 		}
-	})
-	var payload struct {
-		Otel []otelResult `json:"otel"`
 	}
-	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
-		t.Fatalf("otel payload is not JSON: %v\n%s", err, out)
-	}
-	if len(payload.Otel) != 1 {
-		t.Fatalf("expected one otel row, got %d:\n%s", len(payload.Otel), out)
-	}
-	row := payload.Otel[0]
-	if row.Agent != "claude" || row.Path == "" {
-		t.Errorf("otel row names no agent or no path: %+v", row)
-	}
-	if row.Already {
-		t.Errorf("a fresh install is reported as already installed: %+v", row)
-	}
-	if !row.ShellExportsKey {
-		t.Errorf("a shell that exports the key is reported as not: %+v", row)
-	}
+	connect()
 
-	// The second run finds it installed, which the payload has to distinguish.
-	out = captureStdout(t, func() {
+	// Simulate the user editing the managed exporter tuple after the first
+	// connect. A repair run must make these edits the new restore point.
+	cfg, env := claudeSettings(t, settings)
+	env["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://collector.example/v2/otel"
+	env["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer user-updated"
+	cfg["env"] = env
+	if err := writeJSONConfig(settings, cfg); err != nil {
+		t.Fatal(err)
+	}
+	beforeSettings := string(mustRead(t, settings))
+	marker := claudeOtelOwnershipPath(settings)
+	beforeMarker := string(mustRead(t, marker))
+	var connectErr error
+	out := captureOutput(t, func() {
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel"})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("rerun: %v", err)
-		}
+		connectErr = c.Execute()
 	})
-	payload.Otel = nil
-	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
-		t.Fatalf("rerun payload is not JSON: %v\n%s", err, out)
+	if connectErr == nil {
+		t.Fatal("reconnect silently rebased the changed endpoint and header")
 	}
-	if len(payload.Otel) != 1 || !payload.Otel[0].Already {
-		t.Errorf("a rerun over an existing install is not marked already installed:\n%s", out)
+	for _, want := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "disconnect", "reconnect"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("refusal did not name %q:\n%s", want, out)
+		}
+	}
+	for _, secret := range []string{"collector.example", "user-updated", "sk-live"} {
+		if strings.Contains(out, secret) {
+			t.Errorf("refusal exposed a managed value:\n%s", out)
+		}
+	}
+	if got := string(mustRead(t, settings)); got != beforeSettings {
+		t.Errorf("refused reconnect changed settings:\nbefore=%s\nafter=%s", beforeSettings, got)
+	}
+	if got := string(mustRead(t, marker)); got != beforeMarker {
+		t.Errorf("refused reconnect changed ownership snapshot:\nbefore=%s\nafter=%s", beforeMarker, got)
+	}
+
+	disconnect := NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err == nil {
+		t.Fatal("disconnect silently retired ownership after endpoint and header drift")
+	}
+	_, safeEnv := claudeSettings(t, settings)
+	if safeEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-updated" {
+		t.Errorf("conflict did not preserve the user's edits: %#v", safeEnv)
+	}
+	if safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer original-user-secret" {
+		t.Fatal("conflict restored the original credential")
+	}
+	if safeEnv["OTEL_METRICS_EXPORTER"] != "none" || safeEnv["OTEL_LOGS_EXPORTER"] != "none" || safeEnv["OTEL_TRACES_EXPORTER"] != "none" || safeEnv["CLAUDE_CODE_ENABLE_TELEMETRY"] != "0" {
+		t.Errorf("conflict did not explicitly disable native telemetry: %#v", safeEnv)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("conflict did not retain ownership for recovery: %v", err)
+	}
+	// A second attempt remains safe and retains the snapshot until the user
+	// restores the connected destination and credential recorded in it.
+	retry := NewDisconnectCommand()
+	retry.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := retry.Execute(); err == nil {
+		t.Fatal("repeated conflict unexpectedly retired ownership")
+	}
+	_, safeEnv = claudeSettings(t, settings)
+	if safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] == "Authorization=Bearer original-user-secret" || safeEnv["OTEL_METRICS_EXPORTER"] != "none" {
+		t.Fatalf("repeated conflict restored the original credential or enabled exporting: %#v", safeEnv)
+	}
+	// Resolve the conflict using the recorded Orq tuple, then retry. Only now
+	// is it safe to restore the original active collector and credential.
+	ownership, _, err := readClaudeOtelOwnership(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, safeEnv = claudeSettings(t, settings)
+	safeEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] = *ownership.Written["OTEL_EXPORTER_OTLP_ENDPOINT"]
+	safeEnv["OTEL_EXPORTER_OTLP_HEADERS"] = *ownership.Written["OTEL_EXPORTER_OTLP_HEADERS"]
+	cfg["env"] = safeEnv
+	if err := writeJSONConfig(settings, cfg); err != nil {
+		t.Fatal(err)
+	}
+	disconnect = NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("resolved disconnect: %v", err)
+	}
+	_, restoredEnv := claudeSettings(t, settings)
+	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://original.example/v1/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer original-user-secret" || restoredEnv["OTEL_METRICS_EXPORTER"] != "otlp" || restoredEnv["OTEL_LOGS_EXPORTER"] != "otlp" || restoredEnv["OTEL_TRACES_EXPORTER"] != "otlp" {
+		t.Errorf("resolved disconnect did not restore the original active tuple: %#v", restoredEnv)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Errorf("disconnect left ownership marker: %v", err)
+	}
+	connect()
+	disconnect = NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("second disconnect: %v", err)
+	}
+	_, restoredEnv = claudeSettings(t, settings)
+	if restoredEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://original.example/v1/otel" || restoredEnv["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer original-user-secret" {
+		t.Errorf("disconnect after explicit reconnect did not restore the user's prior settings: %#v", restoredEnv)
 	}
 }
 
-// Every agent whose spec can install the plugin has to be able to read it back
-// and remove it. Without this, a second traceable agent added to the registry
-// fails quietly: --status reports it unwired forever, or disconnect lists it,
-// takes the confirmation and removes nothing.
+func TestDisconnectOtelRetiresOwnershipAfterEnvWasDeleted(t *testing.T) {
+	settings := otelMachine(t)
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	cfg, err := readJSONConfig(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(cfg, "env")
+	if err := writeJSONConfig(settings, cfg); err != nil {
+		t.Fatal(err)
+	}
+	disconnect := NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("disconnect after env deletion: %v", err)
+	}
+	if _, err := os.Stat(claudeOtelOwnershipPath(settings)); !os.IsNotExist(err) {
+		t.Errorf("disconnect left ownership after env deletion: err=%v", err)
+	}
+	// Later user settings must not be compared with the retired snapshot.
+	if err := writeJSONConfig(settings, map[string]any{"env": map[string]any{
+		"OTEL_EXPORTER_OTLP_ENDPOINT": "https://collector.example/v2/otel",
+		"OTEL_EXPORTER_OTLP_HEADERS":  "Authorization=Bearer later-user-value",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	disconnect = NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("second disconnect: %v", err)
+	}
+	_, env := claudeSettings(t, settings)
+	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer later-user-value" {
+		t.Errorf("retired ownership restored stale state over later user settings: %#v", env)
+	}
+}
+
+func TestDisconnectOtelDisablesExportersForSingleTupleDrift(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(map[string]any)
+	}{
+		{"endpoint edited", func(env map[string]any) { env["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://user.example/otel" }},
+		{"header edited", func(env map[string]any) { env["OTEL_EXPORTER_OTLP_HEADERS"] = "Authorization=Bearer user-edited" }},
+		{"endpoint removed", func(env map[string]any) { delete(env, "OTEL_EXPORTER_OTLP_ENDPOINT") }},
+		{"header removed", func(env map[string]any) { delete(env, "OTEL_EXPORTER_OTLP_HEADERS") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := filepath.Join(t.TempDir(), "settings.json")
+			if err := writeClaudeNativeOtel(settings, claudeNativeOtelEnv("https://orq.example/otel", "sk-test")); err != nil {
+				t.Fatal(err)
+			}
+			cfg, env := claudeSettings(t, settings)
+			tc.edit(env)
+			cfg["env"] = env
+			if err := writeJSONConfig(settings, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := removeClaudeNativeOtel(settings); err == nil {
+				t.Fatal("disconnect did not report tuple drift")
+			}
+			_, env = claudeSettings(t, settings)
+			for key, want := range map[string]string{"OTEL_METRICS_EXPORTER": "none", "OTEL_LOGS_EXPORTER": "none", "OTEL_TRACES_EXPORTER": "none", "CLAUDE_CODE_ENABLE_TELEMETRY": "0"} {
+				if env[key] != want {
+					t.Errorf("%s = %v, want %q", key, env[key], want)
+				}
+			}
+			if _, err := os.Stat(claudeOtelOwnershipPath(settings)); err != nil {
+				t.Errorf("ownership was not retained: %v", err)
+			}
+			if tc.name == "endpoint edited" && env["OTEL_EXPORTER_OTLP_HEADERS"] != nil {
+				t.Errorf("endpoint drift retained the still-Orq-owned credential: %#v", env)
+			}
+		})
+	}
+}
+
+func TestDisconnectOtelRestoresStateFromBeforeConnectDespiteGenericBackup(t *testing.T) {
+	settings := otelMachine(t)
+	initial := `{"env":{"CUSTOM_SETTING":"keep","OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_ENDPOINT":"https://collector.example/v2/otel","OTEL_EXPORTER_OTLP_HEADERS":"Authorization=Bearer user-owned"},"hooks":{"PostToolUse":[{"command":"user-hook"}]}}`
+	if err := os.WriteFile(settings, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// This generic backup may have been created by another capability before
+	// the user added the collector above. Native OTel ownership must snapshot
+	// the settings as they stood immediately before its own write.
+	genericBackup := `{"env":{"OLD":"from earlier MCP backup"}}`
+	if err := os.WriteFile(settings+".orq-bak", []byte(genericBackup), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"claude", "otel"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	_, connectedEnv := claudeSettings(t, settings)
+	if connectedEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] != launch.OTLPEndpoint(auth.Server()) {
+		t.Fatalf("connect did not select the resolved Orq endpoint: %#v", connectedEnv)
+	}
+	disconnect := NewDisconnectCommand()
+	disconnect.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := disconnect.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	cfg, env := claudeSettings(t, settings)
+	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] != "https://collector.example/v2/otel" || env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer user-owned" || env["CUSTOM_SETTING"] != "keep" {
+		t.Errorf("disconnect did not restore the immediate pre-connect settings: %#v", env)
+	}
+	if cfg["hooks"] == nil {
+		t.Errorf("disconnect changed the pre-existing hooks: %#v", cfg)
+	}
+	if got := string(mustRead(t, settings+".orq-bak")); got != genericBackup {
+		t.Errorf("native disconnect changed the generic backup: %q", got)
+	}
+}
+
+func TestDisconnectOtelDryRunLeavesNativeSettings(t *testing.T) {
+	settings := otelMachine(t)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "otel"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	before := string(mustRead(t, settings))
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "otel", "--dry-run"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("dry run: %v", err)
+		}
+	})
+	if got := string(mustRead(t, settings)); got != before {
+		t.Errorf("disconnect dry run changed Claude settings:\nbefore=%s\nafter=%s", before, got)
+	}
+	if !strings.Contains(out, tilde(settings)) {
+		t.Errorf("disconnect dry run omitted the native settings path:\n%s", out)
+	}
+}
+
 func TestOtelRegistrySpecsAreComplete(t *testing.T) {
 	for _, spec := range agentRegistry() {
-		if spec.installOtel == nil {
+		if spec.writeOtel == nil {
 			continue
 		}
 		if spec.otelConfig == nil {
-			t.Errorf("%s installs the trace plugin but names no config to record it in", spec.ID)
+			t.Errorf("%s writes native OTel settings but names no config", spec.ID)
 		}
 		if spec.otelPresent == nil {
-			t.Errorf("%s installs the trace plugin but cannot read the install back", spec.ID)
+			t.Errorf("%s writes native OTel settings but cannot read them back", spec.ID)
 		}
 		if spec.removeOtel == nil {
-			t.Errorf("%s installs the trace plugin but cannot remove it", spec.ID)
+			t.Errorf("%s writes native OTel settings but cannot remove them", spec.ID)
 		}
 	}
 }

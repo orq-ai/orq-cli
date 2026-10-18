@@ -457,6 +457,194 @@ func TestResolveAuthDefersUnselectedKeyUntilSetupCompletes(t *testing.T) {
 	}
 }
 
+// Setup keys its login to the --server host, so a later bare launch or connect
+// must resolve that host too.
+func TestSetupPersistsTypedServerOnlyWhenComplete(t *testing.T) {
+	credsHarness(t)
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
+	viper.Set("server-default", "")
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"server":"https://legacy.example","profile-selected":"ci"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep := &reporter{w: io.Discard}
+
+	auth.SetServer("https://env.example", "env")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("https://self.example", "flag")
+	if err := persistSetupServer(rep, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("env host or incomplete setup persisted %q", got)
+	}
+	auth.SetServer("https://profile.example", "profile")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("profile host was persisted as a default: %q", got)
+	}
+
+	auth.SetServer("https://self.example", "flag")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self.example" {
+		t.Errorf("server-default = %q, want the typed host", got)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["server-default"] != "https://self.example" || config["profile-selected"] != "ci" {
+		t.Errorf("config.json = %s, want server-default written and other keys kept", raw)
+	}
+	if _, ok := config["server"]; ok {
+		t.Errorf("config.json kept the legacy server key: %s", raw)
+	}
+}
+
+func TestCredentialFreeSetupPersistsTypedServerBeforeReturning(t *testing.T) {
+	_, _ = mcpMachine(t, ".claude")
+	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+	t.Setenv("ORQ_API_KEY", "")
+	ResetUserEnvAPIKey()
+	t.Cleanup(ResetUserEnvAPIKey)
+	prevNoInput := viper.Get("no-input")
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", prevNoInput) })
+	prevDir, prevDefault := viper.GetString("config-directory"), viper.GetString("server-default")
+	prevProfile := viper.GetString("profile")
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("server-default", "")
+	viper.Set("profile", "ci")
+	bartolocli.Creds.Set("profiles.ci.api_key", "sk-ci")
+	bartolocli.Creds.Set("profiles.ci.type", "apikey")
+	if err := saveCreds(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		viper.Set("config-directory", prevDir)
+		viper.Set("server-default", prevDefault)
+		viper.Set("profile", prevProfile)
+	})
+	auth.SetServer("https://self.example", "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
+
+	cmd := &cobra.Command{Use: "orq", Version: "test"}
+	err := runSetup(cmd, &setupOptions{caps: []string{capOtel}, yes: true})
+	if err != nil {
+		t.Fatalf("credential-free setup: %v", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("setup did not write the requested telemetry config: %v", err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self.example" {
+		t.Fatalf("server-default = %q, want typed server", got)
+	}
+	if got := bartolocli.Creds.GetString("profiles.ci.server"); got != "https://self.example" {
+		t.Fatalf("active profile server = %q, want typed server", got)
+	}
+	config, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "config.json"))
+	var saved map[string]string
+	if err == nil {
+		err = json.Unmarshal(config, &saved)
+	}
+	if err != nil || saved["server-default"] != "https://self.example" {
+		t.Fatalf("follow-up server config = %s, err=%v", config, err)
+	}
+}
+
+func TestCredentialFreeConnectFinalizesOnlyAfterSuccessfulWrite(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		dryRun bool
+		badCfg bool
+	}{
+		{name: "dry run", dryRun: true},
+		{name: "failed write", badCfg: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _ = mcpMachine(t, ".claude")
+			settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+			t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+			if tc.badCfg {
+				if err := os.WriteFile(settings, []byte("{"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			called := false
+			opts := &setupOptions{yes: true, onConnectSuccess: func(*reporter) error { called = true; return nil }}
+			cmd := &cobra.Command{Use: "connect"}
+			args := []string{"claude", capOtel}
+			err := runConnect(cmd, opts, args, tc.dryRun)
+			if tc.badCfg && err == nil {
+				t.Fatal("connect with invalid settings succeeded")
+			}
+			if called {
+				t.Fatal("setup finalizer ran without a successful actual write")
+			}
+		})
+	}
+}
+
+func TestCredentialFreeConnectReportsWiringWhenServerSaveFails(t *testing.T) {
+	_, _ = mcpMachine(t, ".claude")
+	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+	wantErr := errors.New("server configuration is not writable")
+	opts := &setupOptions{yes: true, onConnectSuccess: func(*reporter) error { return wantErr }}
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runConnect(&cobra.Command{Use: "setup"}, opts, []string{"claude", capOtel}, false)
+	})
+	if !errors.Is(gotErr, wantErr) {
+		t.Fatalf("connect error = %v, want persistence error", gotErr)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("successful wiring was lost: %v", err)
+	}
+	if !strings.Contains(out, "otel") || !strings.Contains(out, "settings.json") {
+		t.Fatalf("result omitted the wiring left on disk after server save failed: %s", out)
+	}
+}
+
+func TestCredentialFreeConnectDoesNotFinalizeSkippedSkills(t *testing.T) {
+	home, _ := mcpMachine(t, ".claude")
+	names, err := skills.Names()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("skill names: %v, %v", names, err)
+	}
+	for _, name := range names {
+		foreign := filepath.Join(home, ".claude", "skills", name)
+		if err := os.MkdirAll(foreign, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(foreign, "SKILL.md"), []byte("user-owned"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	called := false
+	opts := &setupOptions{
+		scope: scopeGlobal, confirmFn: func(string, bool) bool { return false },
+		onConnectSuccess: func(*reporter) error { called = true; return nil },
+	}
+	if err := runConnect(&cobra.Command{Use: "setup"}, opts, []string{"claude", capSkills}, false); err != nil {
+		t.Fatalf("skipped skills changed connect exit behavior: %v", err)
+	}
+	if called {
+		t.Fatal("setup finalized despite every requested skill being skipped")
+	}
+}
+
 func TestResolveAuthNonpersistentKeyLeavesStoredLoginUntouched(t *testing.T) {
 	credsHarness(t)
 	viper.Set("profile", "")
@@ -859,6 +1047,8 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 // connect; connect then wires with the key setup saved. The pair is the CI
 // composition and covers the mint-to-config chain end to end.
 func TestSetupMintsThenConnectWires(t *testing.T) {
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
 	const minted = "sk-orq-MINTED-THIS-RUN"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -885,7 +1075,9 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Setenv("ORQ_API_BASE_URL", "")
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
@@ -917,6 +1109,18 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	setup.SetArgs([]string{})
 	if err := setup.Execute(); err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+	configJSON, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "config.json"))
+	if err != nil {
+		t.Fatalf("setup did not persist config.json: %v", err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(configJSON, &config); err != nil {
+		t.Fatalf("config.json: %v", err)
+	}
+	var savedServer string
+	if err := json.Unmarshal(config["server-default"], &savedServer); err != nil || savedServer != srv.URL {
+		t.Fatalf("server-default=%q, err=%v; want completed --server host %q", savedServer, err, srv.URL)
 	}
 	if saved, _ := savedAPIKey(); saved != minted {
 		t.Fatalf("saved key = %q, want the minted one", saved)
