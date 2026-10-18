@@ -2151,12 +2151,12 @@ func OpenapiCreateDataset(params *viper.Viper, body string) (*gentleman.Response
 	return resp, decoded, nil
 }
 
-// OpenapiCreateDatasetItem Create datapoints
-func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
-	handlerPath := "datasets create-datapoint dataset-id"
+// OpenapiBulkCreateDatapoints Create multiple datapoints
+func OpenapiBulkCreateDatapoints(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+	handlerPath := "datasets create-datapoints dataset-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v2/datasets/{dataset_id}/datapoints"
+	url := server + "/v2/datasets/{dataset_id}/datapoints/bulk"
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
@@ -2194,12 +2194,12 @@ func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body s
 	return resp, decoded, nil
 }
 
-// OpenapiBulkCreateDatapoints Create multiple datapoints
-func OpenapiBulkCreateDatapoints(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
-	handlerPath := "datasets create-datapoints dataset-id"
+// OpenapiCreateDatasetItem Create datapoints
+func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+	handlerPath := "datasets create-item dataset-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v2/datasets/{dataset_id}/datapoints/bulk"
+	url := server + "/v2/datasets/{dataset_id}/datapoints"
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
