@@ -30,6 +30,62 @@ func TestResolveCredentialsEnvKey(t *testing.T) {
 	}
 }
 
+func TestAPIBaseForUsesResolvedServerAndServerEnv(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		resolved    string
+		env         map[string]string
+		sessionBase string
+		want        string
+	}{
+		{
+			name:     "configured server wins over conflicting legacy env",
+			resolved: "https://configured.example",
+			env:      map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"},
+			want:     "https://configured.example",
+		},
+		{
+			name: "ORQ_SERVER wins in direct callers without PreRun",
+			env:  map[string]string{"ORQ_SERVER": "https://env.example", "ORQ_API_BASE_URL": "https://legacy.example"},
+			want: "https://env.example",
+		},
+		{
+			name: "legacy server env remains a fallback",
+			env:  map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"},
+			want: "https://legacy.example",
+		},
+		{
+			name:        "session is fallback after server selection",
+			sessionBase: "https://session.example",
+			want:        "https://session.example",
+		},
+		{name: "hosted default", want: DefaultGatewayAPIBaseURL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ORQ_SERVER", "")
+			t.Setenv("ORQ_API_BASE_URL", "")
+			oldServer, oldSource := auth.Server(), auth.ServerSource()
+			auth.SetServer(tc.resolved, "test")
+			t.Cleanup(func() { auth.SetServer(oldServer, oldSource) })
+			if tc.sessionBase != "" {
+				writeSessionFile(t, home, map[string]any{
+					"version": 1, "apiBaseUrl": tc.sessionBase, "v1BaseUrl": tc.sessionBase,
+					"authBaseUrl": tc.sessionBase, "profileBaseUrl": tc.sessionBase,
+					"refreshToken": "refresh", "bootstrapToken": map[string]any{
+						"token": "bootstrap", "expiresAt": time.Now().Add(time.Hour).Format(time.RFC3339),
+					},
+				})
+			}
+			getenv := func(key string) string { return tc.env[key] }
+			if got := APIBaseFor(getenv); got != tc.want {
+				t.Fatalf("APIBaseFor() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestResolveCredentialsSession exercises the `orq auth login` path with a
 // fake session file (HOME redirected) and a stub profile endpoint. Bootstrap
 // and workspace tokens are unexpired so the only HTTP call is the profile

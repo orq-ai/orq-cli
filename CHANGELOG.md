@@ -127,6 +127,9 @@ controls on surface changes, whichever side they originate from.
   host from `ORQ_SERVER` is not saved, since it already applies on every run
   that has it. The success screen explains that `orq server clear` clears the
   global default, while the active profile keeps its own server binding.
+  `orq connect claude mcp` also uses the resolved server, so a persisted MCP
+  entry no longer points at the hosted service when the configured default is
+  self-hosted.
 
 ## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
 
