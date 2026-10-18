@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.6.0) — 2026-10-18
+
 - **Changed: `orq connect claude otel` configures native
   OpenTelemetry metrics and logs instead of installing trace hooks.** It writes
   Claude's user settings using the resolved server's `/v2/otel` endpoint and a
