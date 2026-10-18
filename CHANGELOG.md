@@ -117,6 +117,20 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** the generated commands catch up with the orq API after five weeks
+  without a stable schema: `orq decisions`, `orq websearch`, `orq hub`,
+  `orq model-fusions`, `orq sessions`, `orq telemetry`, `orq views`,
+  `orq file-systems` and `orq workspaces`,
+  plus `orq feedback submit`, `orq datasets create-datapoints` (bulk) and
+  `orq datasets delete-datapoints`. The root help gains a **Factory** section
+  (`file-systems`).
+- **Breaking: removed commands.** `orq documentation` and `orq finder` are
+  private API and no longer in the public schema, and so are `orq model-sharing`
+  and the `orq traces insights-service-*` commands (15 in all). There is no
+  replacement for any of them.
+- **Changed:** `orq classify` is hidden. It is deprecated in favour of
+  `orq decisions` and still works if you call it.
+
 ## [11.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.6.0) — 2026-10-18
 
 - **Changed: `orq connect claude otel` configures native

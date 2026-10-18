@@ -76,7 +76,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"_id\": \"_id\",\n  \"content_type\": \"application/json\",\n  \"display_name\": \"display_name\",\n  \"events\": [\n    \"events\"\n  ],\n  \"secret\": \"secret\",\n  \"url\": \"https://example.com\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"_id\": \"_id\",\n  \"content_type\": \"application/json\",\n  \"display_name\": \"Deployment notifications\",\n  \"events\": [\n    \"events\"\n  ],\n  \"secret\": \"secret\",\n  \"url\": \"https://hooks.example.com/webhooks/orq\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -302,7 +302,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve a webhook",
-			Long:    bartolocli.Markdown("Retrieves a webhook in the current workspace by ID. The response includes its signing secret; treat it as sensitive.\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Retrieves a webhook in the current workspace by ID. The signing secret is returned masked; it is only shown in full when the webhook is created.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

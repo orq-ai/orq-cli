@@ -36,7 +36,7 @@ func registerocrCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"document\": {\n    \"document_url\": \"https://example.com\",\n    \"type\": \"document_url\"\n  },\n  \"model\": \"model\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"document\": {\n    \"document_url\": \"https://example.com/invoice.pdf\",\n    \"type\": \"document_url\"\n  },\n  \"model\": \"mistral/mistral-ocr-4-0\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

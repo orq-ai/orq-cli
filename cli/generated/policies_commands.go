@@ -37,7 +37,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"Production guardrails\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

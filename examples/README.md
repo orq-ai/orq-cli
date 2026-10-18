@@ -11,7 +11,7 @@ orq -o json doctor
 ## Explore
 
 ```sh
-orq agents --help
+orq responses --help
 ```
 
 ## Copy-Paste Commands
@@ -37,17 +37,17 @@ orq default-format json
 ### Explore a command group
 
 ```sh
-orq agents --help
+orq responses --help
 ```
 
 ### Run a grouped command
 
 ```sh
-orq agents create
+orq responses compact
 ```
 
 ### Use the raw escape hatch
 
 ```sh
-orq request get /v2/agents
+orq request get /v1/responses/compact
 ```
