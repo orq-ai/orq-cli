@@ -14,7 +14,7 @@ func registerskillsCommands(root *cobra.Command) {
 	skillsCmd := &cobra.Command{
 		Use:   "skills",
 		Short: "Skills",
-		Long:  bartolocli.Markdown("Skills"),
+		Long:  bartolocli.Markdown("Skills are modular instructions you can use to codify processes and conventions"),
 	}
 	root.AddCommand(skillsCmd)
 

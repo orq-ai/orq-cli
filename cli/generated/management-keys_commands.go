@@ -13,8 +13,8 @@ import (
 func registermanagementKeysCommands(root *cobra.Command) {
 	managementKeysCmd := &cobra.Command{
 		Use:   "management-keys",
-		Short: "Management Keys",
-		Long:  bartolocli.Markdown("Management Keys"),
+		Short: "Management keys",
+		Long:  bartolocli.Markdown("Management keys are workspace-scoped credentials that authenticate programmatic access to workspace administration surfaces (API keys, budgets). Unlike project-scoped API keys, a management key always operates at the workspace level."),
 	}
 	root.AddCommand(managementKeysCmd)
 

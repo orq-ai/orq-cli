@@ -14,7 +14,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	workspaceSecurityCmd := &cobra.Command{
 		Use:   "workspace-security",
 		Short: "Workspace Security",
-		Long:  bartolocli.Markdown("Workspace Security"),
+		Long:  bartolocli.Markdown("Workspace-level domain verification and IP allowlist controls. These operations are restricted to workspace administrators."),
 	}
 	root.AddCommand(workspaceSecurityCmd)
 

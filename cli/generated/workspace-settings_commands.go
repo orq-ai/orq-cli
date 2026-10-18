@@ -14,7 +14,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 	workspaceSettingsCmd := &cobra.Command{
 		Use:   "workspace-settings",
 		Short: "Workspace Settings",
-		Long:  bartolocli.Markdown("Workspace Settings"),
+		Long:  bartolocli.Markdown("Workspace-level settings managed with a workspace credential. A workspace is the tenant, so these settings are a singleton — there is nothing to create or delete, only read and update."),
 	}
 	root.AddCommand(workspaceSettingsCmd)
 

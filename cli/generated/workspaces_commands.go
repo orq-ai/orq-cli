@@ -14,7 +14,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 	workspacesCmd := &cobra.Command{
 		Use:   "workspaces",
 		Short: "Workspaces",
-		Long:  bartolocli.Markdown("Workspaces"),
+		Long:  bartolocli.Markdown("A workspace is the tenant. Create is called from a user session during onboarding; Get, List, and Update are the public management surface."),
 	}
 	root.AddCommand(workspacesCmd)
 

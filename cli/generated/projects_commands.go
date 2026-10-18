@@ -14,7 +14,7 @@ func registerprojectsCommands(root *cobra.Command) {
 	projectsCmd := &cobra.Command{
 		Use:   "projects",
 		Short: "Projects",
-		Long:  bartolocli.Markdown("Projects"),
+		Long:  bartolocli.Markdown("Projects organize resources within a workspace"),
 	}
 	root.AddCommand(projectsCmd)
 

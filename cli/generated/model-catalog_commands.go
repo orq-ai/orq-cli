@@ -14,7 +14,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	modelCatalogCmd := &cobra.Command{
 		Use:   "model-catalog",
 		Short: "Model Catalog",
-		Long:  bartolocli.Markdown("Model Catalog"),
+		Long:  bartolocli.Markdown("Browse the orq.ai model catalog: every model orq offers, across every provider, with pricing, capabilities and benchmark data. List endpoints only return models that are not deprecated. This API is public, requires no authentication, and is rate limited to 120 requests per minute per IP. Responses carry a 5-minute cache-control max-age."),
 	}
 	root.AddCommand(modelCatalogCmd)
 
