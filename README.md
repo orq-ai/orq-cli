@@ -6,6 +6,20 @@ Manage prompts, agents, deployments, knowledge bases, evaluators, and the rest o
 
 ---
 
+## Outline
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Authentication](#authentication), [Workspaces](#workspaces), [Projects](#projects)
+- [Diagnostics](#diagnostics) and [Output formats](#output-formats)
+- [Command reference](#command-reference)
+- [Launch](#launch) coding agents through the gateway, and [orqi](#orqi)
+- [Environment variables](#environment-variables)
+- [Self-hosted orq.ai](#self-hosted-orqai)
+- [Development](#development) and [License](#license)
+
+---
+
 ## Installation
 
 ### npm (recommended)
