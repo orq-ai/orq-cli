@@ -122,8 +122,11 @@ controls on surface changes, whichever side they originate from.
   wired agents against the typed host, but never saved it, so the next
   `orq launch` or `orq connect` without `--server` went back to the hosted
   service and missed that login. The host is saved only when setup completes.
-  A host from `ORQ_SERVER` or a profile is not saved, since it already applies
-  on every run that has it.
+  When a profile is in force, its existing server binding is also updated so
+  profile precedence cannot route the next bare command to an older host. A
+  host from `ORQ_SERVER` is not saved, since it already applies on every run
+  that has it. The success screen explains that `orq server clear` clears the
+  global default, while the active profile keeps its own server binding.
 
 ## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
 

@@ -1,8 +1,11 @@
 package commands
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"orq/cli/custom/auth"
@@ -51,6 +54,177 @@ func TestServerResolution(t *testing.T) {
 	t.Setenv("ORQ_API_BASE_URL", "")
 	if got := apiBaseFromEnv(); got != auth.DefaultAPIBaseURL {
 		t.Fatalf("default: got %q", got)
+	}
+}
+
+func TestPersistServerDefaultAcceptsEmptyConfigFormsAndPreservesNumbers(t *testing.T) {
+	for _, tc := range []struct{ name, contents string }{
+		{"missing", ""},
+		{"empty", ""},
+		{"whitespace", " \n\t"},
+		{"null", "null"},
+		{"object", `{"unrelated":123456789012345678901234567890,"server":"https://legacy.example"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			prev := viper.GetString("config-directory")
+			prevDefault := viper.GetString("server-default")
+			viper.Set("config-directory", dir)
+			t.Cleanup(func() { viper.Set("config-directory", prev); viper.Set("server-default", prevDefault) })
+			filename := filepath.Join(dir, "config.json")
+			if tc.name != "missing" {
+				if err := os.WriteFile(filename, []byte(tc.contents), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := persistServerDefault("https://self.example"); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]json.RawMessage
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			var host string
+			if err := json.Unmarshal(got["server-default"], &host); err != nil || host != "https://self.example" {
+				t.Fatalf("server-default=%q, err=%v", host, err)
+			}
+			if tc.name == "object" {
+				if string(got["unrelated"]) != "123456789012345678901234567890" {
+					t.Errorf("number precision lost: %s", got["unrelated"])
+				}
+				if _, ok := got["server"]; ok {
+					t.Errorf("legacy server retained: %s", data)
+				}
+			}
+		})
+	}
+}
+
+func TestPersistServerDefaultRejectsMalformedAndNonObjectWithoutOverwrite(t *testing.T) {
+	for _, contents := range []string{"{", "[]", `"text"`} {
+		t.Run(contents, func(t *testing.T) {
+			dir := t.TempDir()
+			prev := viper.GetString("config-directory")
+			prevDefault := viper.GetString("server-default")
+			viper.Set("config-directory", dir)
+			t.Cleanup(func() { viper.Set("config-directory", prev); viper.Set("server-default", prevDefault) })
+			filename := filepath.Join(dir, "config.json")
+			if err := os.WriteFile(filename, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := persistServerDefault("https://self.example"); err == nil {
+				t.Fatal("expected invalid config error")
+			}
+			got, err := os.ReadFile(filename)
+			if err != nil || string(got) != contents {
+				t.Fatalf("config overwritten: %q, err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestPersistSetupServerRepairsExistingProfileEvenWhenDefaultMatches(t *testing.T) {
+	credsHarness(t)
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
+	viper.Set("profile", "ci")
+	bartolocli.Creds.Set("profiles.ci.api_key", "keep-key")
+	bartolocli.Creds.Set("profiles.ci.type", "apikey")
+	bartolocli.Creds.Set("profiles.other.server", "https://other.example")
+	bartolocli.Creds.Set("profiles.ci.server", "https://old.example")
+	if err := saveCreds(); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("server-default", "https://self.example")
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"server-default":"https://self.example","keep":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("https://self.example", "flag")
+	var out strings.Builder
+	if err := persistSetupServer(&reporter{w: &out}, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "orq server clear") {
+		t.Errorf("missing undo guidance: %q", out.String())
+	}
+	if got := bartolocli.Creds.GetString("profiles.ci.server"); got != "https://self.example" {
+		t.Errorf("profile server=%q", got)
+	}
+	if got := bartolocli.Creds.GetString("profiles.ci.api_key"); got != "keep-key" {
+		t.Errorf("profile key changed: %q", got)
+	}
+	if got := bartolocli.Creds.GetString("profiles.other.server"); got != "https://other.example" {
+		t.Errorf("other profile changed: %q", got)
+	}
+	data, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]map[string]map[string]string
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["profiles"]["ci"]["server"] != "https://self.example" {
+		t.Errorf("credentials.json did not persist profile server: %s", data)
+	}
+	bartolocli.Creds.Set("profiles.ci.server", "")
+	if err := saveCreds(); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistSetupServer(&reporter{w: io.Discard}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := bartolocli.Creds.GetString("profiles.ci.server"); got != "https://self.example" {
+		t.Errorf("missing profile server was not repaired: %q", got)
+	}
+}
+
+func TestPersistSetupServerWriteFailureDoesNotPrintSuccess(t *testing.T) {
+	credsHarness(t)
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
+	viper.Set("server-default", "")
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	if err := os.Mkdir(configPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("https://self.example", "flag")
+	var out strings.Builder
+	err := persistSetupServer(&reporter{w: &out}, true)
+	if err == nil {
+		t.Fatal("expected config write failure")
+	}
+	if strings.Contains(out.String(), "saved") {
+		t.Errorf("printed success after persistence failure: %q", out.String())
+	}
+}
+
+func TestPersistSetupServerWritesDiskWhenViperDefaultAlreadyMatches(t *testing.T) {
+	credsHarness(t)
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
+	const host = "https://self.example"
+	viper.Set("server-default", host)
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	auth.SetServer(host, "flag")
+	if err := persistSetupServer(&reporter{w: io.Discard}, true); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("matching in-memory default skipped disk write: %v", err)
+	}
+	var config map[string]string
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["server-default"] != host {
+		t.Errorf("persisted server-default=%q", config["server-default"])
 	}
 }
 

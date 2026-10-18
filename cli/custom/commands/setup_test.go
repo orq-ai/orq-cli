@@ -480,7 +480,15 @@ func TestSetupPersistsTypedServerOnlyWhenComplete(t *testing.T) {
 	if got := viper.GetString("server-default"); got != "" {
 		t.Fatalf("env host or incomplete setup persisted %q", got)
 	}
+	auth.SetServer("https://profile.example", "profile")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("profile host was persisted as a default: %q", got)
+	}
 
+	auth.SetServer("https://self.example", "flag")
 	if err := persistSetupServer(rep, true); err != nil {
 		t.Fatal(err)
 	}
@@ -905,6 +913,8 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 // connect; connect then wires with the key setup saved. The pair is the CI
 // composition and covers the mint-to-config chain end to end.
 func TestSetupMintsThenConnectWires(t *testing.T) {
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
 	const minted = "sk-orq-MINTED-THIS-RUN"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -931,7 +941,9 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Setenv("ORQ_API_BASE_URL", "")
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
@@ -963,6 +975,18 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	setup.SetArgs([]string{})
 	if err := setup.Execute(); err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+	configJSON, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "config.json"))
+	if err != nil {
+		t.Fatalf("setup did not persist config.json: %v", err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(configJSON, &config); err != nil {
+		t.Fatalf("config.json: %v", err)
+	}
+	var savedServer string
+	if err := json.Unmarshal(config["server-default"], &savedServer); err != nil || savedServer != srv.URL {
+		t.Fatalf("server-default=%q, err=%v; want completed --server host %q", savedServer, err, srv.URL)
 	}
 	if saved, _ := savedAPIKey(); saved != minted {
 		t.Fatalf("saved key = %q, want the minted one", saved)

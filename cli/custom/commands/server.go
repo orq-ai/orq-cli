@@ -49,18 +49,29 @@ func ProfileServer() string {
 // legacy `server` key dropped, every other key preserved.
 func persistServerDefault(host string) error {
 	filename := path.Join(viper.GetString("config-directory"), "config.json")
-	config := map[string]any{}
+	config := map[string]json.RawMessage{}
 	data, err := os.ReadFile(filename)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if err == nil {
-		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("config.json is not valid JSON; fix or delete it: %w", err)
+		if len(strings.TrimSpace(string(data))) > 0 {
+			if err := json.Unmarshal(data, &config); err != nil {
+				return fmt.Errorf("config.json is not valid JSON; fix or delete it: %w", err)
+			}
+			// JSON null is valid but does not describe an object. Treat it like
+			// an empty config; arrays and other non-object values still fail above.
+			if config == nil {
+				config = map[string]json.RawMessage{}
+			}
 		}
 	}
 	delete(config, "server")
-	config["server-default"] = host
+	encodedHost, err := json.Marshal(host)
+	if err != nil {
+		return err
+	}
+	config["server-default"] = encodedHost
 	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err

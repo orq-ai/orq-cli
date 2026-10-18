@@ -863,13 +863,26 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 // host. An env or profile host already applies on every run that has it.
 func persistSetupServer(rep *reporter, complete bool) error {
 	host := auth.Server()
-	if !complete || auth.ServerSource() != "flag" || host == "" || viper.GetString("server-default") == host {
+	if !complete || auth.ServerSource() != "flag" || host == "" {
 		return nil
+	}
+	profileName := ""
+	if profileInForce() {
+		profileName = bartoloProfileName()
+		if strings.TrimSpace(bartolocli.GetProfile()["server"]) != host {
+			bartolocli.Creds.Set("profiles."+profileName+".server", host)
+			if err := saveCreds(); err != nil {
+				return err
+			}
+		}
 	}
 	if err := persistServerDefault(host); err != nil {
 		return err
 	}
-	rep.ok("saved %s as the default server", host)
+	rep.ok("saved %s as the default server; run `orq server clear` to clear it", host)
+	if profileName != "" {
+		rep.ok("saved %s on profile %s; `orq server clear` only clears the default", host, profileName)
+	}
 	return nil
 }
 
