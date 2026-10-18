@@ -9,6 +9,7 @@ const (
 	groupObservability = "observability"
 	groupAgents        = "managed-agents"
 	groupOptimization  = "optimization"
+	groupFactory       = "factory"
 	groupAdmin         = "administration"
 	groupUtilities     = "utilities"
 )
@@ -20,6 +21,7 @@ var helpGroups = []*cobra.Group{
 	{ID: groupObservability, Title: "Observability:"},
 	{ID: groupAgents, Title: "Managed agents:"},
 	{ID: groupOptimization, Title: "Optimization:"},
+	{ID: groupFactory, Title: "Factory:"},
 	{ID: groupAdmin, Title: "Administration:"},
 	{ID: groupUtilities, Title: "Utilities:"},
 }
@@ -60,6 +62,10 @@ var commandGroup = map[string]string{
 	"guardrail-rules": groupGateway,
 	"pii":             groupGateway,
 	"budgets":         groupGateway,
+	"model-fusions":   groupGateway,
+	"decisions":       groupGateway,
+	"websearch":       groupGateway,
+	"hub":             groupGateway,
 
 	"traces":     groupObservability,
 	"logs":       groupObservability,
@@ -68,6 +74,9 @@ var commandGroup = map[string]string{
 	"notifiers":  groupObservability,
 	"identities": groupObservability,
 	"feedback":   groupObservability,
+	"sessions":   groupObservability,
+	"telemetry":  groupObservability,
+	"views":      groupObservability,
 
 	"agents":           groupAgents,
 	"agents-responses": groupAgents,
@@ -84,6 +93,10 @@ var commandGroup = map[string]string{
 	"human-review-sets": groupOptimization,
 	"annotation-queues": groupOptimization,
 
+	"wikis":        groupFactory,
+	"environments": groupFactory,
+	"file-systems": groupFactory,
+
 	"workspace":          groupAdmin,
 	"workspace-settings": groupAdmin,
 	"workspace-security": groupAdmin,
@@ -97,6 +110,7 @@ var commandGroup = map[string]string{
 	"files":              groupAdmin,
 	"reporting":          groupAdmin,
 	"feature-previews":   groupAdmin,
+	"workspaces":         groupAdmin,
 }
 
 // deliberateUtilities are the commands that belong in Utilities on purpose:

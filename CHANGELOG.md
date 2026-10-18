@@ -117,6 +117,22 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** the generated commands catch up with the orq API after five weeks
+  without a stable schema: `orq decisions`, `orq websearch`, `orq hub`,
+  `orq model-fusions`, `orq sessions`, `orq telemetry`, `orq views`,
+  `orq wikis`, `orq environments`, `orq file-systems` and `orq workspaces`,
+  plus `orq feedback submit`, `orq datasets create-datapoints` (bulk) and
+  `orq datasets delete-datapoints`. The root help gains a **Factory** section
+  (`wikis`, `environments`, `file-systems`).
+- **Breaking: `orq datasets create-datapoint` is now `orq datasets create-item`.**
+  Same endpoint (`POST /v2/datasets/{dataset_id}/datapoints`), same flags.
+- **Breaking: removed commands.** `orq documentation` and `orq finder` are
+  private API and no longer in the public schema, and so are `orq model-sharing`
+  and the `orq traces insights-service-*` commands (15 in all). There is no
+  replacement for any of them.
+- **Changed:** `orq classify` is hidden. It is deprecated in favour of
+  `orq decisions` and still works if you call it.
+
 ## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
 
 - **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).

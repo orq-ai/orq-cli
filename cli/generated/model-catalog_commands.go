@@ -14,7 +14,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	modelCatalogCmd := &cobra.Command{
 		Use:   "model-catalog",
 		Short: "Model Catalog",
-		Long:  bartolocli.Markdown("Browse the orq.ai model catalog: every model orq offers, across every provider, with pricing, capabilities and benchmark data. List endpoints only return models that are not deprecated. This API is public, requires no authentication, and is rate limited to 120 requests per minute per IP. Responses carry a 5-minute cache-control max-age."),
+		Long:  bartolocli.Markdown("Model Catalog"),
 	}
 	root.AddCommand(modelCatalogCmd)
 
@@ -91,8 +91,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
@@ -147,8 +147,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")

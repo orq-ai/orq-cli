@@ -36,7 +36,7 @@ func registerrerankCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    \"documents\"\n  ],\n  \"model\": \"model\",\n  \"query\": \"query\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    \"documents\"\n  ],\n  \"model\": \"cohere/rerank-v4.0-pro\",\n  \"query\": \"query\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

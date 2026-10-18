@@ -14,7 +14,7 @@ func registeralertsCommands(root *cobra.Command) {
 	alertsCmd := &cobra.Command{
 		Use:   "alerts",
 		Short: "Alerts",
-		Long:  bartolocli.Markdown("Alerts evaluate a Reporting API metric on a fixed interval and fire notifications through notifiers when the value breaches a threshold. Each breach opens a trigger that tracks the incident until the value recovers."),
+		Long:  bartolocli.Markdown("Alerts"),
 	}
 	root.AddCommand(alertsCmd)
 
@@ -36,7 +36,7 @@ func registeralertsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"High spend on production\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

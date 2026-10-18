@@ -64,7 +64,7 @@ func registerimagesCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+							Description: "The model to use for image edit. [Check models](https://docs.orq.ai/ai-gateway/supported-models#image-models)",
 						},
 						{
 							Name:        "n",
@@ -181,7 +181,7 @@ func registerimagesCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+					Description: "The model to use for image edit. [Check models](https://docs.orq.ai/ai-gateway/supported-models#image-models)",
 				},
 				{
 					Name:        "n",
@@ -276,7 +276,7 @@ func registerimagesCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"background\": \"transparent\",\n  \"model\": \"model\",\n  \"moderation\": \"low\",\n  \"n\": 1,\n  \"output_format\": \"png\",\n  \"prompt\": \"prompt\",\n  \"quality\": \"auto\",\n  \"response_format\": \"url\",\n  \"style\": \"vivid\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"background\": \"transparent\",\n  \"model\": \"openai/gpt-image-2\",\n  \"moderation\": \"low\",\n  \"n\": 1,\n  \"output_format\": \"png\",\n  \"prompt\": \"prompt\",\n  \"quality\": \"auto\",\n  \"response_format\": \"url\",\n  \"style\": \"vivid\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
