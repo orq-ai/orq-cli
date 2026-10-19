@@ -328,7 +328,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-10-05T23:26:03.828Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-10-19T13:31:02.848Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -582,6 +582,112 @@ func registerfeedbackCommands(root *cobra.Command) {
 				{
 					Name:        "trace_id",
 					FlagName:    "trace-id",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := feedbackCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " submit --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "submit",
+			Short:   "Submit feedback",
+			Long:    bartolocli.Markdown("Report problems or request features for Orq.ai APIs, MCP tools, SDKs, and documentation.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `category` (string, required)\n- `message` (string, required)\n- `request_id` (string)\n- `url` (string)\n\nRequired fields: `category`, `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"category\": \"category\",\n  \"message\": \"message\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "category",
+							FlagName:    "category",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "string",
+							Description: "What happened, what was expected, and steps to reproduce. Do not include secrets.",
+						},
+						{
+							Name:        "request_id",
+							FlagName:    "request-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "url",
+							FlagName:    "url",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSubmitFeedback(params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "category",
+					FlagName:    "category",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "string",
+					Description: "What happened, what was expected, and steps to reproduce. Do not include secrets.",
+				},
+				{
+					Name:        "request_id",
+					FlagName:    "request-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "url",
+					FlagName:    "url",
 					Type:        "string",
 					Description: "",
 				},

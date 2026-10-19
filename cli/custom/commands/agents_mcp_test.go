@@ -155,7 +155,7 @@ func chdirTemp(t *testing.T) string {
 
 func TestWriteMCPJSON_ClaudeRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".mcp.json")
-	write := writeMCPJSON("mcpServers", claudeMCPEntry)
+	write := writeMCPJSON("mcpServers", launch.HTTPMCPEntry)
 	present := jsonProviderPresentAt("mcpServers", launch.MCPServerName)
 
 	if present(path) {
@@ -281,7 +281,7 @@ func TestWriteMCPJSON_UpgradesLegacyEntry(t *testing.T) {
 		t.Fatalf("seeding legacy entry: %v", err)
 	}
 
-	write := writeMCPJSON("mcpServers", claudeMCPEntry)
+	write := writeMCPJSON("mcpServers", launch.HTTPMCPEntry)
 	if err := write(path, "https://api.orq.ai/v2/mcp"); err != nil {
 		t.Fatalf("write: %v", err)
 	}

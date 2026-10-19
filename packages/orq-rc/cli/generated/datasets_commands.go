@@ -14,79 +14,9 @@ func registerdatasetsCommands(root *cobra.Command) {
 	datasetsCmd := &cobra.Command{
 		Use:   "datasets",
 		Short: "Datasets",
-		Long:  bartolocli.Markdown("Datasets store test cases and expected outputs used for evaluation and optimization workflows."),
+		Long:  bartolocli.Markdown("Datasets"),
 	}
 	root.AddCommand(datasetsCmd)
-
-	func() {
-		parent := datasetsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " bulk-create-datapoints dataset-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "bulk-create-datapoints dataset-id",
-			Short:   "Create multiple datapoints",
-			Long:    bartolocli.Markdown("Creates multiple datapoints at once.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"items\": [\n    {\n      \"expected_output\": \"expected_output\",\n      \"inputs\": {},\n      \"messages\": []\n    }\n  ]\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "items",
-							FlagName:    "items",
-							Type:        "json",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiBulkCreateDatapoints(args[0], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "items",
-					FlagName:    "items",
-					Type:        "json",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
 
 	func() {
 		parent := datasetsCmd
@@ -221,10 +151,10 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " create-item dataset-id --example\n"
+		examples += "  " + parent.CommandPath() + " create-datapoint dataset-id --example\n"
 
 		cmd := &cobra.Command{
-			Use:     "create-item dataset-id",
+			Use:     "create-datapoint dataset-id",
 			Short:   "Create datapoints",
 			Long:    bartolocli.Markdown("Creates one or more datapoints in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
@@ -260,6 +190,76 @@ func registerdatasetsCommands(root *cobra.Command) {
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := datasetsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " create-datapoints dataset-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "create-datapoints dataset-id",
+			Short:   "Create multiple datapoints",
+			Long:    bartolocli.Markdown("Creates multiple datapoints at once.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"items\": [\n    {\n      \"expected_output\": \"expected_output\",\n      \"inputs\": {},\n      \"messages\": []\n    }\n  ]\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "items",
+							FlagName:    "items",
+							Type:        "json",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiBulkCreateDatapoints(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "items",
+					FlagName:    "items",
+					Type:        "json",
+					Description: "",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -713,8 +713,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 						{
 							Name:        "inputs",
 							FlagName:    "inputs",
-							Type:        "json",
-							Description: "",
+							Type:        "string-map",
+							Description: "Structured variables passed to the prompt or workflow.",
 						},
 						{
 							Name:        "messages",
@@ -755,8 +755,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 				{
 					Name:        "inputs",
 					FlagName:    "inputs",
-					Type:        "json",
-					Description: "",
+					Type:        "string-map",
+					Description: "Structured variables passed to the prompt or workflow.",
 				},
 				{
 					Name:        "messages",

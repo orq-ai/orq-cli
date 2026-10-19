@@ -1,0 +1,153 @@
+package commands
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+// batchFetchConcurrency bounds in-flight requests so a large batch does not open
+// one connection per id at once.
+const batchFetchConcurrency = 8
+
+// NewTracesGetBatchCommand builds `orq traces get-batch`: fetch many traces (or
+// their spans) in one process, instead of spawning `orq traces get` once per id.
+func NewTracesGetBatchCommand(api TraceAPI) *cobra.Command {
+	var spans bool
+	cmd := &cobra.Command{
+		Use:   "get-batch [trace-id ...]",
+		Short: "Fetch multiple traces (or their spans) in one invocation",
+		Long: strings.Join([]string{
+			"Fetch many traces at once, in a single process, instead of running `orq traces get` once per id — one process and one connection pool for the whole set.",
+			"",
+			"Ids come from the arguments, or from stdin (one id per line, blanks ignored) when no argument is given or the only argument is `-`, so piping from `orq traces search` works. With --spans each id's spans are listed instead of the trace.",
+			"",
+			"The output is an array in input order, one entry per id: {id, trace} with the trace object, or {id, spans} with the full span list (paged through, not just the first page), or {id, error} when that id could not be read. A failing id does not abort the batch — inspect each entry's error field. Each id is fetched by id with default parameters, like `orq traces get <id>`.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"  orq traces get-batch tr_1 tr_2 tr_3",
+			"  orq traces search --from-file body.json -o json | jq -r '.data[].trace_id' | orq traces get-batch",
+			"  orq traces get-batch --spans tr_1 tr_2",
+		}, "\n"),
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ids, err := batchTraceIDs(cmd, args)
+			if err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				return bartolocli.NewUsageError(errors.New("no trace ids: pass them as arguments or on stdin, one per line"))
+			}
+			return emit(fetchTraceBatch(api, ids, spans))
+		},
+	}
+	cmd.Flags().BoolVar(&spans, "spans", false, "List each trace's spans instead of fetching the trace")
+	return cmd
+}
+
+// batchResult is one id's outcome. Exactly one of Trace, Spans, or Error is set.
+// Trace and Spans are `any` so a present-but-empty result (a trace with zero
+// spans) still renders its key rather than collapsing to just {id}: omitempty on
+// an interface drops only a nil, not an empty slice or map behind it.
+type batchResult struct {
+	ID    string `json:"id"`
+	Trace any    `json:"trace,omitempty"`
+	Spans any    `json:"spans,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// batchTraceIDs reads ids from the arguments, or from stdin (one per line) when
+// no argument is given or the only argument is "-".
+func batchTraceIDs(cmd *cobra.Command, args []string) ([]string, error) {
+	if len(args) > 0 && !(len(args) == 1 && args[0] == "-") {
+		return args, nil
+	}
+	var ids []string
+	sc := bufio.NewScanner(cmd.InOrStdin())
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		if id := strings.TrimSpace(sc.Text()); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, sc.Err()
+}
+
+// fetchTraceBatch fetches every id concurrently (bounded) and returns the results
+// in input order. A per-id failure becomes that entry's Error, never aborting the
+// rest. Each goroutine gets its own viper: get-by-id needs no per-request
+// parameters, and a shared one would be read concurrently.
+func fetchTraceBatch(api TraceAPI, ids []string, spans bool) []batchResult {
+	results := make([]batchResult, len(ids))
+	sem := make(chan struct{}, batchFetchConcurrency)
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, id string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			res := batchResult{ID: id}
+			if spans {
+				if list, err := fetchAllSpans(api, id); err != nil {
+					res.Error = err.Error()
+				} else {
+					res.Spans = list
+				}
+			} else {
+				if data, err := api.GetTrace(id, viper.New()); err != nil {
+					res.Error = err.Error()
+				} else if trace := unwrapThreadEnvelope(data, "trace"); len(trace) == 0 {
+					// An empty response (no trace object, or a bare envelope) is not a
+					// trace. Report it as this id's error rather than letting omitempty
+					// drop the key and print {id} alone, which a consumer filtering on
+					// .error == null would miscount as a fetched trace.
+					res.Error = "empty response: no trace returned for this id"
+				} else {
+					// GetTrace returns the API envelope {trace: {...}}; unwrap it so an
+					// entry is {id, trace: {...}}, not the double-nested {id, trace: {trace}}.
+					res.Trace = trace
+				}
+			}
+			results[i] = res
+		}(i, id)
+	}
+	wg.Wait()
+	return results
+}
+
+// fetchAllSpans pages through a trace's spans and returns the flattened array,
+// so --spans gives {id, spans: [...]} (the full set), not the raw first-page
+// envelope. It pages the same way the single `orq traces` span path does, but,
+// unlike that path, a mid-page failure becomes this id's error (no partial list):
+// in a batch a silently short span list is worse than a reported failure. A
+// response with no `data` array is treated as a failure too, so a malformed reply
+// is not reported as a trace with zero spans; a present-but-empty `data` is a
+// genuine zero-span trace and returns an empty list.
+func fetchAllSpans(api TraceAPI, id string) ([]map[string]any, error) {
+	all := []map[string]any{}
+	params := viper.New()
+	seen := map[string]bool{}
+	for {
+		response, err := api.ListSpans(id, params)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := response["data"].([]any); !ok {
+			return nil, fmt.Errorf("list spans for trace %q: response had no span data array", id)
+		}
+		all = append(all, listEnvelopeData(response)...)
+		next := threadString(response["next_page_token"])
+		if next == "" || seen[next] {
+			return all, nil
+		}
+		seen[next] = true
+		params.Set("page-token", next)
+	}
+}

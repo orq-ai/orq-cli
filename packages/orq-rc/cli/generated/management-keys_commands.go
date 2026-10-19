@@ -13,8 +13,8 @@ import (
 func registermanagementKeysCommands(root *cobra.Command) {
 	managementKeysCmd := &cobra.Command{
 		Use:   "management-keys",
-		Short: "Management keys",
-		Long:  bartolocli.Markdown("Management keys are workspace-scoped credentials that authenticate programmatic access to workspace administration surfaces (API keys, budgets). Unlike project-scoped API keys, a management key always operates at the workspace level."),
+		Short: "Management Keys",
+		Long:  bartolocli.Markdown("Management Keys"),
 	}
 	root.AddCommand(managementKeysCmd)
 
@@ -36,7 +36,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_ALL\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -51,7 +51,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "expires_at",
 							FlagName:    "expires-at",
 							Type:        "datetime",
-							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+							Description: "Optional expiration. The key is rejected once `expires_at` is in the\n past. Unset means the key never expires.",
 						},
 						{
 							Name:        "name",
@@ -65,7 +65,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
 							Enum: []string{
-								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 								"MANAGEMENT_PERMISSION_MODE_ALL",
 								"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
 								"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
@@ -105,7 +104,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "expires_at",
 					FlagName:    "expires-at",
 					Type:        "datetime",
-					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+					Description: "Optional expiration. The key is rejected once `expires_at` is in the\n past. Unset means the key never expires.",
 				},
 				{
 					Name:        "name",
@@ -119,7 +118,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
 					Enum: []string{
-						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 						"MANAGEMENT_PERMISSION_MODE_ALL",
 						"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
 						"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
@@ -255,9 +253,9 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `management_key_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `management_key_id` of the first item from the previous page.")
-		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: MANAGEMENT_KEY_STATUS_UNSPECIFIED, MANAGEMENT_KEY_STATUS_ACTIVE, MANAGEMENT_KEY_STATUS_DISABLED, MANAGEMENT_KEY_STATUS_REVOKED)")
+		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: MANAGEMENT_KEY_STATUS_ACTIVE, MANAGEMENT_KEY_STATUS_DISABLED, MANAGEMENT_KEY_STATUS_REVOKED)")
 		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"MANAGEMENT_KEY_STATUS_UNSPECIFIED", "MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
+			return []string{"MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
 		})
 		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the management-key name. Empty means no name filter.")
 		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one of the listed presets. Empty means no permission-mode filter.")
@@ -328,7 +326,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED\",\n  \"status\": \"MANAGEMENT_KEY_STATUS_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_ALL\",\n  \"status\": \"MANAGEMENT_KEY_STATUS_ACTIVE\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -363,7 +361,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "New permission preset. Omit to keep current.",
 							Enum: []string{
-								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 								"MANAGEMENT_PERMISSION_MODE_ALL",
 								"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
 								"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
@@ -375,7 +372,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
 							Enum: []string{
-								"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 								"MANAGEMENT_KEY_STATUS_ACTIVE",
 								"MANAGEMENT_KEY_STATUS_DISABLED",
 								"MANAGEMENT_KEY_STATUS_REVOKED",
@@ -435,7 +431,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "New permission preset. Omit to keep current.",
 					Enum: []string{
-						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 						"MANAGEMENT_PERMISSION_MODE_ALL",
 						"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
 						"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
@@ -447,7 +442,6 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
 					Enum: []string{
-						"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 						"MANAGEMENT_KEY_STATUS_ACTIVE",
 						"MANAGEMENT_KEY_STATUS_DISABLED",
 						"MANAGEMENT_KEY_STATUS_REVOKED",

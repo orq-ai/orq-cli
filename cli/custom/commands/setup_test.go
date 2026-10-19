@@ -85,7 +85,7 @@ func TestProviderConfigsResolveToOneAbsolutePath(t *testing.T) {
 }
 
 func TestAgentRegistryIsComplete(t *testing.T) {
-	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi"}
+	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi", "omp"}
 	got := agentIDs()
 	if len(got) != len(want) {
 		t.Fatalf("registry has %d agents, want %d", len(got), len(want))
@@ -454,6 +454,194 @@ func TestResolveAuthDefersUnselectedKeyUntilSetupCompletes(t *testing.T) {
 	login, err = auth.ReadAPIKeyLogin()
 	if err != nil || login == nil || login.APIKey != "sk-orq-login" {
 		t.Errorf("successful setup did not save the supplied key: %+v, err = %v", login, err)
+	}
+}
+
+// Setup keys its login to the --server host, so a later bare launch or connect
+// must resolve that host too.
+func TestSetupPersistsTypedServerOnlyWhenComplete(t *testing.T) {
+	credsHarness(t)
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
+	viper.Set("server-default", "")
+	configPath := filepath.Join(viper.GetString("config-directory"), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"server":"https://legacy.example","profile-selected":"ci"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep := &reporter{w: io.Discard}
+
+	auth.SetServer("https://env.example", "env")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("https://self.example", "flag")
+	if err := persistSetupServer(rep, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("env host or incomplete setup persisted %q", got)
+	}
+	auth.SetServer("https://profile.example", "profile")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "" {
+		t.Fatalf("profile host was persisted as a default: %q", got)
+	}
+
+	auth.SetServer("https://self.example", "flag")
+	if err := persistSetupServer(rep, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self.example" {
+		t.Errorf("server-default = %q, want the typed host", got)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["server-default"] != "https://self.example" || config["profile-selected"] != "ci" {
+		t.Errorf("config.json = %s, want server-default written and other keys kept", raw)
+	}
+	if _, ok := config["server"]; ok {
+		t.Errorf("config.json kept the legacy server key: %s", raw)
+	}
+}
+
+func TestCredentialFreeSetupPersistsTypedServerBeforeReturning(t *testing.T) {
+	_, _ = mcpMachine(t, ".claude")
+	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+	t.Setenv("ORQ_API_KEY", "")
+	ResetUserEnvAPIKey()
+	t.Cleanup(ResetUserEnvAPIKey)
+	prevNoInput := viper.Get("no-input")
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", prevNoInput) })
+	prevDir, prevDefault := viper.GetString("config-directory"), viper.GetString("server-default")
+	prevProfile := viper.GetString("profile")
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("server-default", "")
+	viper.Set("profile", "ci")
+	bartolocli.Creds.Set("profiles.ci.api_key", "sk-ci")
+	bartolocli.Creds.Set("profiles.ci.type", "apikey")
+	if err := saveCreds(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		viper.Set("config-directory", prevDir)
+		viper.Set("server-default", prevDefault)
+		viper.Set("profile", prevProfile)
+	})
+	auth.SetServer("https://self.example", "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
+
+	cmd := &cobra.Command{Use: "orq", Version: "test"}
+	err := runSetup(cmd, &setupOptions{caps: []string{capOtel}, yes: true})
+	if err != nil {
+		t.Fatalf("credential-free setup: %v", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("setup did not write the requested telemetry config: %v", err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self.example" {
+		t.Fatalf("server-default = %q, want typed server", got)
+	}
+	if got := bartolocli.Creds.GetString("profiles.ci.server"); got != "https://self.example" {
+		t.Fatalf("active profile server = %q, want typed server", got)
+	}
+	config, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "config.json"))
+	var saved map[string]string
+	if err == nil {
+		err = json.Unmarshal(config, &saved)
+	}
+	if err != nil || saved["server-default"] != "https://self.example" {
+		t.Fatalf("follow-up server config = %s, err=%v", config, err)
+	}
+}
+
+func TestCredentialFreeConnectFinalizesOnlyAfterSuccessfulWrite(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		dryRun bool
+		badCfg bool
+	}{
+		{name: "dry run", dryRun: true},
+		{name: "failed write", badCfg: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _ = mcpMachine(t, ".claude")
+			settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+			t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+			if tc.badCfg {
+				if err := os.WriteFile(settings, []byte("{"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			called := false
+			opts := &setupOptions{yes: true, onConnectSuccess: func(*reporter) error { called = true; return nil }}
+			cmd := &cobra.Command{Use: "connect"}
+			args := []string{"claude", capOtel}
+			err := runConnect(cmd, opts, args, tc.dryRun)
+			if tc.badCfg && err == nil {
+				t.Fatal("connect with invalid settings succeeded")
+			}
+			if called {
+				t.Fatal("setup finalizer ran without a successful actual write")
+			}
+		})
+	}
+}
+
+func TestCredentialFreeConnectReportsWiringWhenServerSaveFails(t *testing.T) {
+	_, _ = mcpMachine(t, ".claude")
+	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+	wantErr := errors.New("server configuration is not writable")
+	opts := &setupOptions{yes: true, onConnectSuccess: func(*reporter) error { return wantErr }}
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runConnect(&cobra.Command{Use: "setup"}, opts, []string{"claude", capOtel}, false)
+	})
+	if !errors.Is(gotErr, wantErr) {
+		t.Fatalf("connect error = %v, want persistence error", gotErr)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("successful wiring was lost: %v", err)
+	}
+	if !strings.Contains(out, "otel") || !strings.Contains(out, "settings.json") {
+		t.Fatalf("result omitted the wiring left on disk after server save failed: %s", out)
+	}
+}
+
+func TestCredentialFreeConnectDoesNotFinalizeSkippedSkills(t *testing.T) {
+	home, _ := mcpMachine(t, ".claude")
+	names, err := skills.Names()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("skill names: %v, %v", names, err)
+	}
+	for _, name := range names {
+		foreign := filepath.Join(home, ".claude", "skills", name)
+		if err := os.MkdirAll(foreign, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(foreign, "SKILL.md"), []byte("user-owned"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	called := false
+	opts := &setupOptions{
+		scope: scopeGlobal, confirmFn: func(string, bool) bool { return false },
+		onConnectSuccess: func(*reporter) error { called = true; return nil },
+	}
+	if err := runConnect(&cobra.Command{Use: "setup"}, opts, []string{"claude", capSkills}, false); err != nil {
+		t.Fatalf("skipped skills changed connect exit behavior: %v", err)
+	}
+	if called {
+		t.Fatal("setup finalized despite every requested skill being skipped")
 	}
 }
 
@@ -859,6 +1047,8 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 // connect; connect then wires with the key setup saved. The pair is the CI
 // composition and covers the mint-to-config chain end to end.
 func TestSetupMintsThenConnectWires(t *testing.T) {
+	prevDefault := viper.GetString("server-default")
+	t.Cleanup(func() { viper.Set("server-default", prevDefault) })
 	const minted = "sk-orq-MINTED-THIS-RUN"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -885,7 +1075,9 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Setenv("ORQ_API_BASE_URL", "")
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
@@ -917,6 +1109,18 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	setup.SetArgs([]string{})
 	if err := setup.Execute(); err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+	configJSON, err := os.ReadFile(filepath.Join(viper.GetString("config-directory"), "config.json"))
+	if err != nil {
+		t.Fatalf("setup did not persist config.json: %v", err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(configJSON, &config); err != nil {
+		t.Fatalf("config.json: %v", err)
+	}
+	var savedServer string
+	if err := json.Unmarshal(config["server-default"], &savedServer); err != nil || savedServer != srv.URL {
+		t.Fatalf("server-default=%q, err=%v; want completed --server host %q", savedServer, err, srv.URL)
 	}
 	if saved, _ := savedAPIKey(); saved != minted {
 		t.Fatalf("saved key = %q, want the minted one", saved)
@@ -2478,9 +2682,9 @@ func TestMintIsAlwaysRestricted(t *testing.T) {
 	if id := savedGatewayKeyID(); id != "01HZXW2K7Y8Q9M0N1P2R3S4T5V" {
 		t.Errorf("gateway_key_id = %q, want the id parsed from %q", id, token)
 	}
-	// source is the field the live endpoint actually acts on.
-	if body["source"] != "router" {
-		t.Errorf("source = %v, want router — without it the server mints permission_mode all", body["source"])
+	// The live endpoint rejects the whole body over an undeclared field.
+	if _, sent := body["source"]; sent {
+		t.Errorf("source = %v, want it absent: the create endpoint answers 400 unknown field", body["source"])
 	}
 }
 
@@ -3566,6 +3770,28 @@ func TestVerifySetupProvesTheKeyWhenTheWorkspaceIsUnconfirmable(t *testing.T) {
 			}
 		})
 
+		// A key minted this run belongs to the active workspace by construction,
+		// so it is checked with projects alone and never warns.
+		t.Run(name+", minted this run", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/projects" {
+					fmt.Fprint(w, `{"data":[]}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, true) {
+				t.Fatalf("a setup whose credential answers was reported as broken:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("a key minted this run needs no workspace warning:\n%s", out.String())
+			}
+		})
+
 		t.Run(name+", credential does not work", func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(status)
@@ -3691,7 +3917,7 @@ func TestRetryWindowAppliesOnlyToAMintedKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var calls int64
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/v2/workspace-settings" {
+				if r.URL.Path == "/v2/workspace-settings" || r.URL.Path == "/v2/projects" {
 					atomic.AddInt64(&calls, 1)
 				}
 				w.WriteHeader(http.StatusInternalServerError)
@@ -3881,5 +4107,45 @@ func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
 		if strings.Contains(body, "auth.OpenBrowser(") {
 			t.Errorf("%s calls auth.OpenBrowser directly; go through openBrowserFn so tests can stub it", name)
 		}
+	}
+}
+
+// A project-scoped key is refused workspace-settings. When the saved key was
+// recorded against the active workspace, that record answers the question, so
+// reusing it must not warn; any other key still says it could not tell.
+func TestForbiddenWorkspaceProbeIsSilentForARecordedKey(t *testing.T) {
+	credsHarness(t)
+	if err := saveGatewayKeyProfile("sk-orq-SCOPED", "KEYID", time.Now().Add(90*24*time.Hour), "acme", "proj"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/projects" {
+			fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	for name, tc := range map[string]struct {
+		token    string
+		wantWarn bool
+	}{
+		"recorded key":   {token: "sk-orq-SCOPED", wantWarn: false},
+		"unrecorded key": {token: "sk-orq-OTHER", wantWarn: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ws := "acme"
+			state := &authState{bearer: tc.token, session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !checkSavedKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, tc.token) {
+				t.Fatalf("a 403 must not refuse the saved key:\n%s", out.String())
+			}
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("a key that answers projects was reported as broken:\n%s", out.String())
+			}
+			if got := strings.Contains(out.String(), "could not confirm"); got != tc.wantWarn {
+				t.Errorf("warned = %v, want %v:\n%s", got, tc.wantWarn, out.String())
+			}
+		})
 	}
 }

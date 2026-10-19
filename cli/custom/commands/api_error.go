@@ -71,7 +71,7 @@ func ExplainAPIError(err error) error {
 }
 
 // splitAPIErrorBody separates a JSON response from context a custom command
-// appended after it (for example traces thread's active-project hint). A JSON
+// appended after it (for example traces conversation's active-project hint). A JSON
 // decoder exposes the byte offset of the first complete value; plaintext stays
 // whole and is bounded by DescribeAPIError.
 func splitAPIErrorBody(raw string) (body, suffix string) {

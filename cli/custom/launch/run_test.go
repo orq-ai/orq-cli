@@ -15,7 +15,7 @@ func TestRunDryRun(t *testing.T) {
 	t.Setenv("ORQ_API_KEY", "test-key")
 	t.Setenv("ORQ_LAUNCH_NON_INTERACTIVE", "1")
 
-	for _, name := range []string{"claude", "opencode", "kilo", "pi", "copilot", "gemini"} {
+	for _, name := range []string{"claude", "opencode", "kilo", "pi", "omp", "copilot", "gemini"} {
 		def := FindAgent(name)
 		if def == nil {
 			t.Fatalf("agent %s missing from registry", name)
@@ -68,7 +68,7 @@ func TestRunBadFlag(t *testing.T) {
 }
 
 func TestFindAgentRegistry(t *testing.T) {
-	for _, name := range []string{"claude", "codex", "opencode", "kilo", "pi", "kimi", "copilot", "gemini"} {
+	for _, name := range []string{"claude", "codex", "opencode", "kilo", "pi", "omp", "kimi", "copilot", "gemini"} {
 		if FindAgent(name) == nil {
 			t.Fatalf("agent %s missing", name)
 		}

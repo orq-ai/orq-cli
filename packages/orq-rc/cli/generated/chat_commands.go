@@ -30,7 +30,7 @@ func registerchatCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create chat completion",
-			Long:    bartolocli.Markdown("Creates a model response for the given chat conversation with support for retries, fallbacks, prompts, and variables.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `audio` (object | null)\n- `cache` (object)\n- `cache_control` (object)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `guardrails` (array)\n- `load_balancer` (oneOf)\n- `logprobs` (boolean | null)\n- ... and 30 more fields\n\nRequired fields: `messages`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a model response for the given chat conversation with support for retries, fallbacks, prompts, and variables.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `audio` (object | null)\n- `cache` (object)\n- `cache_control` (object)\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `guardrails` (array)\n- `load_balancer` (oneOf)\n- ... and 31 more fields\n\nRequired fields: `messages`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -58,6 +58,12 @@ func registerchatCommands(root *cobra.Command) {
 							FlagName:    "cache-control",
 							Type:        "json",
 							Description: "Provider-level prompt caching configuration applied to the request. Creates a cache control breakpoint covering the request content. Only supported by `Anthropic` Claude models.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 						},
 						{
 							Name:        "fallbacks",
@@ -319,6 +325,12 @@ func registerchatCommands(root *cobra.Command) {
 					FlagName:    "cache-control",
 					Type:        "json",
 					Description: "Provider-level prompt caching configuration applied to the request. Creates a cache control breakpoint covering the request content. Only supported by `Anthropic` Claude models.",
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 				},
 				{
 					Name:        "fallbacks",

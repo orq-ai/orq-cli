@@ -19,7 +19,7 @@ func RenderThread(w io.Writer, thread Thread) error {
 	for _, message := range thread.Messages {
 		sections = append(sections, renderThreadMessage(message))
 	}
-	sections = append(sections, "</thread>")
+	sections = append(sections, "</conversation>")
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err
 }
@@ -174,7 +174,7 @@ func threadOpenTag(source ThreadSource) string {
 	for _, field := range threadSourceFields(source) {
 		attributes = append(attributes, field.Attribute+"="+threadAttribute(field.Value))
 	}
-	tag := "<thread"
+	tag := "<conversation"
 	if len(attributes) > 0 {
 		tag += " " + strings.Join(attributes, " ")
 	}
@@ -317,7 +317,7 @@ var threadAttributeEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">",
 
 // threadTagPattern names the tags that count as framing: the ones this
 // renderer writes itself.
-var threadTagPattern = regexp.MustCompile(`</?(?:thread|message|reasoning|reasoning_summary|tool_call|error|exception|span_error)\b`)
+var threadTagPattern = regexp.MustCompile(`</?(?:conversation|message|reasoning|reasoning_summary|tool_call|error|exception|span_error)\b`)
 
 // escapeThreadTags is the whole of what this render escapes in recorded body
 // text: the opening "<" of a framing tag becomes "&lt;", so a span whose text
