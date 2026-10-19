@@ -178,8 +178,10 @@ func TestClaudeWiresEveryModelTier(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.env, got, tc.want)
 		}
-		if !strings.Contains(got, "/") {
-			t.Errorf("%s = %q is not a gateway ref for a tier alias", tc.env, got)
+		// A concrete model id the router resolves, not the bare alias (opus) that
+		// Claude Code would otherwise send and the gateway cannot resolve.
+		if !strings.HasPrefix(got, "claude-") {
+			t.Errorf("%s = %q is not a concrete model id for a tier alias", tc.env, got)
 		}
 	}
 }
@@ -197,6 +199,56 @@ func TestClaudeTiersHonourTheEnvironment(t *testing.T) {
 	}
 	if got := plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "anthropic/claude-opus-4-8" {
 		t.Errorf("env override ignored: got %q", got)
+	}
+}
+
+// Gateway routing turns tool search back on: the gateway is not a first-party
+// host, so Claude Code would otherwise disable it and send every tool up front.
+// CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS must never be set, since it forces
+// search back off (RES-1758).
+func TestClaudeEnablesToolSearchWithGateway(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(nil, routerFlags(GatewayFlags{})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if got := plan.Env["ENABLE_TOOL_SEARCH"]; got != "true" {
+		t.Errorf("ENABLE_TOOL_SEARCH = %q, want true", got)
+	}
+	if _, set := plan.Env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"]; set {
+		t.Error("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS set; it forces tool search off")
+	}
+}
+
+// A user who exported ENABLE_TOOL_SEARCH keeps their value, like the tier vars.
+func TestClaudeToolSearchHonoursTheEnvironment(t *testing.T) {
+	ctx := claudeCtx(map[string]string{"ENABLE_TOOL_SEARCH": "auto:3"}, routerFlags(GatewayFlags{}))
+	plan, err := resolveClaude(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if got := plan.Env["ENABLE_TOOL_SEARCH"]; got != "auto:3" {
+		t.Errorf("exported ENABLE_TOOL_SEARCH ignored: got %q", got)
+	}
+}
+
+// Without gateway routing Claude Code talks to Anthropic directly, a first-party
+// host where it enables tool search itself, so launch leaves the var unset.
+func TestClaudeNoGatewayLeavesToolSearchUnset(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if _, set := plan.Env["ENABLE_TOOL_SEARCH"]; set {
+		t.Error("ENABLE_TOOL_SEARCH set without gateway routing")
 	}
 }
 

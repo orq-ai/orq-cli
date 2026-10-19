@@ -117,6 +117,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed:** `orq launch claude` now matches a first-party Claude Code session
+  more closely (RES-1758). It turns tool search back on through the gateway
+  (`ENABLE_TOOL_SEARCH=true`), which the gateway host otherwise disables; this
+  cuts the first-turn prompt by roughly a third, more with MCP servers loaded. It
+  also pins the current model tiers (`claude-opus-5-5`, `claude-sonnet-5-5`,
+  `claude-haiku-5-5`) instead of the stale ones, so model, max tokens, effort and
+  the per-turn-control beta line up with first party. A value you exported for
+  `ENABLE_TOOL_SEARCH` or any `ANTHROPIC_DEFAULT_*_MODEL` still wins, and
+  `--dry-run` shows them.
+
 ## [12.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.0) — 2026-10-18
 
 - **Added:** the generated commands catch up with the orq API after five weeks
