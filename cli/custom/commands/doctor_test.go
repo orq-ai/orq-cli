@@ -1440,3 +1440,44 @@ func TestFailingCheckIDs(t *testing.T) {
 		t.Fatalf("failingCheckIDs with no fail = %v, want empty", ids)
 	}
 }
+
+// A signed-out session with a bootstrap token that has NOT locally expired must
+// still read as a failing login, from the recorded mark and WITHOUT a network
+// call (RES-1692's first acceptance bullet). An unreachable host proves it is
+// local: a network-dependent verdict would be a "could not reach" warn, not a
+// signed-out fail. A fail check also makes doctor exit non-zero.
+func TestDoctorReportsSignedOutSessionWithoutNetworkCall(t *testing.T) {
+	doctorAuthHarness(t, "")
+	host := "http://127.0.0.1:1" // nothing listening
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(host, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+
+	urls := auth.ResolveURLs(host)
+	ws := "ws"
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL,
+		AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		User:               &auth.SessionUser{ID: "user-1", Email: "dead@example.com"},
+		Workspaces:         []map[string]any{{"key": ws}},
+		ActiveWorkspaceKey: &ws,
+		RefreshToken:       "refresh-token",
+		BootstrapToken:     auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens:    map[string]auth.StoredAccessToken{},
+		SignedOut:          true,
+	}); err != nil {
+		t.Fatalf("save signed-out session: %v", err)
+	}
+
+	report := runDoctor(t, true) // a fail check exits non-zero
+	login := findCheck(t, report, "login")
+	if login == nil || login["status"] != "fail" {
+		t.Fatalf("login check = %v, want a fail from the signed-out mark", login)
+	}
+	if msg, _ := login["message"].(string); !strings.Contains(msg, "signed out") {
+		t.Errorf("login message = %q, want the signed-out message, not a network warn", msg)
+	}
+	if st := doctorSection(t, report, "auth")["status"]; st != "signed-out" {
+		t.Errorf("auth.status = %v, want signed-out (not authenticated)", st)
+	}
+}

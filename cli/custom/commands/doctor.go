@@ -148,37 +148,50 @@ func NewDoctorCommand() *cobra.Command {
 			// useless (a guaranteed 401 reported as a green "Reachable"), and
 			// probing it with a key would fail every API-key setup.
 			if inspect.Status == auth.StatusOK {
-				// Refresh an expired login before probing, rather than skip it:
-				// skipping the one authenticated check whenever the token had
-				// expired hid exactly the dead logins doctor exists to catch. A
-				// rejected refresh is a fail with the one fix (EnsureBootstrapToken
-				// also records signed-out on the session).
-				bearer := inspect.Session.BootstrapToken.Token
-				if isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
-					refreshed, err := client.EnsureBootstrapToken(inspect.Session)
-					switch {
-					case err == nil:
-						bearer = refreshed.BootstrapToken.Token
-					case auth.RefreshRejected(err):
-						bearer = ""
-						checks = append(checks, doctorCheck{
-							ID:         "login",
-							Status:     "fail",
-							Message:    fmt.Sprintf("Login rejected by the server — the refresh token was revoked or has expired. Run: orq auth login --server %s", client.URLs.APIBaseURL),
-							AlwaysShow: true,
-						})
-					default:
-						bearer = ""
-						checks = append(checks, doctorCheck{
-							ID:         "login",
-							Status:     "warn",
-							Message:    fmt.Sprintf("Could not reach the server to verify the login: %v", err),
-							AlwaysShow: true,
-						})
+				if inspect.Session.SignedOut {
+					// The server ended this login (a prior refresh was rejected, recorded
+					// on the session). Report it WITHOUT a network call — the behaviour
+					// RES-1692 asks for — and skip the profile probe; the login is dead
+					// even while the bootstrap token has minutes left on its local clock.
+					checks = append(checks, doctorCheck{
+						ID:         "login",
+						Status:     "fail",
+						Message:    fmt.Sprintf("This login was ended by the server (signed out). Run: orq auth login --server %s", client.URLs.APIBaseURL),
+						AlwaysShow: true,
+					})
+				} else {
+					// Refresh an expired login before probing, rather than skip it:
+					// skipping the one authenticated check whenever the token had
+					// expired hid exactly the dead logins doctor exists to catch. A
+					// rejected refresh is a fail with the one fix (EnsureBootstrapToken
+					// also records signed-out on the session).
+					bearer := inspect.Session.BootstrapToken.Token
+					if isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
+						refreshed, err := client.EnsureBootstrapToken(inspect.Session)
+						switch {
+						case err == nil:
+							bearer = refreshed.BootstrapToken.Token
+						case auth.RefreshRejected(err):
+							bearer = ""
+							checks = append(checks, doctorCheck{
+								ID:         "login",
+								Status:     "fail",
+								Message:    fmt.Sprintf("Login rejected by the server — the refresh token was revoked or has expired. Run: orq auth login --server %s", client.URLs.APIBaseURL),
+								AlwaysShow: true,
+							})
+						default:
+							bearer = ""
+							checks = append(checks, doctorCheck{
+								ID:         "login",
+								Status:     "warn",
+								Message:    fmt.Sprintf("Could not reach the server to verify the login: %v", err),
+								AlwaysShow: true,
+							})
+						}
 					}
-				}
-				if bearer != "" {
-					checks = append(checks, profileChecks(cmd.Context(), client, bearer)...)
+					if bearer != "" {
+						checks = append(checks, profileChecks(cmd.Context(), client, bearer)...)
+					}
 				}
 			}
 
@@ -188,7 +201,14 @@ func NewDoctorCommand() *cobra.Command {
 			var activeWS any
 			workspaceCount := 0
 			if inspect.Status == auth.StatusOK {
-				authStatus = "authenticated"
+				if inspect.Session.SignedOut {
+					// A signed-out session is not authenticated, even with a bootstrap
+					// token that has not locally expired; the server ended it. Reporting
+					// "authenticated" beside a failing login check was the contradiction.
+					authStatus = "signed-out"
+				} else {
+					authStatus = "authenticated"
+				}
 				authSource = "session-file"
 				if inspect.Session.User != nil {
 					userEmail = inspect.Session.User.Email

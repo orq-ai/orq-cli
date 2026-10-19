@@ -388,7 +388,14 @@ func markSessionSignedOut(session *Session) {
 	// targets SessionFilePath() (the active login), so marking a non-active session —
 	// EnsureBootstrapToken called on another host — would stamp the wrong file. This
 	// mirrors CheckSession, which already works around the same SaveSession behaviour.
-	_ = saveSessionTo(sessionPathFor(SessionHost(session.APIBaseURL)), session)
+	path := sessionPathFor(SessionHost(session.APIBaseURL))
+	if err := saveSessionTo(path, session); err != nil {
+		// Best effort: the login is already dead, so a failed write must not mask the
+		// auth error the caller is about to return. But do not drop it silently — the
+		// mark did not persist, so the next command re-probes and re-marks (one extra
+		// round trip), and the user should know the file could not be written.
+		fmt.Fprintf(os.Stderr, "orq: could not record the signed-out login to %s (%v); it will be re-checked next command\n", path, err)
+	}
 }
 
 // CheckSession probes one saved login against its server for `orq auth sessions
