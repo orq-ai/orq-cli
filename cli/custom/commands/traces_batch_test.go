@@ -93,6 +93,52 @@ func TestFetchTraceBatchSpansPaginates(t *testing.T) {
 	}
 }
 
+// An empty response (no trace, or a nil body) must become the id's error, not a
+// bare {id} that a consumer filtering on .error == null would miscount as fetched.
+func TestFetchTraceBatchEmptyTraceIsError(t *testing.T) {
+	api := TraceAPI{
+		GetTrace: func(id string, _ *viper.Viper) (map[string]any, error) {
+			switch id {
+			case "tr_nil":
+				return nil, nil // no error, but nothing came back
+			case "tr_empty":
+				return map[string]any{}, nil // bare envelope, no trace
+			}
+			return map[string]any{"trace": map[string]any{"id": id}}, nil
+		},
+	}
+	got := fetchTraceBatch(api, []string{"tr_nil", "tr_empty", "tr_ok"}, false)
+	for i, id := range []string{"tr_nil", "tr_empty"} {
+		if got[i].Error == "" || got[i].Trace != nil {
+			t.Errorf("%s = %+v, want an error and no trace", id, got[i])
+		}
+	}
+	if got[2].Error != "" || traceID(got[2]) != "tr_ok" {
+		t.Errorf("tr_ok = %+v, want the trace and no error", got[2])
+	}
+}
+
+// A spans response with no `data` array is malformed and must error, not print as
+// a trace with zero spans. A present-but-empty `data` is a genuine zero-span trace.
+func TestFetchTraceBatchSpansDistinguishesEmptyFromMalformed(t *testing.T) {
+	api := TraceAPI{
+		ListSpans: func(id string, _ *viper.Viper) (map[string]any, error) {
+			if id == "tr_malformed" {
+				return map[string]any{"next_page_token": ""}, nil // no data key
+			}
+			return map[string]any{"data": []any{}}, nil // genuinely zero spans
+		},
+	}
+	got := fetchTraceBatch(api, []string{"tr_malformed", "tr_zero"}, true)
+	if got[0].Error == "" || got[0].Spans != nil {
+		t.Errorf("malformed spans response = %+v, want an error and no spans", got[0])
+	}
+	spans, ok := got[1].Spans.([]map[string]any)
+	if got[1].Error != "" || !ok || len(spans) != 0 {
+		t.Errorf("zero-span trace = %+v, want an empty span list and no error", got[1])
+	}
+}
+
 // The semaphore must bound concurrent requests. Delete `sem` and this fails:
 // all ids would run at once and maxInFlight would exceed the limit.
 func TestFetchTraceBatchBoundsConcurrency(t *testing.T) {

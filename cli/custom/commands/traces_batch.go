@@ -3,6 +3,7 @@ package commands
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -102,10 +103,16 @@ func fetchTraceBatch(api TraceAPI, ids []string, spans bool) []batchResult {
 			} else {
 				if data, err := api.GetTrace(id, viper.New()); err != nil {
 					res.Error = err.Error()
+				} else if trace := unwrapThreadEnvelope(data, "trace"); len(trace) == 0 {
+					// An empty response (no trace object, or a bare envelope) is not a
+					// trace. Report it as this id's error rather than letting omitempty
+					// drop the key and print {id} alone, which a consumer filtering on
+					// .error == null would miscount as a fetched trace.
+					res.Error = "empty response: no trace returned for this id"
 				} else {
 					// GetTrace returns the API envelope {trace: {...}}; unwrap it so an
 					// entry is {id, trace: {...}}, not the double-nested {id, trace: {trace}}.
-					res.Trace = unwrapThreadEnvelope(data, "trace")
+					res.Trace = trace
 				}
 			}
 			results[i] = res
@@ -117,7 +124,12 @@ func fetchTraceBatch(api TraceAPI, ids []string, spans bool) []batchResult {
 
 // fetchAllSpans pages through a trace's spans and returns the flattened array,
 // so --spans gives {id, spans: [...]} (the full set), not the raw first-page
-// envelope. Mirrors the pagination the single `orq traces` span path does.
+// envelope. It pages the same way the single `orq traces` span path does, but,
+// unlike that path, a mid-page failure becomes this id's error (no partial list):
+// in a batch a silently short span list is worse than a reported failure. A
+// response with no `data` array is treated as a failure too, so a malformed reply
+// is not reported as a trace with zero spans; a present-but-empty `data` is a
+// genuine zero-span trace and returns an empty list.
 func fetchAllSpans(api TraceAPI, id string) ([]map[string]any, error) {
 	all := []map[string]any{}
 	params := viper.New()
@@ -126,6 +138,9 @@ func fetchAllSpans(api TraceAPI, id string) ([]map[string]any, error) {
 		response, err := api.ListSpans(id, params)
 		if err != nil {
 			return nil, err
+		}
+		if _, ok := response["data"].([]any); !ok {
+			return nil, fmt.Errorf("list spans for trace %q: response had no span data array", id)
 		}
 		all = append(all, listEnvelopeData(response)...)
 		next := threadString(response["next_page_token"])
