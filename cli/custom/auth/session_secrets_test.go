@@ -121,6 +121,103 @@ func TestReadSurfacesStoreLoadErrorNotMissingToken(t *testing.T) {
 	}
 }
 
+// The two notices must fire from the real call sites, not just the helper: the
+// migrate path (hydrateSecrets on read) and the save path (saveSessionTo on
+// write), each with a failing store, in one process. A failed migration must
+// also leave the file untouched with its inline secrets.
+func TestStoreFailureWarningsFireFromBothCallSites(t *testing.T) {
+	isolateHome(t)
+	migrateFailureWarned = sync.Once{}
+	saveFailureWarned = sync.Once{}
+	t.Cleanup(func() { migrateFailureWarned = sync.Once{}; saveFailureWarned = sync.Once{} })
+
+	// A pre-store (inline) file, written in file mode.
+	withStore(t, nil)
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatalf("SaveSession (file mode): %v", err)
+	}
+	if !strings.Contains(sessionFileText(t), "refresh-abc") {
+		t.Fatal("precondition: file-mode write should leave the token inline")
+	}
+
+	// Now a store that fails every write is active.
+	withStore(t, &flakyStore{m: map[string]string{}, failSave: true})
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := os.Stderr
+	os.Stderr = w
+
+	// Migrate path: the read hydrates, tries to migrate, the store write fails.
+	if _, err := ReadSession(); err != nil {
+		os.Stderr = prev
+		t.Fatalf("ReadSession (migrate path): %v", err)
+	}
+	// Save path: the store write fails, secrets fall back to inline.
+	if err := SaveSession(validSession("prod")); err != nil {
+		os.Stderr = prev
+		t.Fatalf("SaveSession (save path): %v", err)
+	}
+	os.Stderr = prev
+	w.Close()
+	out, _ := io.ReadAll(r)
+	s := string(out)
+
+	if !strings.Contains(s, "could not move") {
+		t.Errorf("migrate-path warning missing from stderr: %q", s)
+	}
+	if !strings.Contains(s, "in plaintext") {
+		t.Errorf("save-path warning missing from stderr: %q", s)
+	}
+	// The failed migration must not have stripped the file.
+	if !strings.Contains(sessionFileText(t), "refresh-abc") {
+		t.Error("failed migration did not keep the inline secrets in the file")
+	}
+}
+
+// SecretsLocation is what `orq doctor` reads, so a regression here would report a
+// plaintext refresh token as the secure store. Pin all three states: file mode,
+// a store available but the file still holds inline secrets (degraded), and a
+// store with a secret-free file.
+func TestSecretsLocationReportsHonestly(t *testing.T) {
+	isolateHome(t)
+
+	fileEnv := func(k string) string {
+		if k == CredentialStoreEnv {
+			return "file"
+		}
+		return ""
+	}
+	if desc, degraded := SecretsLocation(fileEnv); degraded || !strings.Contains(desc, "plaintext") {
+		t.Fatalf("file mode: desc=%q degraded=%v, want plaintext and not degraded", desc, degraded)
+	}
+
+	store := ResolveSecretStore(os.Getenv)
+	if store == nil {
+		t.Skip("no OS credential store on this machine to exercise the store-backed states")
+	}
+	// Write files directly in file mode so nothing touches the real keychain.
+	withStore(t, nil)
+
+	if err := saveSessionTo(SessionFilePath(), validSession("prod")); err != nil {
+		t.Fatalf("write inline file: %v", err)
+	}
+	if desc, degraded := SecretsLocation(os.Getenv); !degraded {
+		t.Fatalf("inline file with a store available: desc=%q degraded=false, want degraded", desc)
+	}
+
+	secretFree := validSession("prod")
+	secretFree.stripSecrets()
+	if err := saveSessionTo(SessionFilePath(), secretFree); err != nil {
+		t.Fatalf("write secret-free file: %v", err)
+	}
+	if desc, degraded := SecretsLocation(os.Getenv); degraded || desc != store.Name() {
+		t.Fatalf("secret-free file: desc=%q degraded=%v, want %q not degraded", desc, degraded, store.Name())
+	}
+}
+
 func withStore(t *testing.T, st SecretStore) {
 	t.Helper()
 	prev := activeStore

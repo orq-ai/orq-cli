@@ -353,9 +353,14 @@ func ClearSession() error {
 	// effort: a store that is now unreachable must not block removing the file.
 	if store := activeStore(); store != nil {
 		if err := store.Delete(hostFromSessionPath(path)); err != nil {
-			fmt.Fprintf(os.Stderr,
-				"orq: logged out, but could not remove the stored secret for %s (%v); it may remain in the %s.\n",
-				hostFromSessionPath(path), err, store.Name())
+			host := hostFromSessionPath(path)
+			msg := fmt.Sprintf(
+				"orq: logged out, but could not remove the stored secret for %s (%v); it may remain in the %s.",
+				host, err, store.Name())
+			if hint := manualClearHint(store, host); hint != "" {
+				msg += "\n  Remove it with: " + hint
+			}
+			fmt.Fprintln(os.Stderr, msg)
 		}
 	}
 	err := os.Remove(path)

@@ -22,6 +22,11 @@ func (e fakeExit) ExitCode() int { return e.code }
 type fakeKeychain struct {
 	items    map[string]string
 	notFound int
+	// maxStdinLine is the longest `security -i` stdin line the fake has seen,
+	// recorded from the real command Save sends (not a test-side rebuild), so a
+	// test can assert no line crosses the 4095-byte buffer even if the command
+	// format changes.
+	maxStdinLine int
 }
 
 func argValue(args []string, flag string) string {
@@ -37,7 +42,11 @@ func (f *fakeKeychain) run(stdin, name string, args ...string) (string, string, 
 	switch name {
 	case "security":
 		if len(args) > 0 && args[0] == "-i" {
-			// Interactive: the command (with the secret) arrives on stdin.
+			// Interactive: the command (with the secret) arrives on stdin. Record
+			// the real line length so a test can pin the 4095-byte buffer.
+			if n := len(strings.TrimRight(stdin, "\n")); n > f.maxStdinLine {
+				f.maxStdinLine = n
+			}
 			toks := strings.Fields(stdin)
 			if len(toks) > 0 && toks[0] == "add-generic-password" {
 				f.items[argValue(toks, "-a")] = argValue(toks, "-w")
@@ -156,6 +165,31 @@ func TestLoadSurfacesStoreErrorNotNotFound(t *testing.T) {
 	}
 }
 
+// secretToolReady must accept a clean exit 1 (the probe item is simply absent)
+// and reject an exit 1 that carries stderr (a headless box where the Secret
+// Service is not answering), the case the probe exists to catch.
+func TestSecretToolReady(t *testing.T) {
+	prev := runSecretTool
+	t.Cleanup(func() { runSecretTool = prev })
+
+	runSecretTool = func(_, _ string, _ ...string) (string, string, error) { return "", "", fakeExit{1} }
+	if !secretToolReady() {
+		t.Error("exit 1 with empty stderr (absent probe item) should read as ready")
+	}
+
+	runSecretTool = func(_, _ string, _ ...string) (string, string, error) {
+		return "", "Cannot autolaunch D-Bus without X11 $DISPLAY", fakeExit{1}
+	}
+	if secretToolReady() {
+		t.Error("exit 1 carrying stderr (no Secret Service) must not read as ready")
+	}
+
+	runSecretTool = func(_, _ string, _ ...string) (string, string, error) { return "x", "", nil }
+	if !secretToolReady() {
+		t.Error("a successful probe should read as ready")
+	}
+}
+
 // A secret large enough to overflow security's interactive line buffer must be
 // split across keychain items and round-trip intact, never truncated and never
 // dropped to plaintext. Reproduces the multi-workspace blob case.
@@ -167,18 +201,15 @@ func TestMacKeychainChunksOversizeSecret(t *testing.T) {
 	if err := (macKeychainStore{}).Save(host, secret); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	// It spilled into continuation items, and every stored line is under the cap.
+	// It spilled into continuation items, and no command line Save actually sent
+	// crossed security's 4095-byte buffer. Assert the real recorded line against
+	// the literal 4095, not maxKeychainCommand: a constant set too high (say 5000)
+	// would then be caught here instead of passing against its own value.
 	if _, ok := fk.items[host+".1"]; !ok {
 		t.Fatalf("oversize Save did not spill into a continuation chunk; items=%v", keysOf(fk.items))
 	}
-	for acct, v := range fk.items {
-		service := keychainService
-		if acct != host { // chunk 0 is the bare host; continuations use .cont
-			service = keychainContService
-		}
-		if got := len(v) + len("add-generic-password -U -s "+service+" -a "+acct+" -w \n"); got > maxKeychainCommand {
-			t.Fatalf("chunk %q line is %d bytes, over the %d cap", acct, got, maxKeychainCommand)
-		}
+	if fk.maxStdinLine > 4095 {
+		t.Fatalf("Save sent a %d-byte command line, over security's 4095 buffer", fk.maxStdinLine)
 	}
 
 	got, ok, err := (macKeychainStore{}).Load(host)

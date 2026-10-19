@@ -149,15 +149,25 @@ func (macKeychainStore) Load(host string) (string, bool, error) {
 	return string(dec), true, nil
 }
 
-// maxKeychainCommand bounds a single `security -i` command line. security's
-// interactive reader takes each line into a 4095-byte buffer; a longer line is
-// split mid-command, so it would store a truncated value and run the tail as a
-// second, failing command (echoing the tail — base64 secret — to stderr). A
-// session with many workspace tokens can cross this, so Save splits the encoded
-// secret across keychain items, each written on a command line kept under this
-// margin. The secret is never truncated and never falls back to plaintext just
-// for being large.
+// maxKeychainCommand bounds a single `security -i` command line. Observed on
+// macOS: security's interactive reader takes each line into a 4095-byte buffer,
+// and a longer line is split mid-command, so it stores a truncated value and
+// runs the tail as a second, failing command that echoes the tail (base64
+// secret) to stderr. Reproduce by feeding `security -i` one add-generic-password
+// line whose -w value pushes the line past 4095 bytes. A session with many
+// workspace tokens can cross this, so Save splits the encoded secret across
+// keychain items, each written on a command line kept under this margin (4000,
+// leaving headroom under the observed 4095). The secret is never truncated and
+// never falls back to plaintext just for being large.
 const maxKeychainCommand = 4000
+
+// addGenericPasswordLine builds the exact `security -i` line Save writes for one
+// chunk. Both the per-chunk budget (with an empty value) and the real command use
+// it, so the overhead the budget subtracts can never drift from the command that
+// is actually sent.
+func addGenericPasswordLine(service, account, value string) string {
+	return fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", service, account, value)
+}
 
 // keychainContService holds continuation chunks for a secret too large for one
 // keychain item. Chunk 0 stays under keychainService with the bare host account
@@ -193,7 +203,7 @@ func (macKeychainStore) Save(host, secret string) error {
 	rest := enc
 	for i := 0; ; i++ {
 		service, account := chunkTarget(host, i)
-		overhead := len(fmt.Sprintf("add-generic-password -U -s %s -a %s -w \n", service, account))
+		overhead := len(addGenericPasswordLine(service, account, ""))
 		budget := maxKeychainCommand - overhead
 		if budget <= 0 {
 			return errSecretTooLarge // names so long no value fits a line
@@ -208,7 +218,7 @@ func (macKeychainStore) Save(host, secret string) error {
 
 	for i, chunk := range chunks {
 		service, account := chunkTarget(host, i)
-		cmd := fmt.Sprintf("add-generic-password -U -s %s -a %s -w %s\n", service, account, chunk)
+		cmd := addGenericPasswordLine(service, account, chunk)
 		if _, _, err := runSecretTool(cmd, "security", "-i"); err != nil {
 			// Best-effort: drop every chunk so Load never finds a half-written
 			// secret (it would fail to base64-decode) and no stale tail fragment
@@ -255,18 +265,39 @@ func (macKeychainStore) Save(host, secret string) error {
 }
 
 func (macKeychainStore) Delete(host string) error {
-	// Remove chunk 0 and every continuation chunk, stopping at the first missing.
+	// Remove chunk 0 and every continuation chunk. A missing chunk 0 does NOT end
+	// the removal: a prior partial write can leave chunk 0 gone while continuations
+	// remain, and logout must not orphan base64 secret fragments. Only a missing
+	// continuation (i >= 1) ends the tail. A real error (locked, access denied)
+	// stops the scan and is returned, since the rest cannot be cleared anyway.
 	for i := 0; ; i++ {
 		service, account := chunkTarget(host, i)
 		_, stderr, err := runSecretTool("", "security", "delete-generic-password",
 			"-s", service, "-a", account)
-		if err != nil {
-			if exitCode(err) == 44 {
-				return nil // already gone / no more chunks
-			}
-			return fmt.Errorf("security delete-generic-password: %w: %s", err, stderr)
+		if err == nil {
+			continue
 		}
+		if exitCode(err) == 44 {
+			if i == 0 {
+				continue // chunk 0 already gone, but continuations may remain
+			}
+			return nil // a missing continuation ends the tail
+		}
+		return fmt.Errorf("security delete-generic-password: %w: %s", err, stderr)
 	}
+}
+
+// manualClearHint is the exact command a user can run to remove a store entry by
+// hand, for when logout's best-effort Delete could not (an unreachable or locked
+// store). It names chunk 0, the primary item; empty for the file fallback.
+func manualClearHint(store SecretStore, host string) string {
+	switch store.(type) {
+	case macKeychainStore:
+		return fmt.Sprintf("security delete-generic-password -s %s -a %s", keychainService, host)
+	case secretToolStore:
+		return fmt.Sprintf("secret-tool clear service %s account %s", keychainService, host)
+	}
+	return ""
 }
 
 // ---- Linux: secret-tool(1) / libsecret ----
