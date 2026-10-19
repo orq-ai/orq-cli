@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.1) — 2026-10-19
+
 **Fixed:** a bad invocation now exits `2` (a usage error), not `1`. Bad flags
 and values, unknown commands and subcommands, and a destructive command run
 without `--force` in a non-interactive shell were already reported as usage
