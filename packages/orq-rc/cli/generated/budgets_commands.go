@@ -57,13 +57,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "is_active",
 							FlagName:    "is-active",
 							Type:        "bool",
-							Description: "Whether the budget should be active immediately. Defaults to true\n when omitted (handler enforces).",
+							Description: "Whether the budget should be active immediately. Defaults to true\n when omitted.",
 						},
 						{
 							Name:        "limits",
 							FlagName:    "limits",
 							Type:        "json",
-							Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget; the handler enforces that invariant.",
+							Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget.",
 						},
 						{
 							Name:        "match",
@@ -81,7 +81,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "scope",
 							FlagName:    "scope",
 							Type:        "json",
-							Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set; the handler enforces that invariant.",
+							Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
 						},
 					},
 				)
@@ -123,13 +123,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "is_active",
 					FlagName:    "is-active",
 					Type:        "bool",
-					Description: "Whether the budget should be active immediately. Defaults to true\n when omitted (handler enforces).",
+					Description: "Whether the budget should be active immediately. Defaults to true\n when omitted.",
 				},
 				{
 					Name:        "limits",
 					FlagName:    "limits",
 					Type:        "json",
-					Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget; the handler enforces that invariant.",
+					Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget.",
 				},
 				{
 					Name:        "match",
@@ -147,7 +147,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "scope",
 					FlagName:    "scope",
 					Type:        "json",
-					Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set; the handler enforces that invariant.",
+					Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
 				},
 			},
 		)
