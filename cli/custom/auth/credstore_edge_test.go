@@ -135,3 +135,25 @@ func TestMacKeychainCorruptStoreFailsSafe(t *testing.T) {
 		t.Fatalf("a mid-store gap produced a successful read (len=%d); want an error or ok=false", len(got))
 	}
 }
+
+// TestMacKeychainDeleteClearsOrphanedContinuations: a prior partial write can
+// leave chunk 0 gone while continuation chunks remain. Delete must not stop at
+// the missing chunk 0, it must still clear the continuations so logout never
+// orphans base64 secret fragments.
+func TestMacKeychainDeleteClearsOrphanedContinuations(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	if err := (macKeychainStore{}).Save(host, strings.Repeat("z", 12000)); err != nil {
+		t.Fatal(err)
+	}
+	if len(fk.items) < 3 {
+		t.Fatalf("seed did not produce continuation chunks: %v", keysOf(fk.items))
+	}
+	delete(fk.items, host) // chunk 0 vanishes; continuations remain
+	if err := (macKeychainStore{}).Delete(host); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if len(fk.items) != 0 {
+		t.Fatalf("Delete left orphaned continuation chunks after chunk 0 was gone: %v", keysOf(fk.items))
+	}
+}

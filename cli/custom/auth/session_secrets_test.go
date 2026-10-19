@@ -225,6 +225,39 @@ func withStore(t *testing.T, st SecretStore) {
 	t.Cleanup(func() { activeStore = prev })
 }
 
+// When logout's best-effort store Delete fails (an unreachable or locked store),
+// ClearSession must not fail the logout, and it must print the exact manual
+// command the user can run to remove the orphaned secret by hand.
+func TestClearSessionPrintsManualClearHintOnDeleteFailure(t *testing.T) {
+	isolateHome(t)
+	withStore(t, macKeychainStore{})
+	prev := runSecretTool
+	t.Cleanup(func() { runSecretTool = prev })
+	runSecretTool = func(_, _ string, _ ...string) (string, string, error) {
+		return "", "User interaction is not allowed.", fakeExit{51} // locked keychain
+	}
+	host := hostFromSessionPath(SessionFilePath())
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevStderr := os.Stderr
+	os.Stderr = w
+	clearErr := ClearSession()
+	os.Stderr = prevStderr
+	w.Close()
+	out, _ := io.ReadAll(r)
+
+	if clearErr != nil {
+		t.Fatalf("ClearSession must not fail on a store delete error: %v", clearErr)
+	}
+	want := "security delete-generic-password -s " + keychainService + " -a " + host
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("logout did not print the manual clear command.\nstderr: %q\nwant substring: %q", out, want)
+	}
+}
+
 func sessionFileText(t *testing.T) string {
 	t.Helper()
 	data, err := os.ReadFile(SessionFilePath())
