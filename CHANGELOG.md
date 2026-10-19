@@ -117,15 +117,18 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-**Added:** `orq auth sessions --check` probes each saved login against its server
-and reports a `status` per login (`ok`, `needs-refresh`, `signed-out`,
-`invalid`, `unreadable`).
+**Added:** `orq auth sessions --check` (RES-1692) probes each saved login against
+its server and reports a `status` per login (`ok`, `needs-refresh`, `signed-out`,
+`invalid`, `unreadable`). It asks the server every time, so a login whose refresh
+token was revoked while its bootstrap token is still valid locally is reported
+`signed-out`, not `ok`.
 
 **Fixed:** a login the server has ended (refresh token revoked, or the account
 deactivated) is now recorded as `signed-out` instead of being trusted until its
-local expiry. `orq doctor` reports a dead login as a failing check and exits
-non-zero, so a non-interactive caller sees it. A fresh `orq auth login` clears a
-prior signed-out mark.
+local expiry (RES-1692). `orq doctor` reports a dead login as a failing check and
+exits non-zero, so a non-interactive caller sees it; an unreachable server or a
+5xx is shown but does not make `doctor` exit non-zero. A fresh `orq auth login`
+clears a prior signed-out mark.
 
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 

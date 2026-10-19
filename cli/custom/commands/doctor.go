@@ -33,15 +33,22 @@ type doctorCheck struct {
 	// prefix. Set it explicitly rather than relying on an ID that happens not
 	// to match the prefix.
 	AlwaysShow bool `json:"-"`
+	// Transient marks a failure that is not the user's setup: the server was
+	// unreachable or returned a 5xx. It still shows as a failing row, but does
+	// not make the command exit non-zero, so being offline is not reported as a
+	// broken login. A rejected credential or a dead login is NOT transient.
+	Transient bool `json:"-"`
 }
 
-// failingCheckIDs returns the ids of checks whose status is "fail", so the command
-// can exit non-zero and name what broke. Warnings do not count; only a hard fail
-// (a dead login, a revoked gateway key, a permissions repair that could not run).
-func failingCheckIDs(checks []doctorCheck) []string {
+// blockingFailureIDs returns the ids of checks that should make the command exit
+// non-zero: any check with status "fail" that is not transient. A dead login, a
+// revoked gateway key, a rejected credential, or a permissions repair that could
+// not run all block; a warning, or an unreachable server or 5xx (marked
+// Transient), does not, so `orq doctor` offline does not read as a broken setup.
+func blockingFailureIDs(checks []doctorCheck) []string {
 	var ids []string
 	for _, c := range checks {
-		if c.Status == "fail" {
+		if c.Status == "fail" && !c.Transient {
 			ids = append(ids, c.ID)
 		}
 	}
@@ -285,12 +292,14 @@ func NewDoctorCommand() *cobra.Command {
 			// A failing check must end the run non-zero, so a non-TTY caller sees the
 			// broken login (or gateway key) the ticket is about, not an exit 0 beside a
 			// "fail" line. The report prints first either way. permsErr (a --fix repair
-			// that could not run) takes precedence; it carries its own message.
-			doctorErr := permsErr
-			if doctorErr == nil {
-				if failed := failingCheckIDs(checks); len(failed) > 0 {
-					doctorErr = fmt.Errorf("doctor found %d failing check(s): %s", len(failed), strings.Join(failed, ", "))
-				}
+			// that could not run) is joined with the failing checks rather than masking
+			// them, so the message names both the repair failure and what is broken.
+			var doctorErr error
+			if failed := blockingFailureIDs(checks); len(failed) > 0 {
+				doctorErr = fmt.Errorf("doctor found %d failing check(s): %s", len(failed), strings.Join(failed, ", "))
+			}
+			if permsErr != nil {
+				doctorErr = errors.Join(permsErr, doctorErr)
 			}
 			if wantsHumanView(cmd) {
 				printDoctorSummary(authStatus, userEmail, client.URLs.APIBaseURL, checks)
@@ -517,11 +526,14 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {
+		// Could not reach the host at all: a transport error, not the user's
+		// setup. Fails the row but not the command (Transient).
 		return doctorCheck{
-			ID:      id,
-			Status:  "fail",
-			Message: err.Error(),
-			Details: map[string]any{"url": url},
+			ID:        id,
+			Status:    "fail",
+			Message:   err.Error(),
+			Details:   map[string]any{"url": url},
+			Transient: true,
 		}
 	}
 	defer res.Body.Close()
@@ -535,19 +547,22 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	// credential is not — which is exactly what someone runs doctor to find out.
 	status := "pass"
 	message := "Reachable"
+	transient := false
 	switch {
 	case res.StatusCode >= 500:
 		status = "fail"
+		transient = true // reachable but server-side: not the user's setup
 		message = fmt.Sprintf("Reachable but returned a server error (HTTP %d)", res.StatusCode)
 	case authenticated && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden):
 		status = "fail"
 		message = fmt.Sprintf("Reachable, but the credential was rejected (HTTP %d)", res.StatusCode)
 	}
 	return doctorCheck{
-		ID:      id,
-		Status:  status,
-		Message: message,
-		Details: map[string]any{"url": url, "http_status": res.StatusCode},
+		ID:        id,
+		Status:    status,
+		Message:   message,
+		Details:   map[string]any{"url": url, "http_status": res.StatusCode},
+		Transient: transient,
 	}
 }
 

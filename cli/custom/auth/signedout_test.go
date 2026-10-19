@@ -114,6 +114,43 @@ func TestEnsureWorkspaceTokenDoesNotSignOutOnWorkspaceMiss(t *testing.T) {
 	}
 }
 
+// The mirror of the workspace-miss case: when EnsureWorkspaceToken's refresh is
+// rejected for the refresh token itself (400 "Invalid refresh token!"), the whole
+// login is dead and must be marked signed-out, exactly as EnsureBootstrapToken
+// does. This pins the markSessionSignedOut call inside EnsureWorkspaceToken, so
+// deleting it fails the suite rather than shipping a silent dead login.
+func TestEnsureWorkspaceTokenMarksSignedOutOnRejectedRefresh(t *testing.T) {
+	isolateHome(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+	}))
+	defer srv.Close()
+	t.Setenv("ORQ_SERVER", srv.URL)
+
+	s := validSession("acme")
+	s.APIBaseURL = srv.URL
+	s.RefreshToken = "dead-refresh"
+	if err := SaveSession(s); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	if _, err := clientFor(srv).EnsureWorkspaceToken(s, "acme"); err == nil {
+		t.Fatal("EnsureWorkspaceToken succeeded, want the server's rejection")
+	}
+	if !s.SignedOut {
+		t.Error("in-memory session not marked SignedOut after a rejected refresh")
+	}
+	rows, err := ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Status != SessionStatusSignedOut {
+		t.Fatalf("persisted rows = %+v, want one row with status %q", rows, SessionStatusSignedOut)
+	}
+}
+
 // RefreshRejected is the crux of the login-health fix: the auth server ends a
 // login: a 400 naming the refresh token, or a 403 deactivation. It must NOT
 // match the 400 "Account not found!" that a live login gets for a workspace or

@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,38 @@ import (
 
 	"orq/cli/custom/auth"
 )
+
+// A saved key survives its server check only on a nil error or a transient
+// failure (transport error, 5xx). A 401, 403, any other 4xx, or a 200 that named
+// no workspace is a verdict: drop the key and mint a fresh token. A transient
+// reuse must carry a warning so a later runtime rejection is explained.
+func TestReuseAfterCheck(t *testing.T) {
+	cases := []struct {
+		name      string
+		err       error
+		wantReuse bool
+		wantWarn  bool
+	}{
+		{"accepted", nil, true, false},
+		{"401 unauthorized", &auth.APIError{Status: http.StatusUnauthorized, Msg: "no"}, false, false},
+		{"403 forbidden", &auth.APIError{Status: http.StatusForbidden, Msg: "no"}, false, false},
+		{"200 no workspace key", auth.ErrNoWorkspaceKey, false, false},
+		{"other 4xx", &auth.APIError{Status: http.StatusBadRequest, Msg: "bad"}, false, false},
+		{"5xx server error", &auth.APIError{Status: http.StatusBadGateway, Msg: "boom"}, true, true},
+		{"transport error", errors.New("dial tcp: connection refused"), true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reuse, warn := reuseAfterCheck(tc.err)
+			if reuse != tc.wantReuse {
+				t.Fatalf("reuse = %v, want %v", reuse, tc.wantReuse)
+			}
+			if (warn != "") != tc.wantWarn {
+				t.Fatalf("warn = %q, want warn-present=%v", warn, tc.wantWarn)
+			}
+		})
+	}
+}
 
 func TestResolveCredentialsEnvKey(t *testing.T) {
 	getenv := func(k string) string {
@@ -567,12 +600,17 @@ func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
 	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
 	// The minted-key path verifies the key against the server before reuse
-	// (RES-1692). This 200 stub is not a 401, so the key is accepted and reused;
+	// (RES-1692): KeyWorkspace reads settings.key, so the stub must name a
+	// workspace for the key to be accepted and reused. A 200 that named no
+	// workspace is a verdict now (TestReuseAfterCheck), and
 	// TestResolveCredentialsDropsRejectedGatewayKey covers the 401 drop.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
-			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
-		}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"profile": map[string]any{
+				"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+			},
+			"settings": map[string]any{"key": "ws1"},
+		})
 	}))
 	defer srv.Close()
 

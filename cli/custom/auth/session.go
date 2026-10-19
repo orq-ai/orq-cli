@@ -399,13 +399,14 @@ func markSessionSignedOut(session *Session) {
 }
 
 // CheckSession probes one saved login against its server for `orq auth sessions
-// --check` and returns the live status. ok when the login works or its
-// bootstrap token is still valid; signed-out when the server rejects the
-// refresh token; needs-refresh when the token is stale but the server could not
-// be reached to confirm, so a transient failure never calls a live login dead.
-// A file that will not load is reported invalid or unreadable, as in the
-// listing. The probe is one refresh: EnsureBootstrapToken records signed-out on
-// a rejected refresh and clears it on success, so the status also lands on disk.
+// --check` and returns the live status. It asks the server every time: ok when
+// the refresh succeeds, or when the server is unreachable but the bootstrap
+// token is still valid locally (the login is usable right now); signed-out when
+// the server rejects the refresh token; needs-refresh when the server could not
+// be reached and the token is also stale, so a transient failure never calls a
+// live login dead. A file that will not load is reported invalid or unreadable,
+// as in the listing. The probe is one refresh: it records signed-out on a
+// rejected refresh and clears it on success, so the status also lands on disk.
 func CheckSession(host string) string {
 	data, err := os.ReadFile(sessionPathFor(host))
 	if err != nil {
@@ -421,14 +422,13 @@ func CheckSession(host string) string {
 	if session.SignedOut {
 		return SessionStatusSignedOut
 	}
-	if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
-		return SessionStatusOK
-	}
-	// Probe the refresh directly and persist the outcome to THIS host's file.
-	// EnsureBootstrapToken would SaveSession, which always writes the active
-	// host's file — wrong when --check probes a login that is not the active
-	// one (it would stamp another host's status onto, or overwrite, the active
-	// login). ExchangeAccessToken does no I/O, so we control where it lands.
+	// --check asks the server every time: a bootstrap token still valid locally
+	// says nothing about whether the refresh token behind it was revoked minutes
+	// ago, and answering ok from the local clock alone is the one thing --check
+	// exists to avoid. Probe the refresh directly and persist the outcome to THIS
+	// host's file. EnsureBootstrapToken would SaveSession, which always writes the
+	// active host's file — wrong when --check probes a login that is not the
+	// active one. ExchangeAccessToken does no I/O, so we control where it lands.
 	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
 		if RefreshRejected(err) {
@@ -436,7 +436,14 @@ func CheckSession(host string) string {
 			_ = saveSessionTo(sessionPathFor(host), &session)
 			return SessionStatusSignedOut
 		}
-		return SessionStatusNeedsRefresh // could not reach the server — not a verdict
+		// The server did not answer, so this is never a verdict. needs-refresh
+		// now means exactly that: unreachable AND the bootstrap token is stale.
+		// If that token is still valid locally the login works right now, so it
+		// is ok, not needs-refresh.
+		if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
+			return SessionStatusOK
+		}
+		return SessionStatusNeedsRefresh
 	}
 	session.BootstrapToken = tok
 	session.SignedOut = false

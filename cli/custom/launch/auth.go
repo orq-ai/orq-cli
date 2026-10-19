@@ -237,10 +237,16 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if key, ws := savedKeyForWorkspace(session); key != "" {
 		// Verify the saved key against the server before reusing it: a key
 		// revoked or disabled before its recorded expiry passes the local check
-		// but 401s at runtime, so the wired agent fails. Drop it only on a
-		// definitive rejection (401); a network or server error is not a verdict,
-		// so the key is still used rather than block a launch on a transient blip.
-		if err := validateReusableKey(client, key); err == nil || !auth.Unauthorized(err) {
+		// but fails at runtime, so the wired agent fails. A 401, a 403, any other
+		// 4xx, or a 200 that names no workspace is a verdict — drop the key and
+		// mint a fresh token. A transport error or a 5xx is not the key's fault,
+		// so the key is still used rather than block a launch on a transient blip,
+		// but say so, so a later runtime rejection is explained.
+		reuse, warn := reuseAfterCheck(validateReusableKey(client, key))
+		if reuse {
+			if warn != "" {
+				fmt.Fprintf(os.Stderr, "orq: %s; using the saved key anyway\n", warn)
+			}
 			return &Credentials{
 				APIKey:              key,
 				APIBaseURL:          apiBase,
@@ -292,6 +298,25 @@ func profileKey() (name, key string, ok bool) {
 var validateReusableKey = func(client *auth.Client, key string) error {
 	_, err := client.KeyWorkspace(key)
 	return err
+}
+
+// reuseAfterCheck decides whether a saved key survives its server check. A nil
+// error means the server accepts it. A 401, 403, any other 4xx, or a 200 that
+// named no workspace (ErrNoWorkspaceKey) is a verdict: do not reuse. A transport
+// error or a 5xx is not a verdict, so the key is reused, with warn set so the
+// caller can say the key could not be verified.
+func reuseAfterCheck(err error) (reuse bool, warn string) {
+	if err == nil {
+		return true, ""
+	}
+	if auth.Unauthorized(err) || auth.Forbidden(err) || errors.Is(err, auth.ErrNoWorkspaceKey) {
+		return false, ""
+	}
+	var apiErr *auth.APIError
+	if errors.As(err, &apiErr) && apiErr.Status < 500 {
+		return false, "" // any other 4xx is a verdict too
+	}
+	return true, fmt.Sprintf("could not verify the saved key (%v)", err)
 }
 
 func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {

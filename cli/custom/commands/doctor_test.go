@@ -1425,19 +1425,25 @@ func TestGatewayKeyServerCheck(t *testing.T) {
 	}
 }
 
-func TestFailingCheckIDs(t *testing.T) {
+func TestBlockingFailureIDs(t *testing.T) {
 	checks := []doctorCheck{
 		{ID: "api_base_url", Status: "pass"},
 		{ID: "login", Status: "fail"},
 		{ID: "credentials", Status: "warn"},
 		{ID: "gateway_key", Status: "fail"},
+		// A transient failure (unreachable server / 5xx) shows as fail but must
+		// not block the exit, so being offline does not read as a broken setup.
+		{ID: "auth_base_url", Status: "fail", Transient: true},
 	}
-	got := failingCheckIDs(checks)
+	got := blockingFailureIDs(checks)
 	if len(got) != 2 || got[0] != "login" || got[1] != "gateway_key" {
-		t.Fatalf("failingCheckIDs = %v, want [login gateway_key]", got)
+		t.Fatalf("blockingFailureIDs = %v, want [login gateway_key]", got)
 	}
-	if ids := failingCheckIDs([]doctorCheck{{ID: "ok", Status: "pass"}}); len(ids) != 0 {
-		t.Fatalf("failingCheckIDs with no fail = %v, want empty", ids)
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "ok", Status: "pass"}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with no fail = %v, want empty", ids)
+	}
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "net", Status: "fail", Transient: true}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with only a transient fail = %v, want empty", ids)
 	}
 }
 
