@@ -26,10 +26,10 @@ What you may depend on, and what you may not:
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
 - **Exit codes:** `0` success, `2` a bad invocation (a usage error: a bad flag
-  or value, an unknown command or subcommand, or a destructive command without
-  `--force`), `1` any other failure, `130` interrupted (SIGINT), `143`
-  terminated (SIGTERM). A destructive prompt the user declines exits `0` (it is
-  a choice, not a failure). Two exceptions: `orq launch` and `orq orqi` run
+  or value, an unknown command or subcommand, or a destructive command refused
+  without `--force` in a non-interactive shell), `1` any other failure, `130`
+  interrupted (SIGINT), `143` terminated (SIGTERM). A destructive prompt the
+  user declines in a terminal exits `0` (it is a choice, not a failure). Two exceptions: `orq launch` and `orq orqi` run
   another program and propagate that program's exit status verbatim, so any
   value from `2` to `255` can come back — `127` when the child binary does not
   start, `128+signum` when it is killed by a signal (`137` for SIGKILL), and
