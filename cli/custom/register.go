@@ -1057,6 +1057,7 @@ func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
 		if c.Name() == "traces" {
 			c.AddCommand(commands.NewTracesThreadCommand(api))
 			c.AddCommand(commands.NewDeprecatedTracesThreadCommand(api))
+			c.AddCommand(commands.NewTracesGetBatchCommand(api))
 			return
 		}
 	}

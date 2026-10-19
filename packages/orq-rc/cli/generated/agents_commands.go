@@ -351,6 +351,590 @@ func registeragentsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " external-agent-create --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-create",
+			Short:   "Create external agent",
+			Long:    bartolocli.Markdown("Registers an external A2A agent after securely fetching and validating its agent card.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_url` (string, required)\n- `card_url` (string)\n- `description` (string)\n- `display_name` (string, required)\n- `headers` (object)\n- `key` (string, required)\n- `path` (string, required)\n- `preferred_transport` (string)\n- ... and 2 more fields\n\nRequired fields: `agent_url`, `display_name`, `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"agent_url\": \"agent_url\",\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"path\": \"path\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "agent_url",
+							FlagName:    "agent-url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "card_url",
+							FlagName:    "card-url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "headers",
+							FlagName:    "headers",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "preferred_transport",
+							FlagName:    "preferred-transport",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "protocol_version",
+							FlagName:    "protocol-version",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiExternalAgentCreate(params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "agent_url",
+					FlagName:    "agent-url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "card_url",
+					FlagName:    "card-url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "headers",
+					FlagName:    "headers",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "preferred_transport",
+					FlagName:    "preferred-transport",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "protocol_version",
+					FlagName:    "protocol-version",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-delete agent-key",
+			Short:   "Delete external agent",
+			Long:    bartolocli.Markdown("Deletes a registered external A2A agent.\n\n## Arguments\n\n- `agent-key`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
+
+				_, decoded, err := OpenapiExternalAgentDelete(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-get agent-key",
+			Short:   "Retrieve external agent",
+			Long:    bartolocli.Markdown("Retrieves a registered external A2A agent by key or ID. Encrypted header values are always masked.\n\n## Arguments\n\n- `agent-key`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiExternalAgentGet(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-list",
+			Short:   "List external agents",
+			Long:    bartolocli.Markdown("Returns the external A2A agents visible to the caller, ordered newest first."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiExternalAgentList(params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-refresh-card agent-key",
+			Short:   "Refresh external agent card",
+			Long:    bartolocli.Markdown("Securely fetches the current agent card and replaces the cached card metadata.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `agent-key`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiExternalAgentRefreshCard(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-test-connection agent-key",
+			Short:   "Test external agent connection",
+			Long:    bartolocli.Markdown("Validates the stored connection configuration and securely fetches the external agent card without persisting changes.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `agent-key`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiExternalAgentTestConnection(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " external-agent-update agent-key --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "external-agent-update agent-key",
+			Short:   "Update external agent",
+			Long:    bartolocli.Markdown("Updates mutable registry and A2A connection fields. An empty encrypted header value preserves the stored secret.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_url` (string)\n- `card_url` (string)\n- `clear_headers` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `headers` (object)\n- `path` (string)\n- `preferred_transport` (string)\n- ... and 2 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"agent_url\": \"agent_url\",\n  \"card_url\": \"card_url\",\n  \"clear_headers\": false,\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"headers\": {},\n  \"path\": \"path\",\n  \"preferred_transport\": \"preferred_transport\",\n  \"project_id\": \"project_id\",\n  \"protocol_version\": \"protocol_version\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "agent_url",
+							FlagName:    "agent-url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "card_url",
+							FlagName:    "card-url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "clear_headers",
+							FlagName:    "clear-headers",
+							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "headers",
+							FlagName:    "headers",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "preferred_transport",
+							FlagName:    "preferred-transport",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "protocol_version",
+							FlagName:    "protocol-version",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiExternalAgentUpdate(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "agent_url",
+					FlagName:    "agent-url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "card_url",
+					FlagName:    "card-url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "clear_headers",
+					FlagName:    "clear-headers",
+					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "headers",
+					FlagName:    "headers",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "preferred_transport",
+					FlagName:    "preferred-transport",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "protocol_version",
+					FlagName:    "protocol-version",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := agentsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		cmd := &cobra.Command{
 			Use:     "get-response agent-key task-id",
 			Short:   "Get response",

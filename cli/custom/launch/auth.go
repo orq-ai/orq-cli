@@ -135,14 +135,16 @@ func RemedyForWorkspace(id, savedWS, active string) string {
 }
 
 // APIBaseFor is the API base a persistent artifact should be written against:
-// the env override, then the saved login session's own base, then the hosted
-// default. It is ResolveCredentials' order for a caller that has no credential
-// to resolve — `orq connect mcp` writes a URL and never authenticates — so a
-// self-hosted user's persisted entry and the session `orq launch` starts cannot
-// point at two different servers.
+// the server resolved by the root command, then the env fallback for callers
+// without its PreRun, then the saved login session's own base, then the hosted
+// default. This keeps `orq connect mcp` aligned with the server used by the
+// command even when the user has configured it with `orq server set`.
 func APIBaseFor(getenv func(string) string) string {
-	if v := strings.TrimSpace(getenv("ORQ_API_BASE_URL")); v != "" {
-		return v
+	if server := strings.TrimSpace(auth.Server()); server != "" {
+		return server
+	}
+	if server, _ := auth.ServerFromEnv(getenv); server != "" {
+		return server
 	}
 	if session, err := auth.ReadSession(); err == nil && session != nil {
 		if base := strings.TrimSpace(session.APIBaseURL); base != "" {

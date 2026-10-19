@@ -36,7 +36,7 @@ func registeragentsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"respect_tool\",\n    \"tools\": []\n  },\n  \"source\": \"internal\",\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"Answers employee questions about benefits, PTO, and company policies.\",\n  \"display_name\": \"HR Assistant\",\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"respect_tool\",\n    \"tools\": []\n  },\n  \"source\": \"internal\",\n  \"team_of_agents\": []\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -605,8 +605,8 @@ func registeragentsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 200. When not provided, returns all agents without pagination.")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `starting_after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
+		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `ending_before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("type", "", "Filter agents by type (one of: internal)")
 		_ = cmd.RegisterFlagCompletionFunc("type", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"internal"}, cobra.ShellCompDirectiveNoFileComp
@@ -678,7 +678,7 @@ func registeragentsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"openai/gpt-5.6-sol\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -1198,7 +1198,7 @@ func registeragentsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"openai/gpt-5.6-sol\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -1524,7 +1524,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
 			Short:   "Update agent",
-			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to update"),
+			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_plugins` (array | null)\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- ... and 12 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to update"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1535,6 +1535,12 @@ func registeragentsCommands(root *cobra.Command) {
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "agent_plugins",
+							FlagName:    "agent-plugins",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "description",
 							FlagName:    "description",
@@ -1683,6 +1689,12 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "agent_plugins",
+					FlagName:    "agent-plugins",
+					Type:        "json",
+					Description: "",
+				},
 				{
 					Name:        "description",
 					FlagName:    "description",

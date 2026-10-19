@@ -178,6 +178,43 @@ func printUpdateNotice(current, latest string) bool {
 // updateCheckDisabled reports whether this run must stay silent: an explicit
 // opt-out, CI, a machine-readable format, or anything that is not a person at a
 // terminal. The notice is for humans; it must never land in captured output.
+// skillsUpdateHint is the second half of launch's "your skills differ from the
+// bundled ones" warning. known is false when the latest release cannot be
+// told (a dev build, the check switched off with nothing cached, the registry
+// unreachable); hint is empty when this binary is already the latest, so
+// there is nothing to upgrade to.
+//
+// Unlike the pre-run notice this may fetch: it only runs when skills differ,
+// and a day-old cache cannot rule out the release that bundles them. The
+// answer is stored, so the post-run refresh skips its own fetch.
+func skillsUpdateHint(cmd *cobra.Command) (hint string, known bool) {
+	current := currentVersion(cmd)
+	if _, ok := parseSemver(current); !ok {
+		return "", false
+	}
+	cache := cachedCheckFor(current)
+	latest := ""
+	if cache != nil {
+		latest = cache.Latest
+	}
+	if (cache == nil || time.Since(cache.CheckedAt) >= updateCheckTTL) &&
+		os.Getenv("ORQ_NO_UPDATE_CHECK") == "" && os.Getenv("CI") == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+		defer cancel()
+		if fetched, err := fetchLatestVersion(ctx, current); err == nil {
+			storeUpdateCheck(current, fetched)
+			latest = fetched
+		}
+	}
+	if latest == "" {
+		return "", false
+	}
+	if !updateAvailable(current, latest) {
+		return "", true
+	}
+	return fmt.Sprintf("orq %s is out: run '%s' for the skills it bundles", latest, updateHint()), true
+}
+
 func updateCheckDisabled(cmd *cobra.Command) bool {
 	if os.Getenv("ORQ_NO_UPDATE_CHECK") != "" || os.Getenv("CI") != "" {
 		return true

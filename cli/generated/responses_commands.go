@@ -25,18 +25,138 @@ func registerresponsesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " compact input[]{content: Tell me about machine learning, role: user, type: message}, []{content: Machine learning is a subset of AI..., role: assistant, type: message}, model: openai/gpt-4o\n"
+
+		examples += "  " + parent.CommandPath() + " compact --example\n"
 
 		cmd := &cobra.Command{
-			Use:     "create",
-			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- ... and 36 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Use:     "compact",
+			Short:   "Compact response",
+			Long:    bartolocli.Markdown("Compacts a conversation by summarizing older items to free up context window space. Returns a compaction item containing the generated summary.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf)\n- `instructions` (string)\n- `model` (string)\n- `previous_response_id` (string)\n- `prompt_cache_key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"service_tier\": \"auto\",\n  \"template_engine\": \"text\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"input\": [\n    {\n      \"content\": \"Tell me about machine learning\",\n      \"role\": \"user\",\n      \"type\": \"message\"\n    },\n    {\n      \"content\": \"Machine learning is a subset of AI...\",\n      \"role\": \"assistant\",\n      \"type\": \"message\"\n    }\n  ],\n  \"model\": \"openai/gpt-4o\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "input",
+							FlagName:    "input",
+							Type:        "json-or-string",
+							Description: "Input to compact: a string or an array of input items (messages, files, etc.).",
+						},
+						{
+							Name:        "instructions",
+							FlagName:    "instructions",
+							Type:        "string",
+							Description: "Custom instructions for the compaction summarization.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "The model to use for compaction in provider/model format (e.g. openai/gpt-4o). Required.",
+						},
+						{
+							Name:        "previous_response_id",
+							FlagName:    "previous-response-id",
+							Type:        "string",
+							Description: "The ID of a previous response to continue from.",
+						},
+						{
+							Name:        "prompt_cache_key",
+							FlagName:    "prompt-cache-key",
+							Type:        "string",
+							Description: "Key for prompt caching across requests.",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiCompactResponse(params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "input",
+					FlagName:    "input",
+					Type:        "json-or-string",
+					Description: "Input to compact: a string or an array of input items (messages, files, etc.).",
+				},
+				{
+					Name:        "instructions",
+					FlagName:    "instructions",
+					Type:        "string",
+					Description: "Custom instructions for the compaction summarization.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "The model to use for compaction in provider/model format (e.g. openai/gpt-4o). Required.",
+				},
+				{
+					Name:        "previous_response_id",
+					FlagName:    "previous-response-id",
+					Type:        "string",
+					Description: "The ID of a previous response to continue from.",
+				},
+				{
+					Name:        "prompt_cache_key",
+					FlagName:    "prompt-cache-key",
+					Type:        "string",
+					Description: "Key for prompt caching across requests.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := responsesCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " create --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "create",
+			Short:   "Create response",
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- ... and 37 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"service_tier\": \"auto\",\n  \"speed\": \"standard\",\n  \"template_engine\": \"text\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -180,6 +300,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Key for prompt caching across requests.",
 						},
 						{
+							Name:        "prompt_cache_options",
+							FlagName:    "prompt-cache-options",
+							Type:        "json",
+							Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+						},
+						{
 							Name:        "reasoning",
 							FlagName:    "reasoning",
 							Type:        "json",
@@ -207,14 +333,25 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "service_tier",
 							FlagName:    "service-tier",
 							Type:        "enum-string",
-							Description: "Processing mode for the request. Fast uses premium low-latency processing; priority remains a backward-compatible alias.",
+							Description: "Processing mode for the request. Ultrafast is available for GPT-6 Astra on US/global processing. Fast uses premium low-latency processing; priority remains a backward-compatible alias.",
 							Enum: []string{
 								"auto",
 								"default",
 								"flex",
 								"fast",
+								"ultrafast",
 								"scale",
 								"priority",
+							},
+						},
+						{
+							Name:        "speed",
+							FlagName:    "speed",
+							Type:        "enum-string",
+							Description: "Inference speed for direct Anthropic models. Fast mode is available on Claude Opus 4.8, Opus 5, and Opus 5.5 at premium pricing, and cannot be combined with batch or priority processing.",
+							Enum: []string{
+								"standard",
+								"fast",
 							},
 						},
 						{
@@ -240,12 +377,6 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "stream-options",
 							Type:        "json",
 							Description: "",
-						},
-						{
-							Name:        "tags",
-							FlagName:    "tags",
-							Type:        "string-slice",
-							Description: "Tags attached to the request trace.",
 						},
 						{
 							Name:        "temperature",
@@ -481,6 +612,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "Key for prompt caching across requests.",
 				},
 				{
+					Name:        "prompt_cache_options",
+					FlagName:    "prompt-cache-options",
+					Type:        "json",
+					Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+				},
+				{
 					Name:        "reasoning",
 					FlagName:    "reasoning",
 					Type:        "json",
@@ -508,14 +645,25 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "service_tier",
 					FlagName:    "service-tier",
 					Type:        "enum-string",
-					Description: "Processing mode for the request. Fast uses premium low-latency processing; priority remains a backward-compatible alias.",
+					Description: "Processing mode for the request. Ultrafast is available for GPT-6 Astra on US/global processing. Fast uses premium low-latency processing; priority remains a backward-compatible alias.",
 					Enum: []string{
 						"auto",
 						"default",
 						"flex",
 						"fast",
+						"ultrafast",
 						"scale",
 						"priority",
+					},
+				},
+				{
+					Name:        "speed",
+					FlagName:    "speed",
+					Type:        "enum-string",
+					Description: "Inference speed for direct Anthropic models. Fast mode is available on Claude Opus 4.8, Opus 5, and Opus 5.5 at premium pricing, and cannot be combined with batch or priority processing.",
+					Enum: []string{
+						"standard",
+						"fast",
 					},
 				},
 				{
@@ -541,12 +689,6 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "stream-options",
 					Type:        "json",
 					Description: "",
-				},
-				{
-					Name:        "tags",
-					FlagName:    "tags",
-					Type:        "string-slice",
-					Description: "Tags attached to the request trace.",
 				},
 				{
 					Name:        "temperature",

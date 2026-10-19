@@ -25,14 +25,17 @@ What you may depend on, and what you may not:
   The `toon-go` dependency is pinned in `go.mod` and a golden-output test
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
-- **Exit codes:** `0` success, `1` any failure, `130` interrupted (SIGINT),
-  `143` terminated (SIGTERM). Two exceptions: `orq launch` and `orq orqi` run
+- **Exit codes:** `0` success, `2` a bad invocation (a usage error: a bad flag
+  or value, an unknown command or subcommand, or a destructive command refused
+  without `--force` in a non-interactive shell), `1` any other failure, `130`
+  interrupted (SIGINT), `143` terminated (SIGTERM). A destructive prompt the
+  user declines in a terminal exits `0` (it is a choice, not a failure). Two exceptions: `orq launch` and `orq orqi` run
   another program and propagate that program's exit status verbatim, so any
   value from `2` to `255` can come back — `127` when the child binary does not
   start, `128+signum` when it is killed by a signal (`137` for SIGKILL), and
   otherwise whatever the child itself returned. Scripts wrapping `orq launch`
   or `orq orqi` should treat any non-zero code as failure rather than matching
-  on the four above.
+  on the codes above.
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
@@ -129,6 +132,109 @@ local expiry (RES-1692). `orq doctor` reports a dead login as a failing check an
 exits non-zero, so a non-interactive caller sees it; an unreachable server or a
 5xx is shown but does not make `doctor` exit non-zero. A fresh `orq auth login`
 clears a prior signed-out mark.
+
+## [12.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.0) — 2026-10-19
+
+**Added:** `orq traces get-batch [trace-id ...]` fetches many traces, or their
+spans with `--spans`, in one process instead of running `orq traces get` once
+per id. Ids come from arguments or stdin (one per line), so it pipes from `orq
+traces search`. Output is a `-o json` array in input order, one `{id, trace}` /
+`{id, spans}` / `{id, error}` entry per id; a failing id does not abort the rest.
+
+## [12.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.1) — 2026-10-19
+
+**Fixed:** a bad invocation now exits `2` (a usage error), not `1`. Bad flags
+and values, unknown commands and subcommands, and a destructive command run
+without `--force` in a non-interactive shell were already reported as usage
+errors but still exited `1`; they now exit `2`, so a script can tell a typo from
+a failed request. Success stays `0`, other failures stay `1`, and a destructive
+prompt the user declines exits `0`.
+
+## [12.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.0) — 2026-10-18
+
+- **Added:** the generated commands catch up with the orq API after five weeks
+  without a stable schema: `orq decisions`, `orq websearch`, `orq hub`,
+  `orq model-fusions`, `orq sessions`, `orq telemetry`, `orq views`,
+  `orq file-systems` and `orq workspaces`,
+  plus `orq feedback submit`, `orq datasets create-datapoints` (bulk) and
+  `orq datasets delete-datapoints`. The root help gains a **Factory** section
+  (`file-systems`).
+- **Breaking: removed commands.** `orq documentation` and `orq finder` are
+  private API and no longer in the public schema, and so are `orq model-sharing`
+  and the `orq traces insights-service-*` commands (15 in all). There is no
+  replacement for any of them.
+- **Changed:** `orq classify` is hidden. It is deprecated in favour of
+  `orq decisions` and still works if you call it.
+
+## [11.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.6.0) — 2026-10-18
+
+- **Changed: `orq connect claude otel` configures native
+  OpenTelemetry metrics and logs instead of installing trace hooks.** It writes
+  Claude's user settings using the resolved server's `/v2/otel` endpoint and a
+  configured durable API key when available. `--status` and `orq disconnect
+  claude otel` now inspect and remove the native settings; existing hooks and
+  plugins are preserved. To remove a trace plugin installed by an older CLI,
+  run `claude plugin uninstall orq-trace@orq-claude-plugin`. Re-run `orq
+  connect claude otel` to configure native telemetry. `orq launch claude
+  --otel` continues to provide session tracing. Disconnect stops native export
+  and retains recovery state if the collector endpoint or authorization header
+  was edited, so it cannot restore a saved credential to a different server.
+  Updating native settings also preserves unrelated JSON number precision.
+
+- **Fixed: `orq setup --server <host>` now makes that host the default,** as
+  `orq server set <host>` would. Setup signed in, minted the gateway key and
+  wired agents against the typed host, but never saved it, so the next
+  `orq launch` or `orq connect` without `--server` went back to the hosted
+  service and missed that login. The host is saved only when setup completes.
+  When a profile is in force, its existing server binding is also updated so
+  profile precedence cannot route the next bare command to an older host. A
+  host from `ORQ_SERVER` is not saved, since it already applies on every run
+  that has it. The success screen explains that `orq server clear` clears the
+  global default, while the active profile keeps its own server binding. This
+  also applies to successful capability-only setup, and the saved-server notice
+  remains visible under `--no-input`.
+  `orq connect claude mcp` also uses the resolved server, so a persisted MCP
+  entry no longer points at the hosted service when the configured default is
+  self-hosted.
+
+## [11.5.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.5.1) — 2026-10-14
+
+- **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
+  Launch routes a session's model calls through the AI Router, wires the orq
+  MCP server, and links orq's skills for that session only. Connect persists
+  the same three: the `orq` provider in `~/.omp/agent/models.yml`, the orq MCP
+  server in `~/.omp/agent/mcp.json`, and the skills links. A launched omp
+  session normally keeps your providers, MCP servers, logins, settings,
+  skills, extensions and sessions, without rewriting your existing config.
+  Launch creates persistent login and session storage when missing, so the
+  MCP login made once with `/mcp` and conversation history survive cleanup.
+  If symlinks are unavailable, launch warns and uses an isolated orq-only
+  session instead of aborting; user config and state are not carried over.
+  Malformed user `.mcp.json` is ignored for the session and left untouched.
+  Legacy `models.json` in the default omp directory is accepted and its other
+  providers retained. Connect writes `models.yml` with private 0600
+  permissions. When `OMP_PROFILE` or `PI_PROFILE` is set, launch warns,
+  selects the default profile for the session, and suggests
+  `orq connect omp` for persistent wiring.
+  Override the gateway URL with `ORQ_OMP_BASE_URL`.
+
+- **Fixed: `orq setup` no longer warns "could not confirm the key's workspace"
+  for a project-scoped key,** whether it was just minted or reused from an
+  earlier run. Such a key can't read workspace settings, and setup already
+  recorded its workspace when it minted the key. Keys passed with `--api-key`,
+  or saved for a different workspace, still warn.
+- **Fixed: `orq launch` no longer links a skill the agent already loads, with
+  identical content, from another directory.** Launched from a project, it used to link every orq skill
+  into the project's `.agents/skills` (or `.claude/skills`) even when the same
+  skill was in `~/.agents/skills` or a parent directory up to the repository
+  root. Pi then reported a name collision for each one at startup. Launch now
+  skips a skill whose copy elsewhere matches the bundled one file for file, and
+  does not create the project skills directory when nothing is left to link. A
+  copy that differs is still linked, so the session runs the bundled version,
+  and launch prints a warning naming how many differ and where. The warning
+  suggests `orq update` only when a newer CLI release is out (checked against
+  the update cache, fetched if stale), and drops the suggestion when this CLI
+  is already the latest.
 
 ## [11.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.4.0) — 2026-10-06
 

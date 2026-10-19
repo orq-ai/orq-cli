@@ -30,13 +30,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a Smart Router",
-			Long:    bartolocli.Markdown("Creates a Smart Router in the current workspace from 2 to 50 distinct eligible models. The key must be unique in the workspace and becomes part of the model reference used in AI Gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("Creates a Smart Router in the current workspace from 2 to 50 distinct eligible models. The key must be unique in the workspace and becomes part of the model reference used in AI Gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n- `session_affinity` (object)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -59,11 +59,16 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
-								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
 								"SMART_ROUTER_PROFILE_BALANCED",
 								"SMART_ROUTER_PROFILE_COST",
 							},
+						},
+						{
+							Name:        "session_affinity",
+							FlagName:    "session-affinity",
+							Type:        "json",
+							Description: "",
 						},
 					},
 				)
@@ -107,11 +112,16 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
-						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
 						"SMART_ROUTER_PROFILE_BALANCED",
 						"SMART_ROUTER_PROFILE_COST",
 					},
+				},
+				{
+					Name:        "session_affinity",
+					FlagName:    "session-affinity",
+					Type:        "json",
+					Description: "",
 				},
 			},
 		)
@@ -267,13 +277,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update smart-router-id",
 			Short:   "Update a Smart Router",
-			Long:    bartolocli.Markdown("Updates the model pool, routing profile, or both. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n\n\n## Arguments\n\n- `smart-router-id`"),
+			Long:    bartolocli.Markdown("Updates the model pool, routing profile, session affinity, or any combination. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n- `session_affinity` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n\n\n## Arguments\n\n- `smart-router-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -290,11 +300,16 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
-								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
 								"SMART_ROUTER_PROFILE_BALANCED",
 								"SMART_ROUTER_PROFILE_COST",
 							},
+						},
+						{
+							Name:        "session_affinity",
+							FlagName:    "session-affinity",
+							Type:        "json",
+							Description: "",
 						},
 					},
 				)
@@ -332,11 +347,16 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
-						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
 						"SMART_ROUTER_PROFILE_BALANCED",
 						"SMART_ROUTER_PROFILE_COST",
 					},
+				},
+				{
+					Name:        "session_affinity",
+					FlagName:    "session-affinity",
+					Type:        "json",
+					Description: "",
 				},
 			},
 		)
