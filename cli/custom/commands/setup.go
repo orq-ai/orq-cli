@@ -74,6 +74,12 @@ type setupOptions struct {
 	// default — so the answer the user is most likely to regret (declining a
 	// replacement, accepting a workspace switch) had no way to be exercised.
 	confirmFn func(message string, def bool) bool
+	// onConnectSuccess runs setup persistence after a real connect completes,
+	// before connect emits its machine-readable success result.
+	onConnectSuccess func(*reporter) error
+	// skillsInstalled records actual links written during this connect call;
+	// a target directory alone does not mean a foreign conflict was replaced.
+	skillsInstalled bool
 }
 
 // configScope is where a scope-capable capability writes. scopeUnset is the
@@ -189,8 +195,8 @@ type agentResult struct {
 	// final screen labels each row with the capability that produced it, so a
 	// shared field would make it name the wrong one.
 	MCP string `json:"mcp,omitempty"`
-	// Otel is the persistent plugin path when setup selected tracing. An
-	// install failure needs its own field so it cannot overwrite a gateway or
+	// Otel is the native telemetry config path when setup selected tracing. A
+	// write failure needs its own field so it cannot overwrite a gateway or
 	// MCP failure on the same agent.
 	Otel      string `json:"otel,omitempty"`
 	OtelError string `json:"otel_error,omitempty"`
@@ -294,6 +300,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// connect already is that run, credential gate and all, so hand it over
 	// rather than growing a second credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
+		opts.onConnectSuccess = func(rep *reporter) error { return persistSetupServer(rep, true) }
 		if !opts.noInput {
 			return runCredentialFreeSetup(cmd, opts)
 		}
@@ -369,6 +376,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	complete := setupComplete(verified, agentResults)
 	result["setup_complete"] = complete
 	if err := persistUnselectedSetupKey(rep, authState, opts, complete); err != nil {
+		return err
+	}
+	if err := persistSetupServer(rep, complete); err != nil {
 		return err
 	}
 
@@ -852,6 +862,34 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 		return err
 	}
 	rep.ok("saved the key you passed")
+	return nil
+}
+
+// persistSetupServer makes a typed --server the default once setup completes,
+// because the login, gateway key and agent configs it wrote are keyed to that
+// host. An env or profile host already applies on every run that has it.
+func persistSetupServer(rep *reporter, complete bool) error {
+	host := auth.Server()
+	if !complete || auth.ServerSource() != "flag" || host == "" {
+		return nil
+	}
+	profileName := ""
+	if profileInForce() {
+		profileName = bartoloProfileName()
+		if strings.TrimSpace(bartolocli.GetProfile()["server"]) != host {
+			bartolocli.Creds.Set("profiles."+profileName+".server", host)
+			if err := saveCreds(); err != nil {
+				return err
+			}
+		}
+	}
+	if err := persistServerDefault(host); err != nil {
+		return err
+	}
+	rep.info("saved %s as the default server; run `orq server clear` to clear it", host)
+	if profileName != "" {
+		rep.info("saved %s on profile %s; `orq server clear` only clears the default", host, profileName)
+	}
 	return nil
 }
 
@@ -1477,6 +1515,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	skillDirs := map[string]string{}
 
 	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
+		opts.skillsInstalled = false
 		scope := skillsWriteScope(opts)
 		conflicts, err := skills.Conflicts(selected, scope)
 		if err != nil {
@@ -1496,6 +1535,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			// failed, so it is fatal here. launch degrades instead.
 			return nil, fmt.Errorf("installing skills: %w", err)
 		}
+		opts.skillsInstalled = len(res.Added) > 0
 		targets := skillTargetsFor(selected, scope)
 		if !opts.finalScreen {
 			for _, target := range targets {
@@ -1937,22 +1977,33 @@ func promptForScope(caps []string) (bool, error) {
 
 // verifySetup makes one authenticated call with the new credentials. Not whoami: an --api-key run has no session and whoami would report "not logged in".
 func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, mintedThisRun bool) bool {
-	// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
-	attempts := 1
+	var err error
 	if mintedThisRun {
-		attempts = 4
+		// Minted in the active workspace, which the mint already recorded, so
+		// there is no mismatch to look for; and a project-scoped key is refused
+		// workspace-settings. A freshly minted key is not accepted for a second
+		// or two; without the retry a working setup reports as broken.
+		for attempt := 0; attempt < 4; attempt++ {
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt) * time.Second)
+			}
+			if _, err = client.ListProjects(state.bearer); err == nil {
+				return true
+			}
+		}
+		if auth.Unauthorized(err) || auth.Forbidden(err) || auth.NotFound(err) {
+			rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
+			diagnoseRejectedKey(rep, client, state)
+		} else {
+			rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+		}
+		return false
 	}
 	// workspace-settings over projects: same reachability signal, and it names
 	// the workspace the credential actually belongs to.
-	var err error
-	var keyWS string
-	for attempt := 0; attempt < attempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-		if keyWS, err = client.KeyWorkspace(state.bearer); err == nil {
-			return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
-		}
+	keyWS, err := client.KeyWorkspace(state.bearer)
+	if err == nil {
+		return reconcileKeyWorkspace(rep, client, state, opts, state.bearer, keyWS, false)
 	}
 	if auth.Unauthorized(err) {
 		// 401 is a revoked key, not a workspace mismatch: a key from another
@@ -1968,7 +2019,9 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *set
 		// This is the call verification used before workspace-settings replaced
 		// it. "verified" is a machine contract; it must never be a guess.
 		if _, perr := client.ListProjects(state.bearer); perr == nil {
-			rep.warn("could not confirm the key's workspace: %v", err)
+			if !(auth.Forbidden(err) && recordedInActiveWorkspace(state, state.bearer)) {
+				rep.warn("could not confirm the key's workspace: %v", err)
+			}
 			return true
 		}
 		rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
@@ -2040,10 +2093,20 @@ func checkSavedKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		// route does not serve are all "could not tell", and re-minting over any
 		// of them orphans a working key. Say so: "✓ using your saved key" has
 		// already printed, and unannounced this reads as a check that passed.
-		rep.warn("could not confirm the saved key's workspace: %v — reusing it", err)
+		if !(auth.Forbidden(err) && recordedInActiveWorkspace(state, token)) {
+			rep.warn("could not confirm the saved key's workspace: %v — reusing it", err)
+		}
 		return true
 	}
 	return reconcileKeyWorkspace(rep, client, state, opts, token, keyWS, true)
+}
+
+// recordedInActiveWorkspace reports whether token is the saved key and was
+// recorded, at mint, against the active workspace. A project-scoped key is
+// refused workspace-settings (403), and for such a key that record is the answer.
+func recordedInActiveWorkspace(state *authState, token string) bool {
+	saved, ws := savedAPIKey()
+	return token != "" && token == saved && ws != "" && ws == activeWorkspaceKey(state.session)
 }
 
 // reconcileRejectedSavedKey handles a saved key the API answered 401 to.

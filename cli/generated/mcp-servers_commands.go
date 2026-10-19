@@ -36,7 +36,7 @@ func registermcpServersCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_UNSPECIFIED\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_UNSPECIFIED\",\n    \"url\": \"url\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"key\": \"key\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_STATIC_HEADERS\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n    \"url\": \"https://api.githubcopilot.com/mcp/\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"\n  },\n  \"display_name\": \"GitHub\",\n  \"key\": \"key\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -471,7 +471,7 @@ func registermcpServersCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_UNSPECIFIED\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_UNSPECIFIED\",\n    \"url\": \"url\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_UNSPECIFIED\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_STATIC_HEADERS\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n    \"url\": \"https://api.githubcopilot.com/mcp/\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

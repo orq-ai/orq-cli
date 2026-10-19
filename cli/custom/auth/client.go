@@ -1053,9 +1053,9 @@ func OpenBrowser(url string) bool {
 // The route resolves the workspace from the credential alone — there is no
 // session context in the request — so it answers for a session token and for a
 // gateway key alike, and a key minted in another workspace gets a 200 naming
-// that other workspace rather than a refusal. Verified against api.orq.ai with
-// a freshly minted restricted gateway key: 200 here, 200 on
-// /v2/projects, 403 on /v2/api-keys/{id}.
+// that other workspace rather than a refusal. A project-scoped gateway key has
+// no workspace read permission and gets a 403 here, while /v2/projects still
+// answers 200.
 func (c *Client) KeyWorkspace(bearer string) (string, error) {
 	var resp struct {
 		Settings struct {

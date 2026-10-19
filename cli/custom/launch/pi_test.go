@@ -6,7 +6,7 @@ import (
 )
 
 func TestPiModelsJSON(t *testing.T) {
-	config, err := BuildPiModelsJSON("https://api.orq.ai/v3/router",
+	config, err := BuildPiModelsJSON("https://api.orq.ai/v3/router", "$ORQ_API_KEY",
 		[]string{"anthropic/claude-sonnet-4-6", "openai/gpt-5-mini"},
 		[]ModelInfo{{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000}})
 	if err != nil {
@@ -32,7 +32,7 @@ func TestPiModelsJSON(t *testing.T) {
 }
 
 func TestPiModelsJSONResponsesOverride(t *testing.T) {
-	config, err := BuildPiModelsJSON("https://api.orq.ai/v3/router",
+	config, err := BuildPiModelsJSON("https://api.orq.ai/v3/router", "$ORQ_API_KEY",
 		[]string{"openai/gpt-5-mini", "anthropic/claude-haiku-4-5"}, nil)
 	if err != nil {
 		t.Fatal(err)

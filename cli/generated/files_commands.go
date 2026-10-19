@@ -174,9 +174,9 @@ func registerfilesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size. Unset uses the server default.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item from the previous page.")
+		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("project-id", "", "")
 		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`) or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files of every purpose.")
 

@@ -516,7 +516,9 @@ func mcpCheck() (doctorCheck, bool) {
 	} else {
 		check.Status = "pass"
 		for _, id := range present {
-			messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
+			if line := mcpLoginFor(id); line != "" {
+				messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, line))
+			}
 		}
 	}
 	check.Message = strings.Join(messages, "; ")

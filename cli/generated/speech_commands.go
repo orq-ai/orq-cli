@@ -36,7 +36,7 @@ func registerspeechCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"input\": \"input\",\n  \"model\": \"model\",\n  \"response_format\": \"mp3\",\n  \"speed\": 1,\n  \"voice\": \"voice\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"input\": \"input\",\n  \"model\": \"openai/gpt-4o-mini-tts\",\n  \"response_format\": \"mp3\",\n  \"speed\": 1,\n  \"voice\": \"voice\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

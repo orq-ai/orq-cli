@@ -98,6 +98,51 @@ func TestGeneratedProjectsListRetriesStaleSessionToken(t *testing.T) {
 	}
 }
 
+// A configured default is resolved by the root PreRun, not by an environment
+// variable or login session. MCP persistence must use that resolved host too.
+func TestConnectMCPUsesConfiguredServerWithoutLogin(t *testing.T) {
+	bin := buildOrqBinary(t)
+	home := t.TempDir()
+	orqDir := filepath.Join(home, ".orq")
+	if err := os.MkdirAll(orqDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orqDir, "config.json"), []byte(`{"server-default":"https://self.example"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(bin, "connect", "claude", "mcp", "--global")
+	cmd.Env = []string{
+		"HOME=" + home,
+		"PATH=" + os.Getenv("PATH"),
+		"ORQ_NO_UPDATE_CHECK=1",
+		"ORQ_API_KEY=", "ORQ_TOKEN=", "ORQ_AUTHORIZATION=", "ORQ_SERVER=", "ORQ_API_BASE_URL=", "ORQ_PROFILE=",
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("connect claude mcp: %v\n%s", err, out)
+	}
+
+	var config struct {
+		MCPServers map[string]struct {
+			URL string `json:"url"`
+		} `json:"mcpServers"`
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if err != nil {
+		t.Fatalf("read Claude global config: %v", err)
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("decode Claude global config: %v", err)
+	}
+	if got := config.MCPServers["orq-workspace"].URL; got != "https://self.example/v2/mcp" {
+		t.Fatalf("persisted MCP URL = %q, want configured server URL", got)
+	}
+}
+
 // A machine that never ran `orq connect` has no manifest. The sweep half of
 // the hook runs on every command, including this one, and must still leave
 // nothing behind: SweepDeadSessions reads the manifest and returns before

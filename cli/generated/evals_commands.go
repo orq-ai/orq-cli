@@ -51,8 +51,8 @@ func registerevalsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `starting_after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
+		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `ending_before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("search", "", "")
 		cmd.Flags().String("sort", "", " (one of: asc, desc)")
 		_ = cmd.RegisterFlagCompletionFunc("sort", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
@@ -86,7 +86,7 @@ func registerevalsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default Project\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -397,10 +397,93 @@ func registerevalsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " duplicate id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "duplicate id",
+			Short:   "Duplicate an Evaluator",
+			Long:    bartolocli.Markdown("Create a copy of an evaluator under a new key.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
+			Hidden:  true,
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"key\": \"key\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiDuplicateEval(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := evalsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve an Evaluator",
-			Long:    bartolocli.Markdown("Retrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata, enabled, and output_type.\n\n## Arguments\n\n- `id` — Unique identifier of the evaluator, as returned in the `_id` field by `GET /v2/evaluators`."),
+			Long:    bartolocli.Markdown("Retrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata and enabled.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -408,6 +491,47 @@ func registerevalsCommands(root *cobra.Command) {
 				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetEval(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := evalsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "get-version id version-id",
+			Short:   "Get evaluator version",
+			Long:    bartolocli.Markdown("Returns a specific version of an evaluator.\n\n## Arguments\n\n- `id`\n- `version-id`"),
+			Hidden:  true,
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiGetEvalVersion(args[0], args[1], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -457,7 +581,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "context",
 							FlagName:    "context",
 							Type:        "json",
-							Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+							Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn.",
 						},
 						{
 							Name:        "messages",
@@ -529,7 +653,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "context",
 					FlagName:    "context",
 					Type:        "json",
-					Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+					Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn.",
 				},
 				{
 					Name:        "messages",
@@ -594,14 +718,14 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-versions id",
 			Short:   "List evaluator versions",
-			Long:    bartolocli.Markdown("Returns version history for a specific evaluator\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Returns version history for a specific evaluator.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
 
-				_, decoded, err := OpenapiGetV2EvaluatorsIdVersions(args[0], params)
+				_, decoded, err := OpenapiListEvalVersions(args[0], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -616,9 +740,9 @@ func registerevalsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (10).")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -646,7 +770,7 @@ func registerevalsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"single\",\n  \"path\": \"Default Project\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"versionIncrement\": \"major\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"single\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"versionIncrement\": \"major\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
