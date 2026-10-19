@@ -258,10 +258,28 @@ func TestCheckSession(t *testing.T) {
 		return host
 	}
 
-	t.Run("live bootstrap is ok without a network call", func(t *testing.T) {
+	t.Run("unreachable server with a live bootstrap is ok", func(t *testing.T) {
+		// --check always probes now; the probe to an unreachable host fails, but a
+		// still-valid local bootstrap means the login is usable right now, so ok.
 		host := save(t, "https://unused.invalid", future)
 		if got := CheckSession(host); got != SessionStatusOK {
 			t.Fatalf("got %q, want ok", got)
+		}
+	})
+
+	t.Run("live bootstrap but server rejects the refresh is signed-out", func(t *testing.T) {
+		// The headline of RES-1692: --check asks the server even when the local
+		// bootstrap token is still valid, so a refresh revoked minutes ago reads
+		// signed-out, not ok from the local clock alone. Without the always-probe
+		// change this returned ok.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+		}))
+		defer srv.Close()
+		host := save(t, srv.URL, future) // bootstrap NOT expired
+		if got := CheckSession(host); got != SessionStatusSignedOut {
+			t.Fatalf("got %q, want signed-out", got)
 		}
 	})
 
