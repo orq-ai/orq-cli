@@ -25,14 +25,17 @@ What you may depend on, and what you may not:
   The `toon-go` dependency is pinned in `go.mod` and a golden-output test
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
-- **Exit codes:** `0` success, `1` any failure, `130` interrupted (SIGINT),
-  `143` terminated (SIGTERM). Two exceptions: `orq launch` and `orq orqi` run
+- **Exit codes:** `0` success, `2` a bad invocation (a usage error: a bad flag
+  or value, an unknown command or subcommand, or a destructive command refused
+  without `--force` in a non-interactive shell), `1` any other failure, `130`
+  interrupted (SIGINT), `143` terminated (SIGTERM). A destructive prompt the
+  user declines in a terminal exits `0` (it is a choice, not a failure). Two exceptions: `orq launch` and `orq orqi` run
   another program and propagate that program's exit status verbatim, so any
   value from `2` to `255` can come back — `127` when the child binary does not
   start, `128+signum` when it is killed by a signal (`137` for SIGKILL), and
   otherwise whatever the child itself returned. Scripts wrapping `orq launch`
   or `orq orqi` should treat any non-zero code as failure rather than matching
-  on the four above.
+  on the codes above.
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
@@ -126,6 +129,23 @@ controls on surface changes, whichever side they originate from.
   the per-turn-control beta line up with first party. A value you exported for
   `ENABLE_TOOL_SEARCH` or any `ANTHROPIC_DEFAULT_*_MODEL` still wins, and
   `--dry-run` shows them.
+
+## [12.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.0) — 2026-10-19
+
+**Added:** `orq traces get-batch [trace-id ...]` fetches many traces, or their
+spans with `--spans`, in one process instead of running `orq traces get` once
+per id. Ids come from arguments or stdin (one per line), so it pipes from `orq
+traces search`. Output is a `-o json` array in input order, one `{id, trace}` /
+`{id, spans}` / `{id, error}` entry per id; a failing id does not abort the rest.
+
+## [12.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.1) — 2026-10-19
+
+**Fixed:** a bad invocation now exits `2` (a usage error), not `1`. Bad flags
+and values, unknown commands and subcommands, and a destructive command run
+without `--force` in a non-interactive shell were already reported as usage
+errors but still exited `1`; they now exit `2`, so a script can tell a typo from
+a failed request. Success stays `0`, other failures stay `1`, and a destructive
+prompt the user declines exits `0`.
 
 ## [12.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.0.0) — 2026-10-18
 
