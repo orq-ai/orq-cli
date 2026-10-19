@@ -19,10 +19,9 @@ import (
 //go:embed all:assets/orq-trace
 var tracePlugin embed.FS
 
-// The plugin's published identity, shared with `orq connect otel`: one name
-// for the launcher's session copy, the marketplace install and the probe that
-// reads it back, so a persistent install and a session can never disagree
-// about which plugin they mean.
+// The plugin's published identity: one name for the launcher's session copy,
+// marketplace install and compatibility probe, so a separately installed
+// copy and a session can never disagree about which plugin they mean.
 const (
 	TracePluginName = "orq-trace"
 	// TraceMarketplace is the marketplace declared in orq-ai/assistant-plugins,
@@ -34,10 +33,10 @@ const (
 
 var lookPath = exec.LookPath
 
-// otlpEndpoint is where both exporters post: Claude Code's own appends
+// OTLPEndpoint returns the shared collector endpoint: Claude Code appends
 // /v1/metrics and /v1/logs, and the plugin, handed it through its session
 // profile, appends /v1/traces.
-func otlpEndpoint(apiBase string) string {
+func OTLPEndpoint(apiBase string) string {
 	return firstNonEmpty(deriveFromAPIBase(apiBase, "/v2/otel"), DefaultGatewayAPIBaseURL+"/v2/otel")
 }
 
@@ -59,7 +58,7 @@ func traceEnv(ctx *AgentContext, configPath string) map[string]string {
 		"OTEL_LOGS_EXPORTER":           "otlp",
 		"OTEL_TRACES_EXPORTER":         "none",
 		"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
-		"OTEL_EXPORTER_OTLP_ENDPOINT":  otlpEndpoint(ctx.Creds.APIBaseURL),
+		"OTEL_EXPORTER_OTLP_ENDPOINT":  OTLPEndpoint(ctx.Creds.APIBaseURL),
 		"OTEL_EXPORTER_OTLP_HEADERS":   "Authorization=Bearer " + ctx.Creds.APIKey,
 		// Claude Code strips OTEL_* from the env its hooks run with, and the
 		// plugin's own derivation from a base URL breaks on non-production
@@ -89,7 +88,7 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 		})
 		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
 		configPath = filepath.Join(dir, "orq-config.json")
-		if err := writeTraceConfig(configPath, otlpEndpoint(ctx.Creds.APIBaseURL)); err != nil {
+		if err := writeTraceConfig(configPath, OTLPEndpoint(ctx.Creds.APIBaseURL)); err != nil {
 			return err
 		}
 	}
@@ -134,10 +133,10 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 // the session still gets a trace, and is returned so the caller can say the
 // check did not happen.
 //
-// Exported because `orq connect otel` installs what this reads, and both name
-// the plugin through TracePluginRef. It answers the question from settings.json
-// rather than from here: a launch cannot assume the user's claude is on PATH,
-// and connect has already run it.
+// Exported so callers can check for a legacy or separately installed plugin
+// through the same identity as the launcher. It answers the question from
+// settings.json rather than from here: a launch cannot assume the user's
+// claude is on PATH.
 func TracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
 	installed, _, err := tracePluginInstall(run)
 	return installed, err
@@ -212,20 +211,22 @@ func writeTraceConfig(path, endpoint string) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-// declineTrace holds --no-otel against a plugin the user installed to run in
-// every session. `orq connect otel` leaves orq-trace enabled in the user's
-// claude config, and its hooks trace on their own as soon as they find a key,
-// which the launch puts in the env. Declining the capability has to reach
-// them, so the session carries the plugin's own switch; Claude Code strips
-// OTEL_* from the env its hooks run with, and this name is not OTEL_*.
+// declineTrace holds --no-otel against native telemetry configured in the
+// user's Claude settings and against a legacy or separately installed plugin.
+// The session environment disables Claude Code's native exporters, while the
+// plugin switch reaches hooks that Claude Code runs without OTEL_* variables.
 func declineTrace(ctx *AgentContext, plan *LaunchPlan) {
 	plan.Env["ORQ_TRACE_DISABLED"] = "1"
+	plan.Env["CLAUDE_CODE_ENABLE_TELEMETRY"] = "0"
+	plan.Env["OTEL_METRICS_EXPORTER"] = "none"
+	plan.Env["OTEL_LOGS_EXPORTER"] = "none"
+	plan.Env["OTEL_TRACES_EXPORTER"] = "none"
 	if ctx.Flags.DryRun {
 		return
 	}
-	// Worth saying only when there is an install to contradict: a user who ran
-	// `orq connect otel` expects every session captured. The version decides
-	// which of the two things is true, and saying the wrong one is worse than
+	// Worth saying only when there is an install to contradict: a user with a
+	// separately installed plugin expects every session captured. The version
+	// decides which of the two things is true, and saying the wrong one is worse than
 	// saying nothing: an install that predates the switch keeps tracing the
 	// session, so promising it was switched off would be a false assurance
 	// about where the session content goes.

@@ -28,7 +28,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "clear dataset-id",
 			Short:   "Delete all datapoints",
-			Long:    bartolocli.Markdown("Delete all datapoints from a dataset. This action is irreversible.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Long:    bartolocli.Markdown("Deletes all datapoints from a dataset.\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -74,13 +74,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a dataset",
-			Long:    bartolocli.Markdown("Creates a new dataset in the specified project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string, required)\n\nRequired fields: `display_name`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new dataset in the project bound to the API key, or in the workspace default project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"path\": \"Default Project\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -89,13 +89,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "The display name of the dataset",
+							Description: "Human-readable dataset name.",
 						},
 						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Project path where the dataset should be stored, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Omit to use the API key project or the workspace default project.",
 						},
 					},
 				)
@@ -125,13 +125,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "The display name of the dataset",
+					Description: "Human-readable dataset name.",
 				},
 				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Project path where the dataset should be stored, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Omit to use the API key project or the workspace default project.",
 				},
 			},
 		)
@@ -155,14 +155,14 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create-datapoint dataset-id",
-			Short:   "Create a datapoint",
-			Long:    bartolocli.Markdown("Creates a new datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Short:   "Create datapoints",
+			Long:    bartolocli.Markdown("Creates one or more datapoints in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": [\n      {\n        \"content\": \"content\",\n        \"role\": \"system\"\n      }\n    ]\n  }\n]") {
+				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": []\n  }\n]") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -207,10 +207,80 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " create-datapoints dataset-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "create-datapoints dataset-id",
+			Short:   "Create multiple datapoints",
+			Long:    bartolocli.Markdown("Creates multiple datapoints at once.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"items\": [\n    {\n      \"expected_output\": \"expected_output\",\n      \"inputs\": {},\n      \"messages\": []\n    }\n  ]\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "items",
+							FlagName:    "items",
+							Type:        "json",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiBulkCreateDatapoints(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "items",
+					FlagName:    "items",
+					Type:        "json",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := datasetsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		cmd := &cobra.Command{
 			Use:     "delete dataset-id",
 			Short:   "Delete a dataset",
-			Long:    bartolocli.Markdown("Permanently deletes a dataset and all its datapoints. This action is irreversible.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Long:    bartolocli.Markdown("Permanently deletes a dataset and all its datapoints.\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,7 +324,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-datapoint dataset-id datapoint-id",
 			Short:   "Delete a datapoint",
-			Long:    bartolocli.Markdown("Permanently deletes a specific datapoint from a dataset.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
+			Long:    bartolocli.Markdown("Permanently deletes a specific datapoint from a dataset.\n\n## Arguments\n\n- `dataset-id`\n- `datapoint-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -295,10 +365,80 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " delete-datapoints dataset-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "delete-datapoints dataset-id",
+			Short:   "Delete specific datapoints",
+			Long:    bartolocli.Markdown("Deletes multiple datapoints from a dataset by ID.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `item_ids` (array, required)\n\nRequired fields: `item_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"item_ids\": [\n    \"item_ids\"\n  ]\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "item_ids",
+							FlagName:    "item-ids",
+							Type:        "string-slice",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiDeleteDatasetDatapoints(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "item_ids",
+					FlagName:    "item-ids",
+					Type:        "string-slice",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := datasetsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List datasets",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of datasets for the current workspace. Results can be paginated using cursor-based pagination."),
+			Long:    bartolocli.Markdown("Retrieves a paginated list of datasets for the current workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -320,11 +460,12 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("search", "", "Filter datasets by display name (case-insensitive match).")
-		cmd.Flags().String("updated-by", "", "Comma-separated list of user IDs; returns datasets last updated by any of them.")
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+		cmd.Flags().String("search", "", "")
+		cmd.Flags().String("updated-by", "", "")
+		cmd.Flags().String("project-id", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -344,7 +485,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-datapoints dataset-id",
 			Short:   "List datapoints",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of datapoints from a specific dataset.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Long:    bartolocli.Markdown("Retrieves a paginated list of datapoints from a specific dataset.\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -366,9 +507,9 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -388,7 +529,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve dataset-id",
 			Short:   "Retrieve a dataset",
-			Long:    bartolocli.Markdown("Retrieves a specific dataset by its unique identifier\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Long:    bartolocli.Markdown("Retrieves a specific dataset by its unique identifier.\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -428,7 +569,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-datapoint dataset-id datapoint-id",
 			Short:   "Retrieve a datapoint",
-			Long:    bartolocli.Markdown("Retrieves a datapoint object\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
+			Long:    bartolocli.Markdown("Retrieves a datapoint object.\n\n## Arguments\n\n- `dataset-id`\n- `datapoint-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -470,13 +611,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
 			Short:   "Update a dataset",
-			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
+			Long:    bartolocli.Markdown("Updates the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default Project\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -485,19 +626,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "The display name of the dataset",
-						},
-						{
-							Name:        "path",
-							FlagName:    "path",
-							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "",
 						},
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
-							Type:        "json-or-string",
-							Description: "The unique identifier of the project it belongs to",
+							Type:        "string",
+							Description: "",
 						},
 					},
 				)
@@ -527,19 +662,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "The display name of the dataset",
-				},
-				{
-					Name:        "path",
-					FlagName:    "path",
-					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "",
 				},
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
-					Type:        "json-or-string",
-					Description: "The unique identifier of the project it belongs to",
+					Type:        "string",
+					Description: "",
 				},
 			},
 		)
@@ -564,13 +693,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-datapoint dataset-id datapoint-id",
 			Short:   "Update a datapoint",
-			Long:    bartolocli.Markdown("Update a datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
+			Long:    bartolocli.Markdown("Updates the inputs, messages, or expected output for a datapoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`\n- `datapoint-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"expected_output\": \"expected_output\",\n  \"inputs\": {},\n  \"messages\": [\n    {\n      \"content\": \"content\",\n      \"role\": \"system\"\n    }\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"expected_output\": \"expected_output\",\n  \"inputs\": {},\n  \"messages\": []\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -585,13 +714,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 							Name:        "inputs",
 							FlagName:    "inputs",
 							Type:        "string-map",
-							Description: "The inputs of the dataset. Key value pairs where the key is the input name and the value is the input value. Nested objects and arrays are not supported.",
+							Description: "Structured variables passed to the prompt or workflow.",
 						},
 						{
 							Name:        "messages",
 							FlagName:    "messages",
 							Type:        "json",
-							Description: "A list of messages comprising the conversation so far",
+							Description: "A JSON array containing dynamically typed values.",
 						},
 					},
 				)
@@ -627,13 +756,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Name:        "inputs",
 					FlagName:    "inputs",
 					Type:        "string-map",
-					Description: "The inputs of the dataset. Key value pairs where the key is the input name and the value is the input value. Nested objects and arrays are not supported.",
+					Description: "Structured variables passed to the prompt or workflow.",
 				},
 				{
 					Name:        "messages",
 					FlagName:    "messages",
 					Type:        "json",
-					Description: "A list of messages comprising the conversation so far",
+					Description: "A JSON array containing dynamically typed values.",
 				},
 			},
 		)

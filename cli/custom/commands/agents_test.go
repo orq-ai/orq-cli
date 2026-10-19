@@ -1098,6 +1098,9 @@ func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
 		{"pi", `{"providers":{"orq":{"models":[{"id":"openai/gpt-5"}]},"ollama":{"models":[]}}}`, func(p string) (int, error) {
 			return writePiProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
 		}},
+		{"omp", "providers:\n  orq:\n    models:\n      - id: openai/gpt-5\n  ollama:\n    models: []\n", func(p string) (int, error) {
+			return writeOmpProviderYAML(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config")
@@ -1652,6 +1655,9 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 				switch spec.ID {
 				case "codex":
 					ext = ".toml" // whole file ours: fresh case only
+				case "omp":
+					ext = ".yml"
+					user = []byte(ompUserModelsYAML)
 				case "kimi":
 					ext = ".toml"
 					user = []byte("[providers.mine]\napi_key = \"k\"\n\n[models.\"mine/model\"]\nprovider = \"mine\"\n")
@@ -1683,9 +1689,9 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 					t.Fatalf("remove: removed=%v err=%v", removed, err)
 				}
 				after := mustRead(t, path)
-				if ext == ".toml" {
+				if ext == ".toml" || ext == ".yml" {
 					if string(after) != string(user) {
-						t.Errorf("kimi config not byte-identical:\nbefore: %q\nafter:  %q", user, after)
+						t.Errorf("%s config not byte-identical:\nbefore: %q\nafter:  %q", spec.ID, user, after)
 					}
 				} else {
 					jsonEqual(t, user, after)
@@ -1758,5 +1764,56 @@ func TestStaleEmbeddedKeyNeedsBothSides(t *testing.T) {
 	codex, _ := lookupAgent("codex")
 	if staleEmbeddedKey(codex, "/dev/null", "sk-orq-NEW") {
 		t.Error("codex references ORQ_API_KEY rather than embedding it, so it can never be stale")
+	}
+}
+
+func TestWriteClaudeNativeOtelCreatesMissingSettingsDirectory(t *testing.T) {
+	settings := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	if err := writeClaudeNativeOtel(settings, claudeNativeOtelEnv("https://self.example/v2/otel", "sk-orq-test")); err != nil {
+		t.Fatalf("write native OTel settings without an existing Claude directory: %v", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("settings file was not created: %v", err)
+	}
+	if _, err := os.Stat(claudeOtelOwnershipPath(settings)); err != nil {
+		t.Fatalf("ownership snapshot was not created: %v", err)
+	}
+}
+
+func TestReadJSONConfigPreservesLargeIntegerPrecision(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	const integer = "123456789012345678901234567890123456789"
+	if err := os.WriteFile(path, []byte(`{"unowned":{"large":`+integer+`}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg["unowned"].(map[string]any)["large"].(json.Number).String(); got != integer {
+		t.Fatalf("large integer = %s, want %s", got, integer)
+	}
+}
+
+func TestClaudeOtelOwnershipRestoresLargeIntegerExactly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	const integer = "123456789012345678901234567890123456789"
+	initial := `{"env":{"OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_PROTOCOL":` + integer + `}}`
+	if err := os.WriteFile(path, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudeNativeOtel(path, claudeNativeOtelEnv("https://orq.example/otel", "sk-test")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeClaudeNativeOtel(path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg["env"].(map[string]any)["OTEL_EXPORTER_OTLP_PROTOCOL"].(json.Number).String()
+	if got != integer {
+		t.Fatalf("restored integer = %s, want %s", got, integer)
 	}
 }

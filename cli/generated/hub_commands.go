@@ -10,16 +10,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-func registerfinderCommands(root *cobra.Command) {
-	finderCmd := &cobra.Command{
-		Use:   "finder",
-		Short: "Finder",
-		Long:  bartolocli.Markdown("Finder"),
+func registerhubCommands(root *cobra.Command) {
+	hubCmd := &cobra.Command{
+		Use:   "hub",
+		Short: "Hub",
+		Long:  bartolocli.Markdown("Hub items are reusable templates available to a workspace."),
 	}
-	root.AddCommand(finderCmd)
+	root.AddCommand(hubCmd)
 
 	func() {
-		parent := finderCmd
+		parent := hubCmd
 
 		params := viper.New()
 
@@ -27,16 +27,15 @@ func registerfinderCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "get id",
-			Short:   "Retrieve a finder entity",
-			Long:    bartolocli.Markdown("Returns a single finder entity by id, scoped to the caller's workspace membership.\n\n## Arguments\n\n- `id` — Identifier of the finder entity to retrieve. Matches the `_id` field."),
-			Hidden:  true,
+			Short:   "Get a hub item",
+			Long:    bartolocli.Markdown("Retrieves a hub item available to the current workspace.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
 
-				_, decoded, err := OpenapiGetFinderEntity(args[0], params)
+				_, decoded, err := OpenapiHubGet(args[0], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -60,24 +59,23 @@ func registerfinderCommands(root *cobra.Command) {
 	}()
 
 	func() {
-		parent := finderCmd
+		parent := hubCmd
 
 		params := viper.New()
 
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "list",
-			Short:   "List finder entities",
-			Long:    bartolocli.Markdown("Returns all finder entities for the current workspace. Owned entities are scoped to the active project; structural entities and skills remain workspace-wide."),
-			Hidden:  true,
+			Use:     "search",
+			Short:   "Search hub items",
+			Long:    bartolocli.Markdown("Returns hub items available to the current workspace, sorted by display name."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
 
-				_, decoded, err := OpenapiListFinderEntities(params)
+				_, decoded, err := OpenapiHubSearch(params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -91,6 +89,9 @@ func registerfinderCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
+
+		cmd.Flags().String("q", "", "")
+		cmd.Flags().String("types", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 

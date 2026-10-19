@@ -80,13 +80,40 @@ func TestTraceNeverEnablesTheNativeTraceExporter(t *testing.T) {
 	}
 }
 
-// ParseArgv turns tracing on; the resolver is what --no-otel reaches, and a
-// declined session must carry no telemetry env at all.
-func TestNoOtelLeavesNoTelemetryEnv(t *testing.T) {
+// --no-otel must override native telemetry configured in Claude's user
+// settings. Exporter selectors and the collection switch are set in the
+// launcher environment, which takes precedence for this session.
+func TestNoOtelDisablesNativeTelemetry(t *testing.T) {
 	plan, _ := resolveClaude(traceCtx(GatewayFlags{}, nil))
-	for k := range plan.Env {
-		if strings.HasPrefix(k, "OTEL_") || k == "CLAUDE_CODE_ENABLE_TELEMETRY" {
-			t.Errorf("telemetry env %s set after --no-otel", k)
+	for key, want := range map[string]string{
+		"CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+		"OTEL_METRICS_EXPORTER":        "none",
+		"OTEL_LOGS_EXPORTER":           "none",
+		"OTEL_TRACES_EXPORTER":         "none",
+		"ORQ_TRACE_DISABLED":           "1",
+	} {
+		if got := plan.Env[key]; got != want {
+			t.Errorf("%s = %q, want %q; env: %v", key, got, want, plan.Env)
+		}
+	}
+	for _, key := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"} {
+		if _, set := plan.Env[key]; set {
+			t.Errorf("--no-otel retained native exporter setting %s: %v", key, plan.Env)
+		}
+	}
+
+	// The child environment overlays values inherited from the shell, so these
+	// explicit disables win over a native telemetry setup in the parent env.
+	merged := MergeEnv([]string{
+		"CLAUDE_CODE_ENABLE_TELEMETRY=1",
+		"OTEL_METRICS_EXPORTER=otlp",
+		"OTEL_LOGS_EXPORTER=otlp",
+		"OTEL_TRACES_EXPORTER=otlp",
+	}, plan.Env)
+	for _, pair := range merged {
+		key, value, ok := strings.Cut(pair, "=")
+		if ok && plan.Env[key] != "" && value != plan.Env[key] {
+			t.Errorf("merged %s = %q, want launcher override %q", key, value, plan.Env[key])
 		}
 	}
 }
@@ -326,10 +353,9 @@ func TestTracePluginProbeTreatsBadJSONAsNotInstalled(t *testing.T) {
 	}
 }
 
-// --no-otel has to reach a plugin the user installed to trace every session.
-// `orq connect otel` leaves orq-trace enabled in the user's claude config, and
-// its hooks start as soon as they find a key, which the launch supplies, so
-// without the plugin's own switch the flag would decline nothing.
+// --no-otel has to reach a separately installed plugin that traces every
+// session. Its hooks start as soon as they find a key, which the launch
+// supplies, so without the plugin's own switch the flag would decline nothing.
 func TestNoOtelSwitchesOffAnInstalledPlugin(t *testing.T) {
 	installed := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace","version":"0.5.0","enabled":true}]`
 	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false}, recordingProbe(new([]probeCall), installed, "")))
@@ -337,10 +363,22 @@ func TestNoOtelSwitchesOffAnInstalledPlugin(t *testing.T) {
 	if got := plan.Env["ORQ_TRACE_DISABLED"]; got != "1" {
 		t.Errorf("ORQ_TRACE_DISABLED = %q, want 1", got)
 	}
-	// Nothing may turn telemetry on either, or the native exporter traces
-	// what the plugin was just told not to.
-	if plan.Env["CLAUDE_CODE_ENABLE_TELEMETRY"] != "" {
-		t.Errorf("--no-otel still enabled telemetry: %v", plan.Env)
+	// The native exporters are disabled as well as the separately installed
+	// plugin, even when the user's settings.env enables them.
+	for key, want := range map[string]string{
+		"CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+		"OTEL_METRICS_EXPORTER":        "none",
+		"OTEL_LOGS_EXPORTER":           "none",
+		"OTEL_TRACES_EXPORTER":         "none",
+	} {
+		if got := plan.Env[key]; got != want {
+			t.Errorf("%s = %q, want %q; env: %v", key, got, want, plan.Env)
+		}
+	}
+	for _, key := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"} {
+		if _, set := plan.Env[key]; set {
+			t.Errorf("--no-otel retained native exporter setting %s: %v", key, plan.Env)
+		}
 	}
 	if pluginDirArg(plan) != "" {
 		t.Errorf("--no-otel still loaded a plugin: %v", plan.PreArgs)

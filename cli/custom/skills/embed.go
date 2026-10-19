@@ -73,14 +73,19 @@ func Fingerprint() string {
 // hashTree hashes every embedded path and its contents in sorted order, so the
 // result depends on names and bytes but not on walk order.
 func hashTree() string {
+	sum, _ := hashFS(Assets())
+	return sum
+}
+
+func hashFS(fsys fs.FS) (string, error) {
 	h := sha256.New()
-	_ = fs.WalkDir(Assets(), ".", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		h.Write([]byte(p))
 		h.Write([]byte{0})
-		data, readErr := fs.ReadFile(Assets(), p)
+		data, readErr := fs.ReadFile(fsys, p)
 		if readErr != nil {
 			return readErr
 		}
@@ -88,7 +93,7 @@ func hashTree() string {
 		h.Write([]byte{0})
 		return nil
 	})
-	return hex.EncodeToString(h.Sum(nil))[:16]
+	return hex.EncodeToString(h.Sum(nil))[:16], err
 }
 
 // SkillDir is the path of one skill inside the embedded tree.

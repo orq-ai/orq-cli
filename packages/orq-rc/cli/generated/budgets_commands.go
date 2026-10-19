@@ -36,7 +36,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -284,9 +284,9 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd.Flags().Bool("is-active", false, "Optional filter: only return budgets with this active state.")
 		cmd.Flags().String("period", "", "Optional filter: only return budgets whose limits.period matches one of the listed values. Empty means no period filter.")
 		cmd.Flags().String("query", "", "Optional free-text query matched against a budget's scope target name and id.")
-		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated. (one of: BUDGET_SORT_FIELD_UNSPECIFIED, BUDGET_SORT_FIELD_EXPIRES_AT, BUDGET_SORT_FIELD_CREATED_AT, BUDGET_SORT_FIELD_UPDATED_AT)")
+		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated. (one of: BUDGET_SORT_FIELD_EXPIRES_AT, BUDGET_SORT_FIELD_CREATED_AT, BUDGET_SORT_FIELD_UPDATED_AT)")
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp
+			return []string{"BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp
 		})
 
 		bartolocli.SetCustomFlags(cmd)
@@ -365,7 +365,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"clear_alerts\": false,\n  \"clear_expires_at\": false,\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"clear_alerts\": false,\n  \"clear_expires_at\": false,\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

@@ -509,6 +509,51 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 		var examples string
 
+		cmd := &cobra.Command{
+			Use:     "list-versions key-or-id",
+			Short:   "List deployment versions",
+			Long:    bartolocli.Markdown("List saved versions across deployment variants, including drafts, newest first. Resolve the deployment by key or ID. Optionally filter by variant_id. Use the version _id with starting_after or ending_before to paginate.\n\n## Arguments\n\n- `key-or-id` — Deployment key or ID."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiListDeploymentVersions(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().String("starting-after", "", "Version _id after which to fetch the next page.")
+		cmd.Flags().String("ending-before", "", "Version _id before which to fetch the previous page.")
+		cmd.Flags().String("variant-id", "", "Return versions of this variant only.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := deploymentsCmd
+
+		params := viper.New()
+
+		var examples string
+
 		examples += "  " + parent.CommandPath() + " stream --example\n"
 
 		cmd := &cobra.Command{
