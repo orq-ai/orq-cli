@@ -247,6 +247,43 @@ func TestMacKeychainSaveFailureLeavesNoOrphanChunks(t *testing.T) {
 	}
 }
 
+// Shrinking a secret clears the leftover tail chunks. If one of those deletes
+// fails for a reason other than not-found (keychain locked), the stale tail must
+// not be left where Load would stitch it onto the new, shorter value and decode
+// garbage. Save must fail and Load must report no secret, so the caller keeps the
+// 0600 file.
+func TestMacKeychainShrinkWithUndeletableTailFailsClean(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	big := strings.Repeat("A", 12000) // several chunks
+
+	if err := (macKeychainStore{}).Save(host, big); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	// Re-save a one-chunk secret. The add succeeds; the leftover-clear loop then
+	// hits a locked keychain (exit 51) deleting the first tail chunk, host.1.
+	runSecretTool = func(stdin, name string, args ...string) (string, string, error) {
+		if name == "security" && len(args) > 0 && args[0] == "delete-generic-password" {
+			if argValue(args, "-a") == host+".1" {
+				return "", "User interaction is not allowed.", fakeExit{51}
+			}
+		}
+		return fk.run(stdin, name, args...)
+	}
+	if err := (macKeychainStore{}).Save(host, "small"); err == nil {
+		t.Fatal("shrink Save succeeded, want the injected delete failure")
+	}
+	// Chunk 0 was rolled back, so Load stops at the missing chunk 0 and never
+	// joins the stale tail into a corrupt value.
+	if _, ok := fk.items[host]; ok {
+		t.Fatalf("chunk 0 survived a failed shrink; Load would read a corrupt join; items=%v", keysOf(fk.items))
+	}
+	if got, ok, err := (macKeychainStore{}).Load(host); ok || err != nil {
+		t.Fatalf("Load after failed shrink: got=%q ok=%v err=%v, want ok=false err=nil", got, ok, err)
+	}
+}
+
 func keysOf(m map[string]string) []string {
 	ks := make([]string, 0, len(m))
 	for k := range m {

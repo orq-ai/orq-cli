@@ -230,12 +230,26 @@ func (macKeychainStore) Save(host, secret string) error {
 		}
 	}
 
-	// Clear any leftover chunks from a previous, larger secret.
+	// Clear any leftover chunks from a previous, larger secret. Stop at the first
+	// not-found (exit 44). Any OTHER delete error (keychain locked, access denied)
+	// could leave a stale tail chunk that Load would stitch onto the new value and
+	// mis-decode, so remove chunk 0 of what we just wrote and fail: Load then stops
+	// at the missing chunk 0 and the caller keeps the secret in the 0600 file,
+	// rather than reading a corrupt join.
 	for i := len(chunks); ; i++ {
 		service, account := chunkTarget(host, i)
-		if _, _, err := runSecretTool("", "security", "delete-generic-password", "-s", service, "-a", account); err != nil {
-			break // exit 44 (gone) or any error: nothing more to clear
+		_, _, err := runSecretTool("", "security", "delete-generic-password", "-s", service, "-a", account)
+		if err == nil {
+			continue
 		}
+		if exitCode(err) == 44 {
+			break // no more leftover chunks
+		}
+		for j := range chunks {
+			s, a := chunkTarget(host, j)
+			_, _, _ = runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
+		}
+		return fmt.Errorf("security delete-generic-password: could not clear a leftover keychain chunk (exit %d)", exitCode(err))
 	}
 	return nil
 }
