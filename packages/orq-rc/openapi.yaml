@@ -1064,7 +1064,7 @@ components:
       properties:
         file_data:
           type: "string"
-          description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+          description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
         uri:
           type: "string"
           description: "URL of the file. Supported for PDFs on Anthropic Claude models and for `https://` and Google Cloud Storage `gs://` URIs on Vertex AI Gemini models."
@@ -2558,7 +2558,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m5ca2hngr00qzqmm7qc861bq"
+              default: "reasoning_01m5ccjq2se6kr17ct5f68yyh5"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -8693,7 +8693,7 @@ components:
           type: "object"
           additionalProperties:
             type: "string"
-          description: "Maps each placeholder (e.g. \"<PERSON_1>\") to the original value it replaced."
+          description: "Maps each placeholder (e.g. `<PERSON_1>`) to the original value it replaced."
     RestoreRequest:
       type: "object"
       properties:
@@ -20214,10 +20214,10 @@ components:
         metadata:
           additionalProperties:
             type: "string"
-          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400."
+          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400."
           type: "object"
         model:
-          description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform."
+          description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform."
           type: "string"
         parallel_tool_calls:
           description: "Whether to allow parallel tool calls."
@@ -20778,7 +20778,7 @@ components:
         metadata:
           additionalProperties:
             type: "string"
-          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
           type: "object"
         model:
           type: "string"
@@ -25309,7 +25309,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -25808,7 +25808,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -26249,7 +26249,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M5CA2HM4Z6GQ3PKXHXG7P6P3"
+                                default: "01M5CCJQ1E45QMEEDH9EP6YB2F"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -27477,7 +27477,7 @@ paths:
                                         properties:
                                           file_data:
                                             type: "string"
-                                            description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                            description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                           uri:
                                             type: "string"
                                             description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -35606,7 +35606,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5CA2HQFAEQD8DJGJ5WT12P3"
+                                          default: "01M5CCJQ4QT034FD2Y107WVFKM"
                                         name:
                                           type: "string"
                                         description:
@@ -37225,7 +37225,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5CA2HR7707BRHC6W26CAJR8"
+                                          default: "01M5CCJQ5FP8CMSVE3JJYP9ASZ"
                                         name:
                                           type: "string"
                                         description:
@@ -38180,7 +38180,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -40040,7 +40040,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -41193,7 +41193,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -43075,7 +43075,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -44282,7 +44282,7 @@ paths:
                                                       properties:
                                                         file_data:
                                                           type: "string"
-                                                          description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                          description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                         uri:
                                                           type: "string"
                                                           description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -45436,7 +45436,7 @@ paths:
                                                 properties:
                                                   file_data:
                                                     type: "string"
-                                                    description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                    description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                   uri:
                                                     type: "string"
                                                     description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -46239,7 +46239,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5CA2HT1Y8PY9H7AVWTZCAP9"
+                              default: "tool_01M5CCJQ77Q248BDQ1CSX3HQND"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46340,7 +46340,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5CA2HT2VWMWVR07C6CTBN2G"
+                              default: "tool_01M5CCJQ78M38A0HJ709SWT1SC"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46443,7 +46443,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5CA2HT37A81Z54YNZ88CZPM"
+                              default: "tool_01M5CCJQ79R2Q41WYSNJ74TG8X"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46587,7 +46587,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5CA2HT4ZD43J103VMM62DTR"
+                              default: "tool_01M5CCJQ7AAAX62AVAEWJDVV50"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47074,7 +47074,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTBB450S99S6VVQZXAZ"
+                        default: "tool_01M5CCJQ7G0DRNNNRJPFBXZM8D"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47175,7 +47175,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTBD9X3JRNE4RFQBHCE"
+                        default: "tool_01M5CCJQ7H4FDD5A988ZEZPS3G"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47278,7 +47278,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTC099X2VE2474PCD0X"
+                        default: "tool_01M5CCJQ7JXSSNCZVPF0DPYRJ7"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47422,7 +47422,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTDMSGC0DT6CEP5VFA6"
+                        default: "tool_01M5CCJQ7K0NQ90ADTS3T57SKZ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47926,7 +47926,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTGB5XWC9WCH81ZPY8K"
+                        default: "tool_01M5CCJQ7PMXCD3KB222WRWS96"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48027,7 +48027,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTHXB5NHK7Y4KX19NKX"
+                        default: "tool_01M5CCJQ7Q0P9ESA451KP7JEJ8"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48130,7 +48130,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTJXND9ZWRTEJ0NNQ2K"
+                        default: "tool_01M5CCJQ7QCFT6TKRKYHMY7PS8"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48274,7 +48274,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTK7J3JGJVNGMD1CYFJ"
+                        default: "tool_01M5CCJQ7R05K19VJM38B2V81N"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48441,7 +48441,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTTAWT44443T01ZYMHN"
+                        default: "tool_01M5CCJQ80A77C2WBGV3VZV4R2"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48542,7 +48542,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTV8GNHF9XDGK2DPCBS"
+                        default: "tool_01M5CCJQ80P04QV8FJZY6E3QJ5"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48645,7 +48645,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTWN8NAVJF2B9VA6EQS"
+                        default: "tool_01M5CCJQ81EF4VPNZ0H5YGRJZD"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48789,7 +48789,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5CA2HTX35ED4D7RTGHGF9CQ"
+                        default: "tool_01M5CCJQ824B2PRSTWYK53HXH5"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -55324,7 +55324,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-20T09:25:18.711Z"
+                          default: "2026-10-20T10:09:06.014Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55332,7 +55332,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-20T09:25:18.712Z"
+                              default: "2026-10-20T10:09:06.014Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55402,7 +55402,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-20T09:25:18.711Z"
+                          default: "2026-10-20T10:09:06.014Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55410,7 +55410,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-20T09:25:18.712Z"
+                              default: "2026-10-20T10:09:06.014Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55595,7 +55595,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55603,7 +55603,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55673,7 +55673,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55681,7 +55681,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55784,7 +55784,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55792,7 +55792,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55862,7 +55862,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55870,7 +55870,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56069,7 +56069,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56077,7 +56077,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56147,7 +56147,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-20T09:25:18.711Z"
+                        default: "2026-10-20T10:09:06.014Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56155,7 +56155,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-20T09:25:18.712Z"
+                            default: "2026-10-20T10:09:06.014Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -76527,10 +76527,10 @@ paths:
                 metadata:
                   additionalProperties:
                     type: "string"
-                  description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400."
+                  description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400."
                   type: "object"
                 model:
-                  description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform."
+                  description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform."
                   type: "string"
                 parallel_tool_calls:
                   description: "Whether to allow parallel tool calls."
@@ -76949,7 +76949,7 @@ paths:
                   metadata:
                     additionalProperties:
                       type: "string"
-                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
                     type: "object"
                   model:
                     type: "string"
@@ -77189,7 +77189,7 @@ paths:
                   metadata:
                     additionalProperties:
                       type: "string"
-                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
                     type: "object"
                   model:
                     type: "string"
