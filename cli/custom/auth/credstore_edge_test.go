@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -17,9 +18,10 @@ import (
 func TestMacKeychainEdgeSizes(t *testing.T) {
 	fk := withFakeKeychain(t, 44)
 	const host = "api.orq.ai"
-	// base64 of N raw bytes is 4*ceil(N/3); ~2959 raw bytes is where the first
-	// chunk fills and the secret spills into a continuation.
-	for _, n := range []int{0, 1, 2, 3, 100, 2958, 2959, 2960, 2961, 2962, 6000, 20000} {
+	// base64 of N raw bytes is 4*ceil(N/3); edge is where the first chunk fills
+	// and the secret spills into a continuation.
+	edge := chunk0Budget(host) / 4 * 3
+	for _, n := range []int{0, 1, 2, 3, 100, edge - 1, edge, edge + 1, edge + 2, edge + 3, 6000, 20000} {
 		secret := strings.Repeat("x", n)
 		if err := (macKeychainStore{}).Save(host, secret); err != nil {
 			t.Fatalf("Save(n=%d): %v", n, err)
@@ -55,23 +57,32 @@ func TestMacKeychainEdgeSizes(t *testing.T) {
 	}
 }
 
+// chunk0Budget is the base64 characters chunk 0 carries for host: the line limit
+// less the command's overhead and the header.
+func chunk0Budget(host string) int {
+	return maxKeychainCommand - len(addGenericPasswordLine(keychainService, host, "")) - chunkHeaderLen
+}
+
 // TestMacKeychainDegenerateNamesRefused pins the exact budget-zero boundary: a
-// host whose chunk-0 overhead is exactly maxKeychainCommand (budget 0) is refused,
-// and one byte shorter (budget 1) saves. A far-too-long host would pass a sloppy
-// budget < 0 guard too, so it would not catch the off-by-one the == 0 case does.
+// host whose chunk-0 overhead is exactly maxKeychainCommand (budget 0) is refused
+// even for an empty secret, and one byte shorter (budget 1) saves. The empty
+// secret is what catches a guard loosened to budget < 0: at budget 0 an empty
+// value would otherwise fit and save.
 func TestMacKeychainDegenerateNamesRefused(t *testing.T) {
 	withFakeKeychain(t, 44)
-	// Overhead with an empty host; the host length then dials budget precisely.
-	fixed := len(addGenericPasswordLine(keychainService, "", ""))
+	// Budget with an empty host; the host length then dials it precisely.
+	fixed := chunk0Budget("")
 
-	atLimit := strings.Repeat("a", maxKeychainCommand-fixed) // overhead == limit, budget 0
-	if err := (macKeychainStore{}).Save(atLimit, "secret"); !errors.Is(err, errSecretTooLarge) {
-		t.Fatalf("overhead == maxKeychainCommand (budget 0): got %v, want errSecretTooLarge", err)
+	atLimit := strings.Repeat("a", fixed) // budget 0
+	for _, secret := range []string{"", "secret"} {
+		if err := (macKeychainStore{}).Save(atLimit, secret); !errors.Is(err, errSecretTooLarge) {
+			t.Fatalf("budget 0, secret %q: got %v, want errSecretTooLarge", secret, err)
+		}
 	}
 
-	justUnder := strings.Repeat("a", maxKeychainCommand-fixed-1) // budget 1
+	justUnder := strings.Repeat("a", fixed-1) // budget 1
 	if err := (macKeychainStore{}).Save(justUnder, ""); err != nil {
-		t.Fatalf("overhead == maxKeychainCommand-1 (budget 1): Save failed: %v", err)
+		t.Fatalf("budget 1: Save failed: %v", err)
 	}
 }
 
@@ -81,11 +92,11 @@ func TestMacKeychainDegenerateNamesRefused(t *testing.T) {
 func TestMacKeychainChunkSplitIsInclusive(t *testing.T) {
 	// Pick a host whose chunk-0 budget is a multiple of 4, so a base64 payload can
 	// land exactly on it. base64 of 3*k raw bytes is 4*k chars with no padding.
-	host := "orq.test1" // 9 chars
-	budget := maxKeychainCommand - len(addGenericPasswordLine(keychainService, host, ""))
-	if budget%4 != 0 {
-		t.Fatalf("test host gives budget %d; pick one whose budget is a multiple of 4", budget)
+	host := "orq.test1"
+	for chunk0Budget(host)%4 != 0 {
+		host += "x"
 	}
+	budget := chunk0Budget(host)
 	raw := budget / 4 * 3 // base64 is exactly `budget` chars
 
 	fk := withFakeKeychain(t, 44)
@@ -94,6 +105,9 @@ func TestMacKeychainChunkSplitIsInclusive(t *testing.T) {
 	}
 	if _, ok := fk.items[host+".1"]; ok {
 		t.Fatal("exact-budget secret spilled into a continuation; the split must be <=, not <")
+	}
+	if fk.maxStdinLine != maxKeychainCommand-1 { // the line less its newline
+		t.Fatalf("exact-budget line is %d bytes, want %d", fk.maxStdinLine, maxKeychainCommand-1)
 	}
 	if got, ok, err := (macKeychainStore{}).Load(host); err != nil || !ok || len(got) != raw {
 		t.Fatalf("exact-budget round trip: ok=%v err=%v len=%d want=%d", ok, err, len(got), raw)
@@ -119,20 +133,73 @@ func TestMacKeychainCorruptStoreFailsSafe(t *testing.T) {
 		t.Fatalf("non-base64 chunk: ok=%v err=nil, want a decode error", ok)
 	}
 
-	fk2 := withFakeKeychain(t, 44)
-	full := strings.Repeat("y", 20000)
-	if err := (macKeychainStore{}).Save("h.test", full); err != nil {
+	// A gap (a missing middle chunk) must never read back, whatever chunk 0's
+	// length: the header's count catches it, not a lucky base64 decode. h.tes
+	// gives a chunk 0 that decodes on its own; h.test one that does not.
+	for _, host := range []string{"h.test", "h.tes"} {
+		fk2 := withFakeKeychain(t, 44)
+		if err := (macKeychainStore{}).Save(host, strings.Repeat("y", 20000)); err != nil {
+			t.Fatal(err)
+		}
+		delete(fk2.items, host+".1") // punch a hole right after chunk 0
+		got, ok, err := (macKeychainStore{}).Load(host)
+		if !errors.Is(err, errKeychainSecretCorrupt) || ok {
+			t.Fatalf("%s: a mid-store gap read back (len=%d ok=%v err=%v); want errKeychainSecretCorrupt", host, len(got), ok, err)
+		}
+	}
+
+	// Chunks of two writes of the same size (a token refresh) join into valid
+	// base64 of the right length, so only the checksum can catch them.
+	fk3 := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	if err := (macKeychainStore{}).Save(host, strings.Repeat("a", 9000)); err != nil {
 		t.Fatal(err)
 	}
-	delete(fk2.items, "h.test.1") // punch a hole right after chunk 0
-	// A gap must never yield a successful read: not the full secret, and not a
-	// silent partial either. Load stops at the missing chunk 1 and is left with
-	// chunk 0 alone, whose length (the chunk-0 budget) is not a multiple of 4, so
-	// the base64 decode fails rather than returning a short, wrong-but-plausible
-	// value. Assert the safe outcome directly (err or ok=false), not an equality
-	// that only holds because of this host's chunk-0 length.
-	if got, ok, err := (macKeychainStore{}).Load("h.test"); err == nil && ok {
-		t.Fatalf("a mid-store gap produced a successful read (len=%d); want an error or ok=false", len(got))
+	oldTail := fk3.items[host+".1"]
+	if err := (macKeychainStore{}).Save(host, strings.Repeat("b", 9000)); err != nil {
+		t.Fatal(err)
+	}
+	fk3.items[host+".1"] = oldTail
+	if _, ok, err := (macKeychainStore{}).Load(host); !errors.Is(err, errKeychainSecretCorrupt) || ok {
+		t.Fatalf("chunks from two writes read back: ok=%v err=%v; want errKeychainSecretCorrupt", ok, err)
+	}
+}
+
+// A one-item value written before the header existed still loads, alone: a
+// stray continuation item is never joined onto it.
+func TestMacKeychainLoadsAHeaderlessItem(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	fk.items[host] = base64.StdEncoding.EncodeToString([]byte(`{"refreshToken":"r"}`))
+	fk.items[host+".1"] = "QUJD"
+	got, ok, err := (macKeychainStore{}).Load(host)
+	if err != nil || !ok || got != `{"refreshToken":"r"}` {
+		t.Fatalf("headerless item: got=%q ok=%v err=%v", got, ok, err)
+	}
+}
+
+// When the leftover-chunk delete fails and so does the rollback of chunk 0, the
+// error says stale items may remain, rather than dropping the rollback failure.
+func TestMacKeychainShrinkRollbackFailureIsReported(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	if err := (macKeychainStore{}).Save(host, strings.Repeat("A", 12000)); err != nil {
+		t.Fatal(err)
+	}
+	runSecretTool = func(stdin, name string, args ...string) (string, string, error) {
+		if name == "security" && len(args) > 0 && args[0] == "delete-generic-password" {
+			return "", "User interaction is not allowed.", fakeExit{51}
+		}
+		return fk.run(stdin, name, args...)
+	}
+	err := (macKeychainStore{}).Save(host, "small")
+	if err == nil || !strings.Contains(err.Error(), "stale orq-cli keychain items may remain") {
+		t.Fatalf("want the rollback failure named, got %v", err)
+	}
+	// The header keeps the leftover tail out of any read: chunk 0 is the new
+	// one-chunk value and Load never looks further.
+	if got, ok, err := (macKeychainStore{}).Load(host); err != nil || !ok || got != "small" {
+		t.Fatalf("Load after failed rollback: got=%q ok=%v err=%v", got, ok, err)
 	}
 }
 

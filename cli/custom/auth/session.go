@@ -69,6 +69,11 @@ type Session struct {
 	// authz_stale answer to the WorkspaceTokens slot it held, so anything still
 	// carrying the old token can find its replacement (see CurrentToken).
 	StaleTokens map[string]StaleToken `json:"staleTokens,omitempty"`
+
+	// SecretStore names the OS store holding this login's token strings when
+	// the file was written without them (SecretStore.Name). Empty when the
+	// tokens are inline. Lets a reader tell "moved to the store" from "missing".
+	SecretStore string `json:"secretStore,omitempty"`
 }
 
 type SessionInspectStatus string
@@ -314,10 +319,30 @@ func saveSessionTo(path string, s *Session) error {
 	// With a store active, the token strings go to the OS store and the file
 	// keeps only non-secret state. The store write comes first: if it fails we
 	// fall through and write the secrets inline (today's behaviour) rather than
-	// leave a secret-free file whose login no longer works.
-	if store := activeStore(); store != nil {
+	// leave a secret-free file whose login no longer works. The lock spans both
+	// writes so a concurrent save or read never pairs this store write with
+	// another process's file.
+	written.SecretStore = ""
+	store := activeStore()
+	if store == nil {
+		// About to replace a file whose secrets went to a store this process is
+		// not using (a fresh login in file mode): the stored copy is orphaned.
+		if prev, err := readSessionFile(path); err == nil && prev != nil && prev.SecretStore != "" && !prev.hasInlineSecrets() {
+			if st := storeNamed(prev.SecretStore); st != nil {
+				host := hostFromSessionPath(path)
+				msg := fmt.Sprintf("orq: the previous %s login's secrets stay in the %s, which this command is not using.", host, st.Name())
+				if hint := st.ClearHint(host); hint != "" {
+					msg += "\n  Remove them with: " + hint
+				}
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}
+	}
+	if store != nil {
+		defer lockSecretStore(path)()
 		if err := store.Save(hostFromSessionPath(path), marshalSecrets(written.extractSecrets())); err == nil {
 			written.stripSecrets()
+			written.SecretStore = store.Name()
 		} else {
 			// The fallback (secrets inline in the file) keeps the login working,
 			// but silence would leave a user believing the store holds the token
@@ -349,18 +374,21 @@ func marshalSecrets(sec sessionSecrets) string {
 
 func ClearSession() error {
 	path := SessionFilePath()
+	host := hostFromSessionPath(path)
 	// Drop the store entry too, so logging out leaves no token behind. Best
 	// effort: a store that is now unreachable must not block removing the file.
+	// The lock spans the file removal, so no concurrent save can put a secret in
+	// the store between the Delete and the Remove and leave it with no file.
 	if store := activeStore(); store != nil {
-		if err := store.Delete(hostFromSessionPath(path)); err != nil {
-			host := hostFromSessionPath(path)
-			msg := fmt.Sprintf(
-				"orq: logged out, but could not remove the stored secret for %s (%v); it may remain in the %s.",
-				host, err, store.Name())
-			if hint := manualClearHint(store, host); hint != "" {
-				msg += "\n  Remove it with: " + hint
-			}
-			fmt.Fprintln(os.Stderr, msg)
+		defer lockSecretStore(path)()
+		if err := store.Delete(host); err != nil {
+			warnStoredSecretRemains(store, host, fmt.Sprintf("could not remove the stored secret for %s (%v)", host, err))
+		}
+	} else if s, err := readSessionFile(path); err == nil && s != nil && s.SecretStore != "" && !s.hasInlineSecrets() {
+		// File mode over a login whose secrets went to a store: this process
+		// cannot reach it, so say what is left there and how to remove it.
+		if st := storeNamed(s.SecretStore); st != nil {
+			warnStoredSecretRemains(st, host, fmt.Sprintf("the secrets for %s were in the %s, which this command is not using", host, st.Name()))
 		}
 	}
 	err := os.Remove(path)
@@ -368,6 +396,14 @@ func ClearSession() error {
 		return err
 	}
 	return nil
+}
+
+func warnStoredSecretRemains(store SecretStore, host, why string) {
+	msg := fmt.Sprintf("orq: logged out, but %s; it may remain in the %s.", why, store.Name())
+	if hint := store.ClearHint(host); hint != "" {
+		msg += "\n  Remove it with: " + hint
+	}
+	fmt.Fprintln(os.Stderr, msg)
 }
 
 // SavedAgentKey returns the credential agent configs are wired with, and the
@@ -464,11 +500,10 @@ func ListSessions() ([]SessionListEntry, error) {
 	}
 
 	activeHost := SessionHost(ResolveURLs("").APIBaseURL)
-	// With a store active, session files are secret-free by design, so a listing
-	// read straight from disk validates structure only. In file mode the tokens
-	// are inline and the full check still applies, so a corrupt file reads as
-	// invalid exactly as before.
-	structureOnly := activeStore() != nil
+	// A file written with its secrets in a store is secret-free by design, so a
+	// listing read straight from disk validates its structure only. A file with
+	// inline tokens gets the full check, so a corrupt one reads as invalid
+	// exactly as before.
 
 	sessions := make([]SessionListEntry, 0, len(entries))
 	for _, e := range entries {
@@ -494,7 +529,7 @@ func ListSessions() ([]SessionListEntry, error) {
 		}
 		// Keep listing validation consistent with InspectSession and doctor.
 		validate := validateSession
-		if structureOnly {
+		if session.SecretStore != "" {
 			validate = validateSessionStructure
 		}
 		if err := validate(&session); err != nil {

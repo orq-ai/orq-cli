@@ -1,12 +1,15 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -46,6 +49,9 @@ type SecretStore interface {
 	Delete(host string) error
 	// Name is a short label for `orq doctor`, e.g. "macOS Keychain".
 	Name() string
+	// ClearHint is the shell command that removes host's entry by hand, printed
+	// when logout's Delete could not. Empty when there is nothing to suggest.
+	ClearHint(host string) string
 }
 
 // runSecretTool is the single hook tests replace to stand in for the platform
@@ -112,7 +118,19 @@ func ResolveSecretStore(getenv func(string) string) SecretStore {
 	}
 	// No secure store on this platform (Windows and the rest): secrets stay in
 	// the 0600 session JSON. doctor reports the store as unused so this is
-	// visible, not silent. A Windows credential store is out of scope here.
+	// visible, not silent. A Windows Credential Manager backend is RES-1776.
+	return nil
+}
+
+// storeNamed returns the store whose Name is name, so a session file's
+// SecretStore marker can be turned back into a ClearHint when this process
+// resolved no store. nil for a name no build of this CLI writes.
+func storeNamed(name string) SecretStore {
+	for _, s := range []SecretStore{macKeychainStore{}, secretToolStore{}} {
+		if s.Name() == name {
+			return s
+		}
+	}
 	return nil
 }
 
@@ -123,30 +141,90 @@ type macKeychainStore struct{}
 func (macKeychainStore) Name() string { return "macOS Keychain" }
 
 func (macKeychainStore) Load(host string) (string, bool, error) {
-	// Read chunk 0, then each continuation chunk, until one is missing (exit 44,
-	// errSecItemNotFound). The joined value is base64 (see Save).
+	first, ok, err := findKeychainChunk(host, 0)
+	if err != nil || !ok {
+		return "", false, err
+	}
+	count, sum, body, framed := parseChunkHeader(first)
+	if !framed {
+		// A one-item value from a pre-release build of this store, before the
+		// header existed. Nothing says how many chunks it had, so read it alone
+		// rather than guess at a tail.
+		body, count = first, 1
+	}
 	var enc strings.Builder
-	for i := 0; ; i++ {
-		service, account := chunkTarget(host, i)
-		// -w prints only the password.
-		out, stderr, err := runSecretTool("", "security", "find-generic-password",
-			"-s", service, "-a", account, "-w")
+	enc.WriteString(body)
+	for i := 1; i < count; i++ {
+		chunk, ok, err := findKeychainChunk(host, i)
 		if err != nil {
-			if exitCode(err) == 44 {
-				if i == 0 {
-					return "", false, nil // no secret stored
-				}
-				break // no more chunks
-			}
-			return "", false, fmt.Errorf("security find-generic-password: %w: %s", err, stderr)
+			return "", false, err
 		}
-		enc.WriteString(strings.TrimRight(out, "\n"))
+		if !ok {
+			return "", false, fmt.Errorf("%w: chunk %d of %d is missing", errKeychainSecretCorrupt, i, count)
+		}
+		enc.WriteString(chunk)
+	}
+	if framed && chunkChecksum(enc.String()) != sum {
+		return "", false, fmt.Errorf("%w: checksum mismatch across %d chunks", errKeychainSecretCorrupt, count)
 	}
 	dec, derr := base64.StdEncoding.DecodeString(enc.String())
 	if derr != nil {
-		return "", false, fmt.Errorf("keychain secret is not valid base64: %w", derr)
+		return "", false, fmt.Errorf("%w: not valid base64: %v", errKeychainSecretCorrupt, derr)
 	}
 	return string(dec), true, nil
+}
+
+// findKeychainChunk reads one chunk; ok=false only on exit 44 (errSecItemNotFound).
+func findKeychainChunk(host string, i int) (string, bool, error) {
+	service, account := chunkTarget(host, i)
+	// -w prints only the password.
+	out, stderr, err := runSecretTool("", "security", "find-generic-password",
+		"-s", service, "-a", account, "-w")
+	if err != nil {
+		if exitCode(err) == 44 {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("security find-generic-password: %w: %s", err, stderr)
+	}
+	return strings.TrimRight(out, "\n"), true, nil
+}
+
+// errKeychainSecretCorrupt marks a stored value that does not reassemble: a
+// chunk missing, or chunks from two different writes. It names no secret.
+var errKeychainSecretCorrupt = errors.New("keychain secret is incomplete or corrupt")
+
+// Chunk 0 starts with a fixed-width header, "orq1.<count>.<checksum>.", so Load
+// knows how many chunks to read and can tell a complete value from a gap or
+// from chunks of two different writes. '.' is not in the base64 alphabet, which
+// is how a pre-release headerless value is told apart.
+const (
+	chunkHeaderPrefix = "orq1."
+	chunkHeaderLen    = len(chunkHeaderPrefix) + 3 + 1 + 16 + 1
+	maxKeychainChunks = 999
+)
+
+func chunkChecksum(enc string) string {
+	sum := sha256.Sum256([]byte(enc))
+	return hex.EncodeToString(sum[:8])
+}
+
+func chunkHeader(count int, enc string) string {
+	return fmt.Sprintf("%s%03d.%s.", chunkHeaderPrefix, count, chunkChecksum(enc))
+}
+
+func parseChunkHeader(v string) (count int, sum, body string, ok bool) {
+	if len(v) < chunkHeaderLen || !strings.HasPrefix(v, chunkHeaderPrefix) {
+		return 0, "", "", false
+	}
+	h := v[len(chunkHeaderPrefix):chunkHeaderLen]
+	if h[3] != '.' || h[len(h)-1] != '.' {
+		return 0, "", "", false
+	}
+	n, err := strconv.Atoi(h[:3])
+	if err != nil || n < 1 {
+		return 0, "", "", false
+	}
+	return n, h[4 : len(h)-1], v[chunkHeaderLen:], true
 }
 
 // maxKeychainCommand bounds a single `security -i` command line. Observed on
@@ -176,10 +254,10 @@ func addGenericPasswordLine(service, account, value string) string {
 // namespace so it never collides with a primary per-host item.
 const keychainContService = keychainService + ".cont"
 
-// errSecretTooLarge is returned only in the degenerate case where the service
-// and host names are themselves so long that not even an empty value fits one
-// command line. It names no secret material.
-var errSecretTooLarge = errors.New("keychain service/host names too long for the command interface")
+// errSecretTooLarge is returned only in degenerate cases: the service and host
+// names are so long that not even an empty value fits one command line, or the
+// secret needs more chunks than the header can count. It names no secret.
+var errSecretTooLarge = errors.New("secret or keychain names too long for the security -i command line")
 
 // chunkTarget is the (service, account) a given chunk of host's secret is
 // stored under. See keychainContService for why chunk 0 is special.
@@ -198,12 +276,16 @@ func (macKeychainStore) Save(host, secret string) error {
 
 	// Split so each add-generic-password line stays under the interactive
 	// buffer. The per-chunk budget shrinks by the command's fixed overhead,
-	// which varies with the service and account for that chunk.
+	// which varies with the service and account for that chunk, and chunk 0
+	// also carries the header.
 	var chunks []string
 	rest := enc
 	for i := 0; ; i++ {
 		service, account := chunkTarget(host, i)
 		overhead := len(addGenericPasswordLine(service, account, ""))
+		if i == 0 {
+			overhead += chunkHeaderLen
+		}
 		budget := maxKeychainCommand - overhead
 		if budget <= 0 {
 			return errSecretTooLarge // names so long no value fits a line
@@ -215,13 +297,17 @@ func (macKeychainStore) Save(host, secret string) error {
 		chunks = append(chunks, rest[:budget])
 		rest = rest[budget:]
 	}
+	if len(chunks) > maxKeychainChunks {
+		return errSecretTooLarge
+	}
+	chunks[0] = chunkHeader(len(chunks), enc) + chunks[0]
 
 	for i, chunk := range chunks {
 		service, account := chunkTarget(host, i)
 		cmd := addGenericPasswordLine(service, account, chunk)
 		if _, _, err := runSecretTool(cmd, "security", "-i"); err != nil {
 			// Best-effort: drop every chunk so Load never finds a half-written
-			// secret (it would fail to base64-decode) and no stale tail fragment
+			// secret (the header would reject it) and no stale tail fragment
 			// from a previous larger secret is orphaned. Delete the chunks we may
 			// have written (0..i), then keep going until a continuation chunk is
 			// absent, so logout's Delete — which stops at the first gap — is never
@@ -242,10 +328,9 @@ func (macKeychainStore) Save(host, secret string) error {
 
 	// Clear any leftover chunks from a previous, larger secret. Stop at the first
 	// not-found (exit 44). Any OTHER delete error (keychain locked, access denied)
-	// could leave a stale tail chunk that Load would stitch onto the new value and
-	// mis-decode, so remove chunk 0 of what we just wrote and fail: Load then stops
-	// at the missing chunk 0 and the caller keeps the secret in the 0600 file,
-	// rather than reading a corrupt join.
+	// leaves a stale tail. The header already keeps Load from reading it, but
+	// remove what we just wrote and fail anyway, so the caller keeps the secret in
+	// the 0600 file rather than relying on a keychain it cannot clean.
 	for i := len(chunks); ; i++ {
 		service, account := chunkTarget(host, i)
 		_, _, err := runSecretTool("", "security", "delete-generic-password", "-s", service, "-a", account)
@@ -255,11 +340,15 @@ func (macKeychainStore) Save(host, secret string) error {
 		if exitCode(err) == 44 {
 			break // no more leftover chunks
 		}
+		msg := fmt.Sprintf("security delete-generic-password: could not clear a leftover keychain chunk (exit %d)", exitCode(err))
 		for j := range chunks {
 			s, a := chunkTarget(host, j)
-			_, _, _ = runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
+			if _, _, derr := runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a); derr != nil {
+				msg += fmt.Sprintf("; rolling back chunk %d also failed (exit %d), so stale orq-cli keychain items may remain", j, exitCode(derr))
+				break
+			}
 		}
-		return fmt.Errorf("security delete-generic-password: could not clear a leftover keychain chunk (exit %d)", exitCode(err))
+		return errors.New(msg)
 	}
 	return nil
 }
@@ -287,17 +376,12 @@ func (macKeychainStore) Delete(host string) error {
 	}
 }
 
-// manualClearHint is the exact command a user can run to remove a store entry by
-// hand, for when logout's best-effort Delete could not (an unreachable or locked
-// store). It names chunk 0, the primary item; empty for the file fallback.
-func manualClearHint(store SecretStore, host string) string {
-	switch store.(type) {
-	case macKeychainStore:
-		return fmt.Sprintf("security delete-generic-password -s %s -a %s", keychainService, host)
-	case secretToolStore:
-		return fmt.Sprintf("secret-tool clear service %s account %s", keychainService, host)
-	}
-	return ""
+// ClearHint removes chunk 0 and then each continuation chunk until one is
+// missing, the same walk Delete does. Hosts are sanitized to [a-z0-9._-] by
+// SessionHost, so they need no shell quoting.
+func (macKeychainStore) ClearHint(host string) string {
+	return fmt.Sprintf("security delete-generic-password -s %s -a %s; i=1; while security delete-generic-password -s %s -a %s.$i >/dev/null 2>&1; do i=$((i+1)); done",
+		keychainService, host, keychainContService, host)
 }
 
 // ---- Linux: secret-tool(1) / libsecret ----
@@ -305,6 +389,10 @@ func manualClearHint(store SecretStore, host string) string {
 type secretToolStore struct{}
 
 func (secretToolStore) Name() string { return "Linux secret-tool (libsecret)" }
+
+func (secretToolStore) ClearHint(host string) string {
+	return fmt.Sprintf("secret-tool clear service %s account %s", keychainService, host)
+}
 
 func (secretToolStore) Load(host string) (string, bool, error) {
 	out, stderr, err := runSecretTool("", "secret-tool", "lookup",

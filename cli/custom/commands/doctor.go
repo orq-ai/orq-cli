@@ -320,7 +320,7 @@ func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
 			bootstrapStatus = "warn"
 			bootstrapMsg = "Bootstrap token is expired and will need refresh"
 		}
-		storeLoc, storeDegraded := auth.SecretsLocation(os.Getenv)
+		storeLoc, storeDegraded := auth.SecretsLocation()
 		storeStatus := "pass"
 		if storeDegraded {
 			storeStatus = "warn"

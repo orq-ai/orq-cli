@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -52,6 +54,7 @@ func (s *memStore) Load(host string) (string, bool, error) { v, ok := s.m[host];
 func (s *memStore) Save(host, secret string) error         { s.m[host] = secret; return nil }
 func (s *memStore) Delete(host string) error               { delete(s.m, host); return nil }
 func (s *memStore) Name() string                           { return "test store" }
+func (s *memStore) ClearHint(string) string                { return "" }
 
 // flakyStore can be made to fail Save or Load, to exercise the inline fallback
 // (Save failure keeps the login working) and the error path (Load failure must
@@ -80,6 +83,7 @@ func (s *flakyStore) Save(host, secret string) error {
 
 func (s *flakyStore) Delete(host string) error { delete(s.m, host); return nil }
 func (s *flakyStore) Name() string             { return "flaky store" }
+func (s *flakyStore) ClearHint(string) string  { return "" }
 
 func TestSaveFallsBackToInlineWhenStoreFails(t *testing.T) {
 	isolateHome(t)
@@ -178,43 +182,48 @@ func TestStoreFailureWarningsFireFromBothCallSites(t *testing.T) {
 }
 
 // SecretsLocation is what `orq doctor` reads, so a regression here would report a
-// plaintext refresh token as the secure store. Pin all three states: file mode,
-// a store available but the file still holds inline secrets (degraded), and a
-// store with a secret-free file.
+// plaintext refresh token as the secure store. Pin the states: file mode, a store
+// available but a file still holding inline secrets (degraded, named), and a
+// store with every file secret-free.
 func TestSecretsLocationReportsHonestly(t *testing.T) {
 	isolateHome(t)
+	t.Setenv(CredentialStoreEnv, "file")
 
-	fileEnv := func(k string) string {
-		if k == CredentialStoreEnv {
-			return "file"
-		}
-		return ""
-	}
-	if desc, degraded := SecretsLocation(fileEnv); degraded || !strings.Contains(desc, "plaintext") {
+	withStore(t, nil)
+	if desc, degraded := SecretsLocation(); degraded || !strings.Contains(desc, "plaintext") {
 		t.Fatalf("file mode: desc=%q degraded=%v, want plaintext and not degraded", desc, degraded)
 	}
-
-	store := ResolveSecretStore(os.Getenv)
-	if store == nil {
-		t.Skip("no OS credential store on this machine to exercise the store-backed states")
-	}
-	// Write files directly in file mode so nothing touches the real keychain.
-	withStore(t, nil)
-
-	if err := saveSessionTo(SessionFilePath(), validSession("prod")); err != nil {
-		t.Fatalf("write inline file: %v", err)
-	}
-	if desc, degraded := SecretsLocation(os.Getenv); !degraded {
-		t.Fatalf("inline file with a store available: desc=%q degraded=false, want degraded", desc)
+	// Written in file mode, so the active host's file holds inline tokens.
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
 	}
 
-	secretFree := validSession("prod")
-	secretFree.stripSecrets()
-	if err := saveSessionTo(SessionFilePath(), secretFree); err != nil {
-		t.Fatalf("write secret-free file: %v", err)
+	mem := newMemStore()
+	withStore(t, mem)
+	desc, degraded := SecretsLocation()
+	if !degraded || !strings.Contains(desc, filepath.Base(SessionFilePath())) {
+		t.Fatalf("inline file with a store available: desc=%q degraded=%v, want degraded naming the file", desc, degraded)
 	}
-	if desc, degraded := SecretsLocation(os.Getenv); degraded || desc != store.Name() {
-		t.Fatalf("secret-free file: desc=%q degraded=%v, want %q not degraded", desc, degraded, store.Name())
+
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	if desc, degraded := SecretsLocation(); degraded || desc != mem.Name() {
+		t.Fatalf("secret-free file: desc=%q degraded=%v, want %q not degraded", desc, degraded, mem.Name())
+	}
+
+	// Another host's file that never migrated is named too, as is a .deprecated copy.
+	other := validSession("prod")
+	other.APIBaseURL = "https://staging.example"
+	raw, _ := json.Marshal(other)
+	for _, name := range []string{"staging.example.json", "x.json.deprecated"} {
+		if err := os.WriteFile(filepath.Join(SessionsDir(), name), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	desc, degraded = SecretsLocation()
+	if !degraded || !strings.Contains(desc, "staging.example.json") || !strings.Contains(desc, "x.json.deprecated") {
+		t.Fatalf("plaintext in other files: desc=%q degraded=%v, want both named", desc, degraded)
 	}
 }
 
@@ -252,15 +261,25 @@ func TestClearSessionPrintsManualClearHintOnDeleteFailure(t *testing.T) {
 	if clearErr != nil {
 		t.Fatalf("ClearSession must not fail on a store delete error: %v", clearErr)
 	}
-	want := "security delete-generic-password -s " + keychainService + " -a " + host
-	if !strings.Contains(string(out), want) {
-		t.Fatalf("logout did not print the manual clear command.\nstderr: %q\nwant substring: %q", out, want)
+	// The hint must reach the continuation chunks too, not just chunk 0.
+	for _, want := range []string{
+		"security delete-generic-password -s " + keychainService + " -a " + host + ";",
+		"-s " + keychainContService + " -a " + host + ".$i",
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("logout did not print the manual clear command.\nstderr: %q\nwant substring: %q", out, want)
+		}
 	}
 }
 
 func sessionFileText(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(SessionFilePath())
+	return sessionText(t, SessionFilePath())
+}
+
+func sessionText(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read session file: %v", err)
 	}
@@ -389,4 +408,335 @@ func TestStoreBackedSessionListsAsValid(t *testing.T) {
 	if len(rows) != 1 || rows[0].Status != SessionStatusOK {
 		t.Fatalf("want one ok session, got %+v", rows)
 	}
+}
+
+// The manual-clear hint is a real shell command: run it against the fake
+// keychain's semantics by checking it names every chunk a split secret uses.
+func TestMacClearHintCoversEveryChunk(t *testing.T) {
+	fk := withFakeKeychain(t, 44)
+	const host = "api.orq.ai"
+	if err := (macKeychainStore{}).Save(host, strings.Repeat("q", 12000)); err != nil {
+		t.Fatal(err)
+	}
+	hint := (macKeychainStore{}).ClearHint(host)
+	for acct := range fk.items {
+		if acct == host {
+			continue
+		}
+		if !strings.HasPrefix(acct, host+".") || !strings.Contains(hint, keychainContService+" -a "+host+".$i") {
+			t.Fatalf("hint %q does not reach continuation item %q", hint, acct)
+		}
+	}
+}
+
+// A file whose tokens moved to the store, read by a process that resolves no
+// store (ORQ_CREDENTIAL_STORE=file, or SSH with no Secret Service), must say
+// where the secrets are rather than report a missing refresh token.
+func TestMigratedSessionInFileModeSaysWhereTheSecretsAre(t *testing.T) {
+	isolateHome(t)
+	withStore(t, newMemStore())
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sessionFileText(t), `"secretStore": "test store"`) {
+		t.Fatalf("stripped file does not record its store: %s", sessionFileText(t))
+	}
+
+	withStore(t, nil)
+	t.Setenv(CredentialStoreEnv, "file")
+	_, err := ReadSession()
+	if err == nil {
+		t.Fatal("a migrated session read without its store must error")
+	}
+	for _, want := range []string{"test store", CredentialStoreEnv + "=file is set", "orq auth login"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "missing refresh token") {
+		t.Errorf("reported as a missing token: %v", err)
+	}
+}
+
+// A file that says its tokens are in the store, where the store holds nothing,
+// is a login removed outside orq: say so and point at login.
+func TestMigratedSessionWithEmptyStoreSaysSo(t *testing.T) {
+	isolateHome(t)
+	mem := newMemStore()
+	withStore(t, mem)
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	mem.m = map[string]string{}
+	_, err := ReadSession()
+	if err == nil || !strings.Contains(err.Error(), "holds no session secrets") {
+		t.Fatalf("want a store-is-empty error, got %v", err)
+	}
+}
+
+// Saving in file mode, or falling back after a failed store write, must drop the
+// marker: the tokens are inline again.
+func TestInlineSaveClearsTheStoreMarker(t *testing.T) {
+	isolateHome(t)
+	withStore(t, newMemStore())
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, &flakyStore{m: map[string]string{}, failSave: true})
+	saveFailureWarned = sync.Once{}
+	t.Cleanup(func() { saveFailureWarned = sync.Once{} })
+	if err := SaveSession(got); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sessionFileText(t), "secretStore") {
+		t.Fatalf("inline fallback kept the store marker: %s", sessionFileText(t))
+	}
+}
+
+// Every host's file migrates, not just the active one: a login to a server no
+// longer in use must not keep its refresh token in plaintext indefinitely.
+func TestMigrateSessionSecretsSweepsEveryHost(t *testing.T) {
+	isolateHome(t)
+	withStore(t, nil)
+	// The sweep only takes files named for their own host, as MigrateLayout
+	// leaves them, so the active file's API base must match its name.
+	if err := SaveSession(sessionOn(DefaultAPIBaseURL, "prod")); err != nil {
+		t.Fatal(err)
+	}
+	misnamed := filepath.Join(SessionsDir(), "default.json")
+	if err := saveSessionTo(misnamed, validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	other := validSession("prod")
+	other.APIBaseURL = "https://staging.example"
+	other.RefreshToken = "refresh-staging"
+	otherPath := sessionPathFor(SessionHost(other.APIBaseURL))
+	if err := saveSessionTo(otherPath, other); err != nil {
+		t.Fatal(err)
+	}
+
+	mem := newMemStore()
+	withStore(t, mem)
+	MigrateSessionSecrets()
+
+	for _, path := range []string{SessionFilePath(), otherPath} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "refresh-") {
+			t.Errorf("%s still holds a refresh token after the sweep", filepath.Base(path))
+		}
+		if _, ok := mem.m[hostFromSessionPath(path)]; !ok {
+			t.Errorf("store has no entry for %s", hostFromSessionPath(path))
+		}
+	}
+	if !strings.Contains(sessionText(t, misnamed), "refresh-abc") {
+		t.Error("a file not named for its host was migrated; renaming it later would orphan its store entry")
+	}
+	if !strings.Contains(mem.m[hostFromSessionPath(otherPath)], "refresh-staging") {
+		t.Errorf("staging secrets not stored under its own host: %q", mem.m[hostFromSessionPath(otherPath)])
+	}
+}
+
+// attachToSession adds legacy gateway fields to a host's session and saves it.
+// On a file whose tokens are already in the store it must hydrate first, or the
+// save replaces the stored refresh and bootstrap tokens with a gateway-key-only
+// blob and the login is gone.
+func TestAttachToSessionKeepsStoredTokens(t *testing.T) {
+	dir := layoutHarness(t, `{"profiles":{"default":{
+		"api_key":"",
+		"gateway_key":"sk-orq-GW",
+		"gateway_key_id":"KEYID",
+		"workspace":"acme"
+	}}}`, nil)
+	mem := newMemStore()
+	withStore(t, mem)
+	path := sessionPathFor(SessionHost("https://api.orq.ai"))
+	if err := saveSessionTo(path, sessionOn("https://api.orq.ai", "acme")); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	blob := mem.m[hostFromSessionPath(path)]
+	for _, want := range []string{"refresh-abc", `"bootstrapToken":"boot"`, "sk-orq-GW"} {
+		if !strings.Contains(blob, want) {
+			t.Errorf("stored secrets lost %q after attaching the gateway key: %s", want, blob)
+		}
+	}
+}
+
+// lockedKeychain makes each fake command atomic, as the real keychain is per
+// item, so the race left is the one between the chunks of one Save.
+func lockedKeychain(t *testing.T) *fakeKeychain {
+	fk := withFakeKeychain(t, 44)
+	var mu sync.Mutex
+	runSecretTool = func(stdin, name string, args ...string) (string, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return fk.run(stdin, name, args...)
+	}
+	return fk
+}
+
+// Concurrent saves and reads of a multi-chunk secret: without the store lock a
+// reader joins chunks of two writes, and two writers interleave chunks and leave
+// a value that never decodes. Every read must succeed and see one whole write.
+func TestConcurrentChunkedSavesAndReadsNeverTear(t *testing.T) {
+	isolateHome(t)
+	lockedKeychain(t)
+	withStore(t, macKeychainStore{})
+
+	session := func(n int) *Session {
+		s := validSession("prod")
+		s.RefreshToken = fmt.Sprintf("refresh-%d-%s", n, strings.Repeat(fmt.Sprint(n%10), 9000))
+		return s
+	}
+	if err := SaveSession(session(0)); err != nil {
+		t.Fatal(err)
+	}
+	var writers, readers sync.WaitGroup
+	done := make(chan struct{})
+	errs := make(chan error, 1000)
+	for w := 0; w < 4; w++ {
+		writers.Add(1)
+		go func(w int) {
+			defer writers.Done()
+			for i := 0; i < 5; i++ {
+				if err := SaveSession(session(w*100 + i)); err != nil {
+					errs <- err
+				}
+			}
+		}(w)
+		readers.Add(1)
+		// Readers spin for the whole write window, so a read lands mid-Save.
+		go func() {
+			defer readers.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				s, err := ReadSession()
+				if err != nil {
+					select {
+					case errs <- err:
+					default:
+					}
+					continue
+				}
+				// One whole write: the prefix number matches the repeated digit.
+				var n int
+				var body string
+				if _, err := fmt.Sscanf(s.RefreshToken, "refresh-%d-%s", &n, &body); err != nil ||
+					body != strings.Repeat(fmt.Sprint(n%10), 9000) {
+					select {
+					case errs <- fmt.Errorf("read a torn refresh token (len %d)", len(s.RefreshToken)):
+					default:
+					}
+				}
+			}
+		}()
+	}
+	writers.Wait()
+	close(done)
+	readers.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+}
+
+// MigrateLayout runs before every command. When a legacy gateway key must be
+// attached to a session whose secrets sit in a store this process cannot read,
+// it must leave credentials.json alone and let the command run, not fail every
+// command including `orq auth login` and `orq doctor`.
+func TestMigrateLayoutDefersWhenSessionSecretsAreUnreachable(t *testing.T) {
+	dir := layoutHarness(t, `{"profiles":{"default":{"api_key":"","gateway_key":"sk-orq-GW","workspace":"acme"}}}`, nil)
+	withStore(t, newMemStore())
+	path := sessionPathFor(SessionHost(DefaultAPIBaseURL))
+	if err := saveSessionTo(path, sessionOn(DefaultAPIBaseURL, "acme")); err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, nil)
+	t.Setenv(CredentialStoreEnv, "file")
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("MigrateLayout must not fail the command: %v", err)
+	}
+	if !strings.Contains(sessionText(t, filepath.Join(dir, "credentials.json")), "sk-orq-GW") {
+		t.Fatal("the gateway key's only copy was dropped from credentials.json")
+	}
+}
+
+// Replacing or removing a file whose secrets are in a store this process is
+// not using names what is left behind and how to remove it.
+func TestFileModeNamesOrphanedStoreSecrets(t *testing.T) {
+	isolateHome(t)
+	withStore(t, macKeychainStore{})
+	withFakeKeychain(t, 44)
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, nil)
+	host := hostFromSessionPath(SessionFilePath())
+	want := "security delete-generic-password -s " + keychainService + " -a " + host
+
+	stderr := captureStderr(t, func() {
+		if err := SaveSession(validSession("prod")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("file-mode login over a stored session did not name the leftover: %q", stderr)
+	}
+
+	withStore(t, macKeychainStore{})
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, nil)
+	stderr = captureStderr(t, func() {
+		if err := ClearSession(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("file-mode logout of a stored session did not name the leftover: %q", stderr)
+	}
+}
+
+// With no store resolved, doctor flags a login whose secrets are in a store.
+func TestSecretsLocationFlagsStoredSessionsInFileMode(t *testing.T) {
+	isolateHome(t)
+	withStore(t, newMemStore())
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, nil)
+	t.Setenv(CredentialStoreEnv, "file")
+	desc, degraded := SecretsLocation()
+	if !degraded || !strings.Contains(desc, filepath.Base(SessionFilePath())) {
+		t.Fatalf("desc=%q degraded=%v, want degraded naming the stored session", desc, degraded)
+	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = prev }()
+	fn()
+	w.Close()
+	out, _ := io.ReadAll(r)
+	return string(out)
 }

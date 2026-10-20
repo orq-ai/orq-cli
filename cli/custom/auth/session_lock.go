@@ -26,7 +26,34 @@ func lockSessionUpdates() (func(), error) {
 }
 
 func acquireSessionUpdateFileLock() (func(), error) {
-	path := SessionFilePath() + ".lock"
+	return acquireFileLock(SessionFilePath() + ".lock")
+}
+
+// secretStoreMu and the per-host ".secrets.lock" file serialize every read and
+// write of a host's secrets across the store and the session file. A macOS
+// secret can span several keychain items, written one command at a time, and
+// the file and store are two writes; without this a reader can join chunks of
+// two writes, and two writers can interleave store A, store B, file B, file A.
+// It is a separate lock from lockSessionUpdates, which recordRefresh holds
+// around a whole read-modify-save, so taking both never deadlocks.
+var secretStoreMu sync.Mutex
+
+// lockSecretStore is best effort: a lock file that cannot be created (a
+// read-only ~/.orq) must not take every command down, so the caller proceeds
+// unlocked, which is no worse than before the lock existed.
+func lockSecretStore(sessionPath string) func() {
+	secretStoreMu.Lock()
+	release, err := acquireFileLock(sessionPath + ".secrets.lock")
+	if err != nil {
+		return secretStoreMu.Unlock
+	}
+	return func() {
+		release()
+		secretStoreMu.Unlock()
+	}
+}
+
+func acquireFileLock(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
