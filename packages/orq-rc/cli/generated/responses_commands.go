@@ -279,13 +279,13 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "metadata",
 							FlagName:    "metadata",
 							Type:        "string-map",
-							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400.",
 						},
 						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
 						},
 						{
 							Name:        "parallel_tool_calls",
@@ -615,13 +615,13 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "string-map",
-					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400.",
 				},
 				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
 				},
 				{
 					Name:        "parallel_tool_calls",
