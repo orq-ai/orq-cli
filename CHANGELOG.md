@@ -120,6 +120,10 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed:** API validation errors now print the field and reason the server
+  returns (for example `owner: owner.type must be service_account`) instead of
+  only the generic summary.
+
 ## [12.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.0) — 2026-10-19
 
 **Added:** `orq traces get-batch [trace-id ...]` fetches many traces, or their

@@ -39,6 +39,11 @@ func TestExplainAPIError(t *testing.T) {
 			want: []string{"HTTP 400 Bad Request: Invalid body", "name: Required"},
 		},
 		{
+			name: "details.reason is shown with its param",
+			in:   "error calling operation: HTTP 400:\n" + `{"code":"invalid_request_body","details":{"reason":"owner.type must be service_account"},"message":"Request body failed validation.","param":"owner"}`,
+			want: []string{"HTTP 400 Bad Request: Request body failed validation.", "owner: owner.type must be service_account"},
+		},
+		{
 			name: "a non-JSON body passes through",
 			in:   "error calling operation: HTTP 502:\nbad gateway",
 			want: []string{"HTTP 502 Bad Gateway: request failed with status 502", "bad gateway", "docs: https://docs.orq.ai/reference", "failed on its side"},
