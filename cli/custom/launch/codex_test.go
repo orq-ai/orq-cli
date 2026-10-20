@@ -131,3 +131,35 @@ func TestCodexCleanupRemovesTempDir(t *testing.T) {
 		t.Fatalf("tempdir not removed: %v", err)
 	}
 }
+
+func TestCodexResolveSubscription(t *testing.T) {
+	ctx := codexCtx(nil, GatewayFlags{Subscription: true}, okProbe)
+	// The default model is not enabled and a non-OpenAI model comes first:
+	// the fallback must still land on an OpenAI one.
+	ctx.Fetch = fetcherOf("google-ai/gemini-3.5-flash", "openai/gpt-5.5")
+	plan, err := resolveCodex(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	joined := strings.Join(plan.PreArgs, " ")
+	for _, want := range []string{
+		`model="openai/gpt-5.5"`,
+		`model_providers.orq.requires_openai_auth=true`,
+		`model_providers.orq.env_http_headers.x-orq-api-key="ORQ_API_KEY"`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %s in preargs: %v", want, plan.PreArgs)
+		}
+	}
+	if strings.Contains(joined, "env_key") {
+		t.Fatalf("subscription mode must not send the orq key as the model credential: %v", plan.PreArgs)
+	}
+
+	ctx = codexCtx(nil, GatewayFlags{Subscription: true, Model: "anthropic/claude-sonnet-5"}, okProbe)
+	if _, err := resolveCodex(ctx); err == nil || !strings.Contains(err.Error(), "openai/") {
+		t.Fatalf("non-OpenAI model under --subscription: err = %v", err)
+	}
+}

@@ -1657,8 +1657,12 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 			}
 			// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
 			writeProvider := spec.writeProvider
-			if opts.subscription && spec.writeChatGPTProvider != nil {
-				writeProvider = spec.writeChatGPTProvider
+			if opts.subscription {
+				if spec.writeChatGPTProvider != nil {
+					writeProvider = spec.writeChatGPTProvider
+				} else {
+					rep.warn("%-8s provider  --subscription is not supported for this agent yet; its usage bills to the workspace", id)
+				}
 			}
 			written, werr := writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 			if werr != nil {

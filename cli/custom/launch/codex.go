@@ -36,7 +36,7 @@ func codexAgent() AgentDef {
 // overrides, and rewrites the bundled model catalog so the picker lists
 // gateway models. Catalog failures degrade to a warning.
 func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
-	resolved, err := ResolveGatewayConfig(ResolveInput{
+	input := ResolveInput{
 		AuthToken:     ctx.Creds.APIKey,
 		APIBaseURL:    ctx.Creds.APIBaseURL,
 		Getenv:        ctx.Getenv,
@@ -46,7 +46,13 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 		DefaultModel:  DefaultCodexModel,
 		BaseURLEnvKey: "ORQ_CODEX_BASE_URL",
 		ModelEnvKey:   "CODEX_MODEL",
-	})
+	}
+	if ctx.Flags.Subscription {
+		// Narrowed before the default falls back, or a workspace without the
+		// default model would fall back to a non-OpenAI one and be refused.
+		input.ServesModel = isOpenAIModel
+	}
+	resolved, err := ResolveGatewayConfig(input)
 	if err != nil {
 		return nil, err
 	}
@@ -92,18 +98,20 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 
 // restrictToOpenAIModels keeps a --chatgpt launch on models a ChatGPT subscription can serve; the gateway rejects any other.
 func restrictToOpenAIModels(resolved *GatewayConfig) error {
-	if !strings.HasPrefix(resolved.GatewayModel, "openai/") {
+	if !isOpenAIModel(resolved.GatewayModel) {
 		return fmt.Errorf("--chatgpt bills calls to your ChatGPT subscription, which serves only openai/ models; got %q", resolved.GatewayModel)
 	}
 	openAI := resolved.GatewayModels[:0:0]
 	for _, model := range resolved.GatewayModels {
-		if strings.HasPrefix(model, "openai/") {
+		if isOpenAIModel(model) {
 			openAI = append(openAI, model)
 		}
 	}
 	resolved.GatewayModels = openAI
 	return nil
 }
+
+func isOpenAIModel(id string) bool { return strings.HasPrefix(id, "openai/") }
 
 func tomlOverride(key, value string) string {
 	return key + "=" + TOMLString(value)
