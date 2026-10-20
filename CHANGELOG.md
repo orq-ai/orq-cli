@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
+
 - **Changed:** API validation errors now print the field and reason the server
   returns (for example `owner: owner.type must be service_account`) instead of
   only the generic summary.
