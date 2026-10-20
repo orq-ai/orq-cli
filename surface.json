@@ -1325,10 +1325,6 @@
           "type": "stringSlice"
         },
         {
-          "name": "chatgpt",
-          "type": "bool"
-        },
-        {
           "name": "global",
           "type": "bool"
         },
@@ -1343,6 +1339,10 @@
         },
         {
           "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {
@@ -1947,10 +1947,6 @@
           "type": "string"
         },
         {
-          "name": "chatgpt",
-          "type": "bool"
-        },
-        {
           "name": "dry-run",
           "type": "bool"
         },
@@ -1964,6 +1960,10 @@
         },
         {
           "name": "status",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {
@@ -7822,10 +7822,6 @@
           "type": "stringSlice"
         },
         {
-          "name": "chatgpt",
-          "type": "bool"
-        },
-        {
           "name": "global",
           "type": "bool"
         },
@@ -7840,6 +7836,10 @@
         },
         {
           "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {

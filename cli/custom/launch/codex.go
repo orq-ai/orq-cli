@@ -14,13 +14,13 @@ var codexNormalize = MakeNormalizeModel([]string{"orq"})
 
 func codexAgent() AgentDef {
 	return AgentDef{
-		Name:          "codex",
-		Binary:        "codex",
-		Label:         "OpenAI Codex CLI",
-		InstallHint:   "npm install -g @openai/codex",
-		FetchesModels: true,
-		AllowModels:   false,
-		ChatGPTAuth:   true,
+		Name:             "codex",
+		Binary:           "codex",
+		Label:            "OpenAI Codex CLI",
+		InstallHint:      "npm install -g @openai/codex",
+		FetchesModels:    true,
+		AllowModels:      false,
+		SubscriptionAuth: true,
 		Prompt: &PromptMapping{
 			Flags: []string{"-p", "--prompt"},
 			// Only the subcommand, no approval or sandbox flag: those are
@@ -50,7 +50,7 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ctx.Flags.ChatGPT {
+	if ctx.Flags.Subscription {
 		if err := restrictToOpenAIModels(&resolved.GatewayConfig); err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	buildOverrideArgs := BuildCodexOverrideArgs
-	if ctx.Flags.ChatGPT {
+	if ctx.Flags.Subscription {
 		buildOverrideArgs = BuildCodexChatGPTOverrideArgs
 	}
 	plan.PreArgs = buildOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)

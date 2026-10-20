@@ -16,10 +16,10 @@ type PromptMapping struct {
 
 // ParseArgvOptions controls per-agent parsing behavior.
 type ParseArgvOptions struct {
-	Prompt       *PromptMapping
-	AllowModels  bool
-	AllowTrace   bool // --otel/--no-otel and Claude's gateway flags
-	AllowChatGPT bool
+	Prompt            *PromptMapping
+	AllowModels       bool
+	AllowTrace        bool // --otel/--no-otel and Claude's gateway flags
+	AllowSubscription bool
 }
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
@@ -39,8 +39,8 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if def.Traceable {
 		flags = append(flags, "--gateway", "--no-gateway", "--otel", "--no-otel")
 	}
-	if def.ChatGPTAuth {
-		flags = append(flags, "--chatgpt")
+	if def.SubscriptionAuth {
+		flags = append(flags, "--subscription")
 	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
@@ -162,8 +162,8 @@ scan:
 			flags.Trace = true
 		case opts.AllowTrace && arg == "--no-otel":
 			flags.Trace = false
-		case opts.AllowChatGPT && arg == "--chatgpt":
-			flags.ChatGPT = true
+		case opts.AllowSubscription && arg == "--subscription":
+			flags.Subscription = true
 		case opts.Prompt != nil && slices.Contains(opts.Prompt.Flags, arg):
 			v, err := takeValue(arg, &i)
 			if err != nil {

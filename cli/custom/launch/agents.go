@@ -71,8 +71,8 @@ type AgentDef struct {
 	// the only one today, and the help text for both flags is written for it:
 	// a second agent setting this has to move that copy onto AgentDef first.
 	Traceable bool
-	// ChatGPTAuth agents accept --chatgpt: model calls run on the user's ChatGPT subscription through the gateway.
-	ChatGPTAuth bool
+	// SubscriptionAuth agents accept --subscription: the agent keeps its own subscription login (ChatGPT, Claude) as the model credential and calls still go through the gateway.
+	SubscriptionAuth bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared
 	// OpenAI-compatible one (claude, gemini). Build HelpRoute with helpRoute

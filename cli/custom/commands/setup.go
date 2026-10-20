@@ -50,9 +50,9 @@ type setupOptions struct {
 	agents        []string
 	caps          []string
 	noGateway     bool
-	// chatGPT is --chatgpt: wire codex to keep its own ChatGPT login so model calls run on the user's subscription.
-	chatGPT bool
-	noInput bool
+	// subscription is --subscription: wire codex to keep its own ChatGPT login so model calls run on the user's subscription.
+	subscription bool
+	noInput      bool
 	// unattended is an explicit --no-input/ORQ_NO_INPUT, as opposed to the
 	// noInput a missing TTY forces. A pipe means "cannot prompt" and is how
 	// every coding agent runs; the flag means "nobody is watching". Only the
@@ -248,7 +248,7 @@ left exported in your shell because setup writes persistent configuration.`),
 	// non-interactive run — install.sh, CI — names a scope at all.
 	addScopeFlags(f, &opts)
 	f.BoolVar(&opts.noProject, "no-project", false, "Skip the project step and leave the session unscoped")
-	f.BoolVar(&opts.chatGPT, "chatgpt", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only)")
+	f.BoolVar(&opts.subscription, "subscription", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only); claude uses it via orq launch")
 	return cmd
 }
 
@@ -1657,7 +1657,7 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 			}
 			// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
 			writeProvider := spec.writeProvider
-			if opts.chatGPT && spec.writeChatGPTProvider != nil {
+			if opts.subscription && spec.writeChatGPTProvider != nil {
 				writeProvider = spec.writeChatGPTProvider
 			}
 			written, werr := writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
