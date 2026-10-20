@@ -205,7 +205,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_id",
 							FlagName:    "model-id",
 							Type:        "string",
-							Description: "",
+							Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 						},
 						{
 							Name:        "model_type",
@@ -313,7 +313,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_id",
 					FlagName:    "model-id",
 					Type:        "string",
-					Description: "",
+					Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 				},
 				{
 					Name:        "model_type",
@@ -362,7 +362,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-aws-bedrock",
 			Short:   "Create AWS Bedrock custom model",
-			Long:    bartolocli.Markdown("Registers an AWS Bedrock inference profile as a custom model for the workspace. Credentials are resolved at request time via either the integration reference or pod-identity — nothing is stored with the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- ... and 20 more fields\n\nRequired fields: `auth_mode`, `display_name`, `model_developer`, `model_id`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Registers an AWS Bedrock inference profile as a custom model for the workspace. Credentials are resolved at request time via either the integration reference or pod-identity — nothing is stored with the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- ... and 21 more fields\n\nRequired fields: `auth_mode`, `display_name`, `model_developer`, `model_id`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -422,6 +422,12 @@ func registermodelsCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
@@ -473,7 +479,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_id",
 							FlagName:    "model-id",
 							Type:        "string",
-							Description: "",
+							Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 						},
 						{
 							Name:        "model_type",
@@ -614,6 +620,12 @@ func registermodelsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -665,7 +677,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_id",
 					FlagName:    "model-id",
 					Type:        "string",
-					Description: "",
+					Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 				},
 				{
 					Name:        "model_type",
@@ -756,7 +768,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-openai-like",
 			Short:   "Create OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- ... and 12 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- ... and 13 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -795,6 +807,12 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "cache_write_cost",
 							FlagName:    "cache-write-cost",
 							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -837,7 +855,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_id",
 							FlagName:    "model-id",
 							Type:        "string",
-							Description: "",
+							Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 						},
 						{
 							Name:        "model_type",
@@ -942,6 +960,12 @@ func registermodelsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "cost_per_image",
 					FlagName:    "cost-per-image",
 					Type:        "float64",
@@ -981,7 +1005,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_id",
 					FlagName:    "model-id",
 					Type:        "string",
-					Description: "",
+					Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
 				},
 				{
 					Name:        "model_type",
@@ -1054,7 +1078,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-vertex",
 			Short:   "Create Vertex AI custom model",
-			Long:    bartolocli.Markdown("Registers a Google Vertex AI model as a custom model for the workspace. The service account credentials are probed against Vertex AI with a minimal GenerateContent call before persisting.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `benchmark_model` (string)\n- `configuration` (object, required)\n- `display_name` (string, required)\n\nRequired fields: `configuration`, `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Registers a Google Vertex AI model as a custom model for the workspace. The service account credentials are probed against Vertex AI with a minimal GenerateContent call before persisting.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `benchmark_model` (string)\n- `configuration` (object, required)\n- `display_name` (string, required)\n- `model_id` (string)\n\nRequired fields: `configuration`, `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1082,6 +1106,12 @@ func registermodelsCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "model_id",
+							FlagName:    "model-id",
+							Type:        "string",
+							Description: "Immutable private-model slug; defaults to display_name.",
 						},
 					},
 				)
@@ -1124,6 +1154,12 @@ func registermodelsCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "model_id",
+					FlagName:    "model-id",
+					Type:        "string",
+					Description: "Immutable private-model slug; defaults to display_name.",
 				},
 			},
 		)
@@ -1482,13 +1518,13 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update custom model",
-			Long:    bartolocli.Markdown("Updates a custom model. Only fields present in the request body are modified, except for `metadata` and `parameters`, which are fully replaced when present.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `benchmark_model` (string)\n- `display_name` (string)\n- `has_functions` (boolean)\n- `input_cost` (number)\n- `metadata` (object)\n- `model_type` (string)\n- `output_cost` (number)\n- `parameters` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates a custom model. Only fields present in the request body are modified, except for `metadata` and `parameters`, which are fully replaced when present.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `benchmark_model` (string)\n- `display_name` (string)\n- `has_functions` (boolean)\n- `input_cost` (number)\n- `metadata` (object)\n- `model_id` (string)\n- `model_type` (string)\n- `output_cost` (number)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"benchmark_model\": \"benchmark_model\",\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"id\": \"id\"\n    }\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"benchmark_model\": \"benchmark_model\",\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_id\": \"model_id\",\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"id\": \"id\"\n    }\n  ]\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1522,6 +1558,12 @@ func registermodelsCommands(root *cobra.Command) {
 							FlagName:    "metadata",
 							Type:        "json",
 							Description: "",
+						},
+						{
+							Name:        "model_id",
+							FlagName:    "model-id",
+							Type:        "string",
+							Description: "Immutable private-model slug.",
 						},
 						{
 							Name:        "model_type",
@@ -1596,6 +1638,12 @@ func registermodelsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "model_id",
+					FlagName:    "model-id",
+					Type:        "string",
+					Description: "Immutable private-model slug.",
+				},
+				{
 					Name:        "model_type",
 					FlagName:    "model-type",
 					Type:        "string",
@@ -1636,13 +1684,13 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-aws-bedrock id",
 			Short:   "Update AWS Bedrock custom model",
-			Long:    bartolocli.Markdown("Updates an AWS Bedrock custom model. ARN changes are format-validated (live AWS validation lives in the dedicated validate endpoint). Fields you send are merged into the stored configuration and metadata. Parameters are replaced only when the request produces a non-empty list.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `description` (string)\n- ... and 17 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates an AWS Bedrock custom model. ARN changes are format-validated (live AWS validation lives in the dedicated validate endpoint). Fields you send are merged into the stored configuration and metadata. Parameters are replaced only when the request produces a non-empty list.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- ... and 18 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"benchmark_model\": \"benchmark_model\",\n  \"cache_read_cost\": 0,\n  \"cache_write_cost\": 0,\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"benchmark_model\": \"benchmark_model\",\n  \"cache_read_cost\": 0,\n  \"cache_write_cost\": 0,\n  \"configuration\": {\n    \"model_id\": \"model_id\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1687,6 +1735,12 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "cache_write_cost",
 							FlagName:    "cache-write-cost",
 							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -1864,6 +1918,12 @@ func registermodelsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -1994,7 +2054,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-openai-like id",
 			Short:   "Update OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- ... and 11 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- ... and 12 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -2027,6 +2087,12 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "cache_write_cost",
 							FlagName:    "cache-write-cost",
 							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -2165,6 +2231,12 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "cache_write_cost",
 					FlagName:    "cache-write-cost",
 					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
 					Description: "",
 				},
 				{
