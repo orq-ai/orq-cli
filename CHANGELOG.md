@@ -120,6 +120,19 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `orq auth sessions --check` (RES-1692) refreshes saved logins whose
+bootstrap token has expired. Each row reports `ok`, `needs-refresh`, `signed-out`,
+`invalid`, or `unreadable`. Unexpired logins use local state; an inconclusive
+refresh leaves an expired login as `needs-refresh` rather than marking it dead.
+
+**Fixed:** server-rejected refreshes are recorded as `signed-out` (RES-1692),
+including revoked refresh tokens and deactivated accounts. A fresh login clears
+the mark. `orq doctor` exits non-zero for any non-transient failing check,
+including a dead login or invalid credential. Timeouts, refused connections, and
+HTTP 5xx still appear as failing rows but do not fail the command; configuration
+errors such as DNS or TLS failures do. Gateway keys are discarded only on HTTP
+401; a project-scoped key's HTTP 403 does not prove it invalid.
+
 ## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
 
 - **Changed:** API validation errors now print the field and reason the server

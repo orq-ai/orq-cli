@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,38 @@ import (
 
 	"orq/cli/custom/auth"
 )
+
+// A saved key survives its server check only on a nil error or a transient
+// failure (transport error, 5xx). A 401, 403, any other 4xx, or a 200 that named
+// no workspace is a verdict: drop the key and mint a fresh token. A transient
+// reuse must carry a warning so a later runtime rejection is explained.
+func TestReuseAfterCheck(t *testing.T) {
+	cases := []struct {
+		name      string
+		err       error
+		wantReuse bool
+		wantWarn  bool
+	}{
+		{"accepted", nil, true, false},
+		{"401 unauthorized", &auth.APIError{Status: http.StatusUnauthorized, Msg: "no"}, false, false},
+		{"403 forbidden", &auth.APIError{Status: http.StatusForbidden, Msg: "no"}, false, false},
+		{"200 no workspace key", auth.ErrNoWorkspaceKey, false, false},
+		{"other 4xx", &auth.APIError{Status: http.StatusBadRequest, Msg: "bad"}, false, false},
+		{"5xx server error", &auth.APIError{Status: http.StatusBadGateway, Msg: "boom"}, true, true},
+		{"transport error", errors.New("dial tcp: connection refused"), true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reuse, warn := reuseAfterCheck(tc.err)
+			if reuse != tc.wantReuse {
+				t.Fatalf("reuse = %v, want %v", reuse, tc.wantReuse)
+			}
+			if (warn != "") != tc.wantWarn {
+				t.Fatalf("warn = %q, want warn-present=%v", warn, tc.wantWarn)
+			}
+		})
+	}
+}
 
 func TestResolveCredentialsEnvKey(t *testing.T) {
 	getenv := func(k string) string {
@@ -622,12 +655,18 @@ func TestInjectedSessionTokenIsRecognisedWhenAProjectIsActive(t *testing.T) {
 func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
 	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
-	// Only the session-token fallback talks to the server; the minted-key path
-	// never touches the network.
+	// The minted-key path verifies the key against the server before reuse
+	// (RES-1692): KeyWorkspace reads settings.key, so the stub must name a
+	// workspace for the key to be accepted and reused. A 200 that named no
+	// workspace is a verdict now (TestReuseAfterCheck), and
+	// TestResolveCredentialsDropsRejectedGatewayKey covers the 401 drop.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
-			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
-		}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"profile": map[string]any{
+				"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+			},
+			"settings": map[string]any{"key": "ws1"},
+		})
 	}))
 	defer srv.Close()
 
@@ -745,4 +784,49 @@ func TestResolveCredentialsProfileInForce(t *testing.T) {
 			t.Fatalf("want an error naming the profile, got %v", err)
 		}
 	})
+}
+
+// TestResolveCredentialsDropsRejectedGatewayKey covers RES-1692 item 5: a saved
+// gateway key the server rejects (401 on /v2/workspace-settings) is dropped, not
+// reused, so launch falls through to a fresh session token instead of wiring an
+// agent that 401s at runtime.
+func TestResolveCredentialsDropsRejectedGatewayKey(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "workspace-settings") {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"API key is not valid for this workspace"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+		}})
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", "")
+	t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+	writeSessionFile(t, home, map[string]any{
+		"version": 1, "apiBaseUrl": srv.URL, "v1BaseUrl": srv.URL, "authBaseUrl": srv.URL, "profileBaseUrl": srv.URL,
+		"activeWorkspaceKey": "ws1", "refreshToken": "refresh-token",
+		"bootstrapToken":      map[string]any{"token": "bootstrap-token", "expiresAt": future},
+		"workspaceTokens":     map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
+		"gatewayKey":          "revoked-minted-key",
+		"gatewayWorkspace":    "ws1",
+		"gatewayKeyExpiresAt": future, // unexpired locally, but revoked on the server
+	})
+
+	creds, err := ResolveCredentials(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.APIKey == "revoked-minted-key" {
+		t.Fatal("a server-rejected gateway key must be dropped, not reused")
+	}
+	if creds.APIKey != "workspace-token" || creds.Kind != CredentialSessionToken {
+		t.Fatalf("want fall-through to the session token, got %+v", creds)
+	}
 }

@@ -1386,3 +1386,104 @@ func TestDoctorSummaryPrintsBaseURLOnce(t *testing.T) {
 		t.Fatalf("base URL does not follow the *_base_url rows:\n%s", out)
 	}
 }
+
+// TestGatewayKeyServerCheck covers RES-1692 item 5: doctor validates the gateway
+// key against the server, not just its recorded expiry. A revoked key 401s and
+// must read as fail; a live key passes; an unreachable server is a warn, not a
+// verdict; and no gateway key means no check.
+func TestGatewayKeyServerCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		code       int
+		body       string
+		wantStatus string
+	}{
+		{"revoked key is fail", http.StatusUnauthorized, `{"message":"API key is not valid for this workspace"}`, "fail"},
+		{"live key is pass", http.StatusOK, `{"settings":{"key":"acme"}}`, "pass"},
+		{"server error is warn", http.StatusInternalServerError, `{}`, "warn"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.code)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			inspect := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{GatewayKey: "gw-key"}}
+			check, ok := gatewayKeyServerCheck(auth.NewClient(srv.URL), inspect)
+			if !ok {
+				t.Fatal("want a gateway_key_valid check")
+			}
+			if check.Status != tc.wantStatus {
+				t.Fatalf("status = %q, want %q (message %q)", check.Status, tc.wantStatus, check.Message)
+			}
+		})
+	}
+
+	// No gateway key on the session: no check at all.
+	if _, ok := gatewayKeyServerCheck(auth.NewClient("http://127.0.0.1:0"), auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{}}); ok {
+		t.Fatal("a session with no gateway key should produce no check")
+	}
+}
+
+func TestBlockingFailureIDs(t *testing.T) {
+	checks := []doctorCheck{
+		{ID: "api_base_url", Status: "pass"},
+		{ID: "login", Status: "fail"},
+		{ID: "credentials", Status: "warn"},
+		{ID: "gateway_key", Status: "fail"},
+		// A transient failure (unreachable server / 5xx) shows as fail but must
+		// not block the exit, so being offline does not read as a broken setup.
+		{ID: "auth_base_url", Status: "fail", Transient: true},
+	}
+	got := blockingFailureIDs(checks)
+	if len(got) != 2 || got[0] != "login" || got[1] != "gateway_key" {
+		t.Fatalf("blockingFailureIDs = %v, want [login gateway_key]", got)
+	}
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "ok", Status: "pass"}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with no fail = %v, want empty", ids)
+	}
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "net", Status: "fail", Transient: true}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with only a transient fail = %v, want empty", ids)
+	}
+}
+
+// A signed-out session with a bootstrap token that has NOT locally expired must
+// still read as a failing login, from the recorded mark and WITHOUT a network
+// call (RES-1692's first acceptance bullet). An unreachable host proves it is
+// local: a network-dependent verdict would be a "could not reach" warn, not a
+// signed-out fail. A fail check also makes doctor exit non-zero.
+func TestDoctorReportsSignedOutSessionWithoutNetworkCall(t *testing.T) {
+	doctorAuthHarness(t, "")
+	host := "http://127.0.0.1:1" // nothing listening
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(host, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+
+	urls := auth.ResolveURLs(host)
+	ws := "ws"
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL,
+		AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		User:               &auth.SessionUser{ID: "user-1", Email: "dead@example.com"},
+		Workspaces:         []map[string]any{{"key": ws}},
+		ActiveWorkspaceKey: &ws,
+		RefreshToken:       "refresh-token",
+		BootstrapToken:     auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens:    map[string]auth.StoredAccessToken{},
+		SignedOut:          true,
+	}); err != nil {
+		t.Fatalf("save signed-out session: %v", err)
+	}
+
+	report := runDoctor(t, true) // a fail check exits non-zero
+	login := findCheck(t, report, "login")
+	if login == nil || login["status"] != "fail" {
+		t.Fatalf("login check = %v, want a fail from the signed-out mark", login)
+	}
+	if msg, _ := login["message"].(string); !strings.Contains(msg, "signed out") {
+		t.Errorf("login message = %q, want the signed-out message, not a network warn", msg)
+	}
+	if st := doctorSection(t, report, "auth")["status"]; st != "signed-out" {
+		t.Errorf("auth.status = %v, want signed-out (not authenticated)", st)
+	}
+}
