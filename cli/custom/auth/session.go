@@ -358,21 +358,24 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 	return savedWS != "" && savedWS != activeWS
 }
 
+// SessionStatus is the machine-readable health of a saved login.
+type SessionStatus string
+
 // Session states reported by ListSessions. A login is never reported as
 // "expired": the only date on disk belongs to the bootstrap token, which the
 // client re-mints from the refresh token on any call that needs it, so a stale
 // one means the next command does one extra round-trip — not that the login is
 // dead. Only the server can end a login, by rejecting the refresh token.
 const (
-	SessionStatusOK           = "ok"
-	SessionStatusNeedsRefresh = "needs-refresh"
-	SessionStatusInvalid      = "invalid"
-	SessionStatusUnreadable   = "unreadable"
+	SessionStatusOK           SessionStatus = "ok"
+	SessionStatusNeedsRefresh SessionStatus = "needs-refresh"
+	SessionStatusInvalid      SessionStatus = "invalid"
+	SessionStatusUnreadable   SessionStatus = "unreadable"
 	// SessionStatusSignedOut is a login the server has ended: its refresh token
 	// was rejected. Unlike needs-refresh it is not usable, and the only fix is a
 	// new login. Recorded on the session (Session.SignedOut), so it is reported
 	// without a network call.
-	SessionStatusSignedOut = "signed-out"
+	SessionStatusSignedOut SessionStatus = "signed-out"
 )
 
 // markSessionSignedOut records a server-rejected refresh on the session file so
@@ -398,16 +401,13 @@ func markSessionSignedOut(session *Session) {
 	}
 }
 
-// CheckSession probes one saved login against its server for `orq auth sessions
-// --check` and returns the live status. It asks the server every time: ok when
-// the refresh succeeds, or when the server is unreachable but the bootstrap
-// token is still valid locally (the login is usable right now); signed-out when
-// the server rejects the refresh token; needs-refresh when the server could not
-// be reached and the token is also stale, so a transient failure never calls a
-// live login dead. A file that will not load is reported invalid or unreadable,
-// as in the listing. The probe is one refresh: it records signed-out on a
-// rejected refresh and clears it on success, so the status also lands on disk.
-func CheckSession(host string) string {
+// CheckSession attempts a refresh of one saved login and returns its status.
+// The sessions --check command calls it only for needs-refresh rows. A stored
+// signed-out mark needs no probe. A successful refresh is ok; a definitive
+// rejection is signed-out. An inconclusive response preserves local usability:
+// ok for an unexpired bootstrap token, needs-refresh otherwise. Neither value
+// promises a successful server probe. Writes target the requested host.
+func CheckSession(host string) SessionStatus {
 	data, err := os.ReadFile(sessionPathFor(host))
 	if err != nil {
 		return SessionStatusUnreadable
@@ -422,24 +422,16 @@ func CheckSession(host string) string {
 	if session.SignedOut {
 		return SessionStatusSignedOut
 	}
-	// --check asks the server every time: a bootstrap token still valid locally
-	// says nothing about whether the refresh token behind it was revoked minutes
-	// ago, and answering ok from the local clock alone is the one thing --check
-	// exists to avoid. Probe the refresh directly and persist the outcome to THIS
-	// host's file. EnsureBootstrapToken would SaveSession, which always writes the
-	// active host's file — wrong when --check probes a login that is not the
-	// active one. ExchangeAccessToken does no I/O, so we control where it lands.
+	// ExchangeAccessToken does no disk I/O, so the probe can persist to this
+	// host rather than SaveSession's active host.
 	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
 		if RefreshRejected(err) {
-			session.SignedOut = true
-			_ = saveSessionTo(sessionPathFor(host), &session)
+			markSessionSignedOut(&session)
 			return SessionStatusSignedOut
 		}
-		// The server did not answer, so this is never a verdict. needs-refresh
-		// now means exactly that: unreachable AND the bootstrap token is stale.
-		// If that token is still valid locally the login works right now, so it
-		// is ok, not needs-refresh.
+		// A transport error or an unrecognised server response is inconclusive.
+		// Preserve the local status rather than treating it as rejection.
 		if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
 			return SessionStatusOK
 		}
@@ -447,20 +439,22 @@ func CheckSession(host string) string {
 	}
 	session.BootstrapToken = tok
 	session.SignedOut = false
-	_ = saveSessionTo(sessionPathFor(host), &session)
+	if err := saveSessionTo(sessionPathFor(host), &session); err != nil {
+		fmt.Fprintf(os.Stderr, "orq: could not save refreshed login to %s (%v)\n", sessionPathFor(host), err)
+	}
 	return SessionStatusOK
 }
 
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
-	Host      string `json:"host"`
-	Server    string `json:"server"`
-	User      string `json:"user,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Project   string `json:"project,omitempty"`
-	Status    string `json:"status"`
-	Active    bool   `json:"active"`
-	Path      string `json:"path"`
+	Host      string        `json:"host"`
+	Server    string        `json:"server"`
+	User      string        `json:"user,omitempty"`
+	Workspace string        `json:"workspace,omitempty"`
+	Project   string        `json:"project,omitempty"`
+	Status    SessionStatus `json:"status"`
+	Active    bool          `json:"active"`
+	Path      string        `json:"path"`
 }
 
 // ListSessions reads every session in the sessions directory, newest layout

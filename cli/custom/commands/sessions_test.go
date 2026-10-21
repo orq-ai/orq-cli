@@ -2,12 +2,17 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // The table names hosts you cannot reach without switching server, and nothing
@@ -104,7 +109,7 @@ func TestSwitchHintNamesWhatOutranksTheCurrentHost(t *testing.T) {
 
 func TestUsableSessionStatus(t *testing.T) {
 	for _, tc := range []struct {
-		status string
+		status auth.SessionStatus
 		want   bool
 	}{
 		{auth.SessionStatusOK, true},
@@ -128,5 +133,71 @@ func TestUsableSessionCount(t *testing.T) {
 	}
 	if got := usableSessionCount(rows); got != 2 {
 		t.Fatalf("usableSessionCount() = %d, want 2", got)
+	}
+}
+
+func TestSessionsCheckProbesOnlyExpiredLogins(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		check, expired bool
+		calls          int32
+		status         auth.SessionStatus
+	}{
+		{"local listing", false, true, 0, auth.SessionStatusNeedsRefresh},
+		{"expired checked", true, true, 1, auth.SessionStatusSignedOut},
+		{"unexpired checked", true, false, 0, auth.SessionStatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				w.WriteHeader(400)
+				w.Write([]byte(`{"message":"Invalid refresh token!"}`))
+			}))
+			defer srv.Close()
+			previous, source := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previous, source) })
+			saveDoctorSession(t, srv.URL, "synthetic@example.com", "acme")
+			if tc.expired {
+				session, err := auth.ReadSession()
+				if err != nil {
+					t.Fatal(err)
+				}
+				session.BootstrapToken.ExpiresAt = "2000-01-01T00:00:00Z"
+				if err := auth.SaveSession(session); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var out bytes.Buffer
+			previousOut, formatter := bartolocli.Stdout, bartolocli.Formatter
+			bartolocli.Stdout = &out
+			bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
+			viper.Set("output-format", "json")
+			t.Cleanup(func() {
+				bartolocli.Stdout = previousOut
+				bartolocli.Formatter = formatter
+				viper.Set("output-format", "")
+			})
+			cmd := NewSessionsCommand()
+			if tc.check {
+				cmd.SetArgs([]string{"--check"})
+			} else {
+				cmd.SetArgs([]string{})
+			}
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Sessions []auth.SessionListEntry `json:"sessions"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Sessions) != 1 || result.Sessions[0].Status != tc.status || calls.Load() != tc.calls {
+				t.Fatalf("rows=%+v calls=%d, want status=%s calls=%d", result.Sessions, calls.Load(), tc.status, tc.calls)
+			}
+		})
 	}
 }

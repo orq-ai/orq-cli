@@ -413,13 +413,13 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 // server is named because "belongs to another host" is the case the user
 // cannot otherwise see: --server, ORQ_SERVER and `orq server use` all move the
 // call away from the host the session was minted on. The APIError is preserved
-// so Unauthorized() still reads the status.
+// so RefreshRejected still reads the status and message.
 func withRefreshTokenRemedy(err error, server string) error {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		return err
 	}
-	if apiErr.Status != http.StatusUnauthorized && !strings.Contains(strings.ToLower(apiErr.Msg), "refresh token") {
+	if !RefreshRejected(err) || apiErr.Status == http.StatusForbidden {
 		return err
 	}
 	where := strings.TrimSpace(server)
@@ -748,6 +748,9 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 	if err != nil {
+		if RefreshRejected(err) {
+			markSessionSignedOut(session)
+		}
 		return "", err
 	}
 	// Keep the in-memory session usable for this invocation regardless of the
@@ -756,6 +759,7 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 		session.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
 	session.WorkspaceTokens[cacheKey] = tok
+	session.SignedOut = false
 	if err := mergeWorkspaceToken(cacheKey, tok); err != nil {
 		// Not fatal - the token works for this invocation - but a silent drop
 		// (e.g. a read-only session dir) would re-exchange on every single call
@@ -783,6 +787,7 @@ func mergeWorkspaceToken(workspaceKey string, tok StoredAccessToken) error {
 		current.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
 	current.WorkspaceTokens[workspaceKey] = tok
+	current.SignedOut = false
 	return SaveSession(current)
 }
 
@@ -918,11 +923,10 @@ func Unauthorized(err error) bool {
 // RefreshRejected reports whether err is the auth server ending the login: the
 // refresh token itself was invalid/revoked, or the account was deactivated.
 //
-// The /access-token endpoint does not answer these with 401. On the orq auth-api
-// (orquesta-web apps/auth-api, issue-access-token.ts), a rejected refresh returns
+// The /access-token endpoint can use 401. The hosted auth API also returns
 // 400 "Invalid refresh token!" and a deactivated account 403 "Account has been
-// deactivated". So Unauthorized() (401 only, the gateway-key verdict) never fires
-// here; without this the login would silently read as merely needs-refresh.
+// deactivated". Match these responses too, so a rejected login does not
+// silently read as merely needs-refresh.
 //
 // Deliberately NOT matched: the 400 "Account not found!" that the same endpoint
 // returns when a valid, active login requests a workspace or project it cannot

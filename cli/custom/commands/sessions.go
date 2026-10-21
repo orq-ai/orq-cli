@@ -24,10 +24,16 @@ So switching login means switching server, and ` + "`orq doctor -o json`" + ` re
 which host won and why. A host with no login yet needs one ` + "`orq auth login`" + `
 under it.
 
-The status column is read from local dates alone: a login whose token has
+The status column reflects saved state: a login whose token has
 expired shows ` + "`needs-refresh`" + `, which the next call re-mints. Pass
 ` + "`--check`" + ` to ask each expired login's server whether it still works — a
-rejected one then shows ` + "`signed-out`" + ` and is recorded as such.`),
+rejected one then shows ` + "`signed-out`" + ` and is recorded as such.
+
+Statuses: ` + "`ok`" + ` means locally unexpired or successfully refreshed;
+` + "`needs-refresh`" + ` means expired, including an inconclusive probe;
+` + "`signed-out`" + ` means a recorded refresh rejection; ` + "`invalid`" + ` means
+malformed session data; ` + "`unreadable`" + ` means the file could not be read.
+An inconclusive probe does not prove that a login is valid or invalid.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
@@ -36,7 +42,7 @@ rejected one then shows ` + "`signed-out`" + ` and is recorded as such.`),
 			}
 			if check {
 				// One refresh per expired login: only needs-refresh rows are
-				// uncertain (ok is live, signed-out/invalid/unreadable are already
+				// uncertain (ok is locally unexpired; signed-out/invalid/unreadable are already
 				// settled), so this is the minimum network to confirm them.
 				for i := range sessions {
 					if sessions[i].Status == auth.SessionStatusNeedsRefresh {
@@ -74,7 +80,7 @@ func printSessionList(rows []auth.SessionListEntry, binary string) {
 			anyActive = true
 		}
 		table = append(table, tableRow{marker: marker, cells: []string{
-			r.Host, r.User, r.Workspace, r.Project, paintStatus(r.Status),
+			r.Host, r.User, r.Workspace, r.Project, paintStatus(string(r.Status)),
 		}})
 	}
 	printTable(out, []string{"HOST", "USER", "WORKSPACE", "PROJECT", "STATE"}, table)
@@ -123,7 +129,7 @@ func switchTarget(rows []auth.SessionListEntry) string {
 
 // paintStatus highlights session states that require user action.
 func paintStatus(status string) string {
-	switch status {
+	switch auth.SessionStatus(status) {
 	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable, auth.SessionStatusSignedOut:
 		return paint(ansiRed, status)
 	default:
@@ -148,6 +154,6 @@ func warnIfActiveSessionShadowed(rows []auth.SessionListEntry) {
 	}
 }
 
-func usableSessionStatus(status string) bool {
+func usableSessionStatus(status auth.SessionStatus) bool {
 	return status == auth.SessionStatusOK || status == auth.SessionStatusNeedsRefresh
 }

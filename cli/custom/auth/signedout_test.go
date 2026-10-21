@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -213,6 +214,34 @@ func TestEnsureBootstrapTokenClearsSignedOutOnSuccess(t *testing.T) {
 	}
 }
 
+func TestEnsureWorkspaceTokenClearsSignedOutOnSuccess(t *testing.T) {
+	isolateHome(t)
+	srv := loginServer(t, "user-1", "acme")
+
+	s := validSession("acme")
+	s.APIBaseURL = srv.URL
+	s.SignedOut = true
+	s.BootstrapToken = StoredAccessToken{Token: "boot", ExpiresAt: formatISO(time.Now().Add(-time.Hour))}
+	if err := SaveSession(s); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	out, err := clientFor(srv).EnsureWorkspaceToken(s, "acme")
+	if err != nil {
+		t.Fatalf("EnsureWorkspaceToken: %v", err)
+	}
+	if out.SignedOut {
+		t.Error("a successful refresh must clear SignedOut in memory")
+	}
+	rows, err := ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Status == SessionStatusSignedOut {
+		t.Fatalf("persisted rows = %+v, want not signed-out", rows)
+	}
+}
+
 // ListSessions reports a persisted SignedOut session as signed-out, so the
 // listing shows a dead login without a network call.
 func TestListSessionsReportsSignedOut(t *testing.T) {
@@ -400,5 +429,112 @@ func TestMarkSignedOutWritesOwnHostNotActive(t *testing.T) {
 	active, _ := os.ReadFile(sessionPathFor(SessionHost("https://active.invalid")))
 	if strings.Contains(string(active), `"signedOut": true`) {
 		t.Fatalf("mark wrongly written to the active host file:\n%s", active)
+	}
+}
+
+func TestCheckSessionWarnsWhenProbeCannotPersist(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(fmt.Sprint(rejected), func(t *testing.T) {
+			isolateHome(t)
+			var path string
+			token := jwtWithExpiry(t, time.Now().Add(time.Hour))
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				// Replace the file after CheckSession has loaded it, deterministically
+				// making its final atomic rename fail even when tests run as root.
+				if err := os.Remove(path); err != nil {
+					t.Error(err)
+				}
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Error(err)
+				}
+				if rejected {
+					w.WriteHeader(400)
+					fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+				} else {
+					fmt.Fprintf(w, `{"access_token":%q}`, token)
+				}
+			}))
+			defer srv.Close()
+			session := validSession("acme")
+			session.APIBaseURL = srv.URL
+			host := SessionHost(srv.URL)
+			path = sessionPathFor(host)
+			if err := saveSessionTo(path, session); err != nil {
+				t.Fatal(err)
+			}
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			previous := os.Stderr
+			os.Stderr = w
+			t.Cleanup(func() { os.Stderr = previous; r.Close(); w.Close() })
+			status := CheckSession(host)
+			w.Close()
+			os.Stderr = previous
+			warning, err := io.ReadAll(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := SessionStatusOK
+			if rejected {
+				want = SessionStatusSignedOut
+			}
+			if status != want {
+				t.Fatalf("status = %q, want %q", status, want)
+			}
+			if !strings.Contains(string(warning), "orq: could not") || !strings.Contains(string(warning), path) {
+				t.Fatalf("missing persistence warning: %s", warning)
+			}
+		})
+	}
+}
+
+func TestRefreshRemedyDoesNotBlameLoginForServerError(t *testing.T) {
+	original := &APIError{Status: 500, Msg: "refresh token service unavailable"}
+	if got := withRefreshTokenRemedy(original, "https://example.com"); got != original {
+		t.Fatalf("server error gained a misleading login remedy: %v", got)
+	}
+	deactivated := &APIError{Status: 403, Msg: "Account has been deactivated"}
+	if got := withRefreshTokenRemedy(deactivated, "https://example.com"); got != deactivated {
+		t.Fatalf("deactivation must retain server remedy: %v", got)
+	}
+}
+
+func TestWorkspaceTokenRecordsRefreshHealth(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(fmt.Sprint(rejected), func(t *testing.T) {
+			isolateHome(t)
+			token := jwtWithExpiry(t, time.Now().Add(time.Hour))
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if rejected {
+					w.WriteHeader(400)
+					fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+					return
+				}
+				fmt.Fprintf(w, `{"access_token":%q}`, token)
+			}))
+			defer srv.Close()
+			previous, source := Server(), ServerSource()
+			SetServer(srv.URL, "flag")
+			t.Cleanup(func() { SetServer(previous, source) })
+			session := validSession("acme")
+			session.APIBaseURL = srv.URL
+			session.SignedOut = !rejected
+			if err := SaveSession(session); err != nil {
+				t.Fatal(err)
+			}
+			_, err := clientFor(srv).WorkspaceToken(session, "acme")
+			if (err != nil) != rejected {
+				t.Fatalf("error = %v, rejected = %v", err, rejected)
+			}
+			persisted, err := ReadSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if session.SignedOut != rejected || persisted.SignedOut != rejected {
+				t.Fatalf("signed-out memory=%v disk=%v, want %v", session.SignedOut, persisted.SignedOut, rejected)
+			}
+		})
 	}
 }

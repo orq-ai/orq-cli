@@ -237,13 +237,9 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// fetch too, so one run cannot straddle two hosts.
 	client := auth.NewClient(apiBase)
 	if key, ws := savedKeyForWorkspace(session); key != "" {
-		// Verify the saved key against the server before reusing it: a key
-		// revoked or disabled before its recorded expiry passes the local check
-		// but fails at runtime, so the wired agent fails. A 401, a 403, any other
-		// 4xx, or a 200 that names no workspace is a verdict — drop the key and
-		// mint a fresh token. A transport error or a 5xx is not the key's fault,
-		// so the key is still used rather than block a launch on a transient blip,
-		// but say so, so a later runtime rejection is explained.
+		// Check revocation before launching. Only 401 is a verdict: this
+		// endpoint returns 403 for valid project-scoped keys. Preserve the
+		// saved key with a warning when the probe cannot establish validity.
 		reuse, warn := reuseAfterCheck(validateReusableKey(client, key))
 		if reuse {
 			if warn != "" {
@@ -290,10 +286,6 @@ func profileKey() (name, key string, ok bool) {
 	return name, strings.TrimSpace(bartolocli.GetProfile()["api_key"]), true
 }
 
-// savedKeyForWorkspace returns the saved agent key when it is recorded for the
-// session's active workspace and has not expired. Only a key for that workspace
-// qualifies: anything else would silently launch against a workspace the user
-// did not pick. An unrecorded expiry is unknown, not expired.
 // validateReusableKey verifies a saved gateway key against the server before
 // launch reuses it. Swappable in tests. A nil error means the server accepts
 // the key; auth.Unauthorized(err) means it was revoked or disabled.
@@ -302,25 +294,23 @@ var validateReusableKey = func(client *auth.Client, key string) error {
 	return err
 }
 
-// reuseAfterCheck decides whether a saved key survives its server check. A nil
-// error means the server accepts it. A 401, 403, any other 4xx, or a 200 that
-// named no workspace (ErrNoWorkspaceKey) is a verdict: do not reuse. A transport
-// error or a 5xx is not a verdict, so the key is reused, with warn set so the
-// caller can say the key could not be verified.
+// reuseAfterCheck uses the same rejection rule as setup and doctor. The
+// workspace-settings route can reject valid project-scoped keys with 403;
+// only a 401 proves the key invalid. Every inconclusive check carries a warning.
 func reuseAfterCheck(err error) (reuse bool, warn string) {
 	if err == nil {
 		return true, ""
 	}
-	if auth.Unauthorized(err) || auth.Forbidden(err) || errors.Is(err, auth.ErrNoWorkspaceKey) {
+	if auth.Unauthorized(err) {
 		return false, ""
-	}
-	var apiErr *auth.APIError
-	if errors.As(err, &apiErr) && apiErr.Status < 500 {
-		return false, "" // any other 4xx is a verdict too
 	}
 	return true, fmt.Sprintf("could not verify the saved key (%v)", err)
 }
 
+// savedKeyForWorkspace returns the saved agent key when it is recorded for the
+// session's active workspace and has not expired. Only a key for that workspace
+// qualifies: anything else would silently launch against a workspace the user
+// did not pick. An unrecorded expiry is unknown, not expired.
 func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return "", ""

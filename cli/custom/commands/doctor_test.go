@@ -2,15 +2,20 @@ package commands
 
 import (
 	"bytes"
+	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"orq/cli/custom/auth"
@@ -1485,5 +1490,103 @@ func TestDoctorReportsSignedOutSessionWithoutNetworkCall(t *testing.T) {
 	}
 	if st := doctorSection(t, report, "auth")["status"]; st != "signed-out" {
 		t.Errorf("auth.status = %v, want signed-out (not authenticated)", st)
+	}
+}
+
+func TestDoctorTransientProbeDoesNotFailCommand(t *testing.T) {
+	for _, status := range []int{0, http.StatusServiceUnavailable} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}))
+			t.Cleanup(srv.Close)
+			if status == 0 {
+				srv.Close()
+			}
+			previous, source := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previous, source) })
+			report := runDoctor(t, false)
+			check := findCheck(t, report, "api_base_url")
+			if check == nil || check["status"] != "fail" {
+				t.Fatalf("probe = %v, want visible fail beside exit zero", check)
+			}
+		})
+	}
+}
+
+func TestTransientProbeError(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err       error
+		transient bool
+	}{
+		{"timeout", context.DeadlineExceeded, true},
+		{"refused", &url.Error{Op: "Get", URL: "http://localhost", Err: syscall.ECONNREFUSED}, true},
+		{"dns", &net.DNSError{Err: "no such host", Name: "wrong.invalid"}, false},
+		{"dns timeout", &net.DNSError{Err: "timeout", IsTimeout: true}, false},
+		{"tls", x509.UnknownAuthorityError{}, false},
+		{"bad url", errors.New("unsupported protocol scheme"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := transientProbeError(tc.err); got != tc.transient {
+				t.Fatalf("transient = %v, want %v", got, tc.transient)
+			}
+		})
+	}
+}
+
+func TestDoctorTLSFailureFailsCommand(t *testing.T) {
+	doctorAuthHarness(t, "")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	defer srv.Close()
+	previous, source := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previous, source) })
+	report := runDoctor(t, true)
+	if check := findCheck(t, report, "api_base_url"); check == nil || check["status"] != "fail" {
+		t.Fatalf("TLS probe = %v, want fail", check)
+	}
+}
+
+func TestDoctorReportsRejectedRefresh(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{400, "Invalid refresh token!"}, {403, "Account has been deactivated"},
+	} {
+		t.Run(tc.message, func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				json.NewEncoder(w).Encode(map[string]string{"message": tc.message})
+			}))
+			defer srv.Close()
+			previous, source := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previous, source) })
+			saveDoctorSession(t, srv.URL, "synthetic@example.com", "acme")
+			session, err := auth.ReadSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session.BootstrapToken.ExpiresAt = "2000-01-01T00:00:00Z"
+			if err := auth.SaveSession(session); err != nil {
+				t.Fatal(err)
+			}
+			report := runDoctor(t, true)
+			login := findCheck(t, report, "login")
+			if login == nil || login["status"] != "fail" || !strings.Contains(login["message"].(string), tc.message) {
+				t.Fatalf("login = %v, want failing check preserving server cause", login)
+			}
+			if status := doctorSection(t, report, "auth")["status"]; status != "signed-out" {
+				t.Fatalf("auth.status = %v", status)
+			}
+			if tc.status == 403 && strings.Contains(login["message"].(string), "revoked") {
+				t.Fatalf("deactivation misreported as revoked token: %v", login)
+			}
+		})
 	}
 }

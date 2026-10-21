@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,7 +35,8 @@ type doctorCheck struct {
 	// to match the prefix.
 	AlwaysShow bool `json:"-"`
 	// Transient marks a failure that is not the user's setup: the server was
-	// unreachable or returned a 5xx. It still shows as a failing row, but does
+	// temporarily unavailable (timeout/refused connection) or returned a 5xx.
+	// It still shows as a failing row, but does
 	// not make the command exit non-zero, so being offline is not reported as a
 	// broken login. A rejected credential or a dead login is NOT transient.
 	Transient bool `json:"-"`
@@ -43,8 +45,8 @@ type doctorCheck struct {
 // blockingFailureIDs returns the ids of checks that should make the command exit
 // non-zero: any check with status "fail" that is not transient. A dead login, a
 // revoked gateway key, a rejected credential, or a permissions repair that could
-// not run all block; a warning, or an unreachable server or 5xx (marked
-// Transient), does not, so `orq doctor` offline does not read as a broken setup.
+// not run all block. Timeouts, refused connections, and 5xx (marked Transient)
+// do not; DNS, TLS, and malformed server configuration still block.
 func blockingFailureIDs(checks []doctorCheck) []string {
 	var ids []string
 	for _, c := range checks {
@@ -183,7 +185,7 @@ func NewDoctorCommand() *cobra.Command {
 							checks = append(checks, doctorCheck{
 								ID:         "login",
 								Status:     "fail",
-								Message:    fmt.Sprintf("Login rejected by the server — the refresh token was revoked or has expired. Run: orq auth login --server %s", client.URLs.APIBaseURL),
+								Message:    fmt.Sprintf("Login rejected by the server: %v", err),
 								AlwaysShow: true,
 							})
 						default:
@@ -191,7 +193,7 @@ func NewDoctorCommand() *cobra.Command {
 							checks = append(checks, doctorCheck{
 								ID:         "login",
 								Status:     "warn",
-								Message:    fmt.Sprintf("Could not reach the server to verify the login: %v", err),
+								Message:    fmt.Sprintf("Could not verify the login: %v", err),
 								AlwaysShow: true,
 							})
 						}
@@ -494,6 +496,16 @@ func profileTransportSource(inspect auth.SessionInspectResult) string {
 	return "default"
 }
 
+// transientProbeError excludes configuration failures from the offline exemption.
+func transientProbeError(err error) bool {
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return false
+	}
+	var network net.Error
+	return (errors.As(err, &network) && network.Timeout()) || errors.Is(err, syscall.ECONNREFUSED)
+}
+
 func probeURL(parent context.Context, id, method, url, bearer string) doctorCheck {
 	authenticated := bearer != ""
 	if parent == nil {
@@ -526,14 +538,14 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {
-		// Could not reach the host at all: a transport error, not the user's
-		// setup. Fails the row but not the command (Transient).
+		// Timeouts and refused connections can be temporary. DNS, TLS, and
+		// malformed server configuration must still fail the command.
 		return doctorCheck{
 			ID:        id,
 			Status:    "fail",
 			Message:   err.Error(),
 			Details:   map[string]any{"url": url},
-			Transient: true,
+			Transient: transientProbeError(err),
 		}
 	}
 	defer res.Body.Close()
@@ -715,7 +727,7 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 // authenticated call, on top of the expiry countdown. A key revoked or disabled
 // before its recorded expiry passes the date check but still 401s at runtime, so
 // wired agents fail; only the server can tell a live key from a dead one. 401 is
-// a dead key (see auth.Unauthorized); any other error is a reachability warning,
+// a dead key (see auth.Unauthorized); any other error is an inconclusive warning,
 // not a verdict on the key.
 func gatewayKeyServerCheck(client *auth.Client, inspect auth.SessionInspectResult) (doctorCheck, bool) {
 	if inspect.Status != auth.StatusOK || inspect.Session == nil || inspect.Session.GatewayKey == "" {
