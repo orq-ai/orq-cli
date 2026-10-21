@@ -891,6 +891,11 @@ func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("doctor output is not JSON (%v): %s", err, out.String())
 	}
+	if wantErr {
+		if login := findCheck(t, report, "login"); login != nil && login["status"] == "fail" && !strings.Contains(runErr.Error(), "login") {
+			t.Fatalf("doctor error %q must name the failing login check", runErr)
+		}
+	}
 	return report
 }
 
