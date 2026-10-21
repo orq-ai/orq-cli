@@ -6954,17 +6954,6 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
-	paramStatus := params.GetString("status")
-	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
-		{
-			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"})
-			if err != nil {
-				return nil, nil, err
-			}
-			paramStatus = normalized
-		}
-		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
-	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 

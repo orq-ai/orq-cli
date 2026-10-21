@@ -280,10 +280,6 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for the page after the given item id. Mutually exclusive with `ending_before`.")
 		cmd.Flags().String("ending-before", "", "Cursor for the page before the given item id. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("search", "", "Case-insensitive match against the gateway key and display name.")
-		cmd.Flags().String("status", "", "Returns only gateways in this status. (one of: MCP_GATEWAY_STATUS_ACTIVE, MCP_GATEWAY_STATUS_DISABLED)")
-		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"}, cobra.ShellCompDirectiveNoFileComp
-		})
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -390,13 +386,13 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP gateway",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `mode` (string)\n- `plugins` (array)\n- `server_links` (array)\n- ... and 4 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `mode` (string)\n- `plugins` (array)\n- `server_links` (array)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"MCP_GATEWAY_MODE_CODE\",\n  \"status\": \"MCP_GATEWAY_STATUS_ACTIVE\",\n  \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"MCP_GATEWAY_MODE_CODE\",\n  \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -464,16 +460,6 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							FlagName:    "skill-ids",
 							Type:        "string-slice",
 							Description: "Replaces the served workspace skills. An empty array is treated as no change; use `clear_skill_ids` to remove them all.",
-						},
-						{
-							Name:        "status",
-							FlagName:    "status",
-							Type:        "enum-string",
-							Description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration.",
-							Enum: []string{
-								"MCP_GATEWAY_STATUS_ACTIVE",
-								"MCP_GATEWAY_STATUS_DISABLED",
-							},
 						},
 						{
 							Name:        "tool_naming",
@@ -572,16 +558,6 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					FlagName:    "skill-ids",
 					Type:        "string-slice",
 					Description: "Replaces the served workspace skills. An empty array is treated as no change; use `clear_skill_ids` to remove them all.",
-				},
-				{
-					Name:        "status",
-					FlagName:    "status",
-					Type:        "enum-string",
-					Description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration.",
-					Enum: []string{
-						"MCP_GATEWAY_STATUS_ACTIVE",
-						"MCP_GATEWAY_STATUS_DISABLED",
-					},
 				},
 				{
 					Name:        "tool_naming",
