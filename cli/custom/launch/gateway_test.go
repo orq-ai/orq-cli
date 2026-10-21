@@ -174,6 +174,32 @@ func TestResolveFirstFetchedWhenDefaultAbsent(t *testing.T) {
 	}
 }
 
+// An explicit model (flag or env) must never be reported as a substitution,
+// even when the default is absent from the catalogue.
+func TestResolveExplicitModelDoesNotWarnAboutDefault(t *testing.T) {
+	const want = "anthropic/claude-sonnet-4-6"
+	cases := map[string]func(*ResolveInput){
+		"flag": func(in *ResolveInput) { in.Flags.Model = want },
+		"env":  func(in *ResolveInput) { in.Getenv = env(map[string]string{"OPENCODE_MODEL": want}) },
+	}
+	for name, set := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, _ := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) {
+				in.Fetch = fetcherOf(want)
+				set(in)
+			}))
+			if got.GatewayModel != want || len(got.ModelWarnings) != 0 {
+				t.Fatalf("model %q, warnings %v", got.GatewayModel, got.ModelWarnings)
+			}
+		})
+	}
+
+	got, _ := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) { in.Fetch = fetcherOf(want) }))
+	if len(got.ModelWarnings) != 1 {
+		t.Fatalf("default substituted silently: %v", got.ModelWarnings)
+	}
+}
+
 func TestResolveMergesExplicitModels(t *testing.T) {
 	got, _ := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) {
 		in.Flags.Models = "anthropic/claude-sonnet-4-6"
