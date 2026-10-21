@@ -76,6 +76,8 @@ type GatewayFlags struct {
 	// --no-otel. ParseArgv applies these defaults; the struct's zero value is off.
 	Router bool
 	Trace  bool
+	// Subscription keeps the agent's own subscription login as the model credential; only parsed for agents with SubscriptionAuth set.
+	Subscription bool
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.

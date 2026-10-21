@@ -1312,6 +1312,10 @@
           "type": "bool"
         },
         {
+          "name": "subscription",
+          "type": "bool"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"
@@ -1993,6 +1997,10 @@
         },
         {
           "name": "status",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {
@@ -8787,6 +8795,10 @@
         },
         {
           "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {

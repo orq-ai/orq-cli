@@ -14,12 +14,13 @@ var codexNormalize = MakeNormalizeModel([]string{"orq"})
 
 func codexAgent() AgentDef {
 	return AgentDef{
-		Name:          "codex",
-		Binary:        "codex",
-		Label:         "OpenAI Codex CLI",
-		InstallHint:   "npm install -g @openai/codex",
-		FetchesModels: true,
-		AllowModels:   false,
+		Name:             "codex",
+		Binary:           "codex",
+		Label:            "OpenAI Codex CLI",
+		InstallHint:      "npm install -g @openai/codex",
+		FetchesModels:    true,
+		AllowModels:      false,
+		SubscriptionAuth: true,
 		Prompt: &PromptMapping{
 			Flags: []string{"-p", "--prompt"},
 			// Only the subcommand, no approval or sandbox flag: those are
@@ -35,7 +36,7 @@ func codexAgent() AgentDef {
 // overrides, and rewrites the bundled model catalog so the picker lists
 // gateway models. Catalog failures degrade to a warning.
 func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
-	resolved, err := ResolveGatewayConfig(ResolveInput{
+	input := ResolveInput{
 		AuthToken:     ctx.Creds.APIKey,
 		APIBaseURL:    ctx.Creds.APIBaseURL,
 		Getenv:        ctx.Getenv,
@@ -45,9 +46,20 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 		DefaultModel:  DefaultCodexModel,
 		BaseURLEnvKey: "ORQ_CODEX_BASE_URL",
 		ModelEnvKey:   "CODEX_MODEL",
-	})
+	}
+	if ctx.Flags.Subscription {
+		// Narrowed before the default falls back, or a workspace without the
+		// default model would fall back to a non-OpenAI one and be refused.
+		input.ServesModel = isOpenAIModel
+	}
+	resolved, err := ResolveGatewayConfig(input)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Flags.Subscription {
+		if err := restrictToOpenAIModels(&resolved.GatewayConfig); err != nil {
+			return nil, err
+		}
 	}
 
 	plan := &LaunchPlan{
@@ -72,13 +84,34 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 		plan.AddCleanup(cleanup)
 	}
 
-	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
+	buildOverrideArgs := BuildCodexOverrideArgs
+	if ctx.Flags.Subscription {
+		buildOverrideArgs = BuildCodexChatGPTOverrideArgs
+	}
+	plan.PreArgs = buildOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("codex") {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
 	}
 	maybeInstallSessionSkills(ctx, plan, "codex")
 	return plan, nil
 }
+
+// restrictToOpenAIModels keeps a --chatgpt launch on models a ChatGPT subscription can serve; the gateway rejects any other.
+func restrictToOpenAIModels(resolved *GatewayConfig) error {
+	if !isOpenAIModel(resolved.GatewayModel) {
+		return fmt.Errorf("--chatgpt bills calls to your ChatGPT subscription, which serves only openai/ models; got %q", resolved.GatewayModel)
+	}
+	openAI := resolved.GatewayModels[:0:0]
+	for _, model := range resolved.GatewayModels {
+		if isOpenAIModel(model) {
+			openAI = append(openAI, model)
+		}
+	}
+	resolved.GatewayModels = openAI
+	return nil
+}
+
+func isOpenAIModel(id string) bool { return strings.HasPrefix(id, "openai/") }
 
 func tomlOverride(key, value string) string {
 	return key + "=" + TOMLString(value)
@@ -88,38 +121,61 @@ func tomlOverride(key, value string) string {
 const CodexProvider = "orq"
 
 // CodexProviderSettings is the codex configuration that points it at the orq
-// gateway, as ordered dotted-key/value pairs.
+// gateway, as ordered dotted-key/value pairs with TOML-encoded values.
 //
 // Two commands deliver these differently — launch as `-c key=value` overrides
 // on the argv, setup as TOML in a profile file — so the settings themselves
 // live in one place and each command only formats them. An empty model or
 // modelCatalogPath omits that key rather than writing a blank one.
-func CodexProviderSettings(model, baseURL, modelCatalogPath string) [][2]string {
+//
+// chatGPT keeps codex's own ChatGPT login as the model credential, so calls
+// run on the user's subscription; the orq key then rides in x-orq-api-key.
+func CodexProviderSettings(model, baseURL, modelCatalogPath string, chatGPT bool) [][2]string {
 	settings := [][2]string{}
 	if model != "" {
-		settings = append(settings, [2]string{"model", model})
+		settings = append(settings, [2]string{"model", TOMLString(model)})
 	}
+	provider := "model_providers." + CodexProvider
 	settings = append(settings,
-		[2]string{"model_provider", CodexProvider},
-		[2]string{"model_providers." + CodexProvider + ".name", ProviderDisplayName},
-		[2]string{"model_providers." + CodexProvider + ".base_url", baseURL},
-		[2]string{"model_providers." + CodexProvider + ".env_key", "ORQ_API_KEY"},
-		// codex removed chat/completions support (hard error since Feb 2026);
-		// "responses" is the only valid wire_api, and it is per-provider only
-		// — a second chat-shaped provider like opencode's is not an option.
-		[2]string{"model_providers." + CodexProvider + ".wire_api", "responses"},
+		[2]string{"model_provider", TOMLString(CodexProvider)},
+		[2]string{provider + ".name", TOMLString(ProviderDisplayName)},
+		[2]string{provider + ".base_url", TOMLString(baseURL)},
 	)
+	if chatGPT {
+		settings = append(settings,
+			[2]string{provider + ".requires_openai_auth", "true"},
+			[2]string{provider + ".env_http_headers." + orqAPIKeyHeader, TOMLString("ORQ_API_KEY")},
+		)
+	} else {
+		settings = append(settings, [2]string{provider + ".env_key", TOMLString("ORQ_API_KEY")})
+	}
+	// codex removed chat/completions support (hard error since Feb 2026);
+	// "responses" is the only valid wire_api, and it is per-provider only
+	// — a second chat-shaped provider like opencode's is not an option.
+	settings = append(settings, [2]string{provider + ".wire_api", TOMLString("responses")})
 	if modelCatalogPath != "" {
-		settings = append(settings, [2]string{"model_catalog_json", modelCatalogPath})
+		settings = append(settings, [2]string{"model_catalog_json", TOMLString(modelCatalogPath)})
 	}
 	return settings
 }
 
+// orqAPIKeyHeader carries the orq key when the Authorization header holds the caller's own provider credential.
+const orqAPIKeyHeader = "x-orq-api-key"
+
 // BuildCodexOverrideArgs builds the -c TOML override argv prefix.
 func BuildCodexOverrideArgs(model, baseURL, modelCatalogPath string) []string {
+	return codexOverrideArgs(CodexProviderSettings(model, baseURL, modelCatalogPath, false))
+}
+
+// BuildCodexChatGPTOverrideArgs is BuildCodexOverrideArgs for --chatgpt.
+func BuildCodexChatGPTOverrideArgs(model, baseURL, modelCatalogPath string) []string {
+	return codexOverrideArgs(CodexProviderSettings(model, baseURL, modelCatalogPath, true))
+}
+
+func codexOverrideArgs(settings [][2]string) []string {
 	var args []string
-	for _, kv := range CodexProviderSettings(model, baseURL, modelCatalogPath) {
-		args = append(args, "-c", tomlOverride(kv[0], kv[1]))
+	for _, kv := range settings {
+		args = append(args, "-c", kv[0]+"="+kv[1])
 	}
 	return args
 }
