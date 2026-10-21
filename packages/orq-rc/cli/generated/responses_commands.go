@@ -321,7 +321,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "prompt_cache_options",
 							FlagName:    "prompt-cache-options",
 							Type:        "json",
-							Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+							Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate.",
 						},
 						{
 							Name:        "reasoning",
@@ -657,7 +657,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "prompt_cache_options",
 					FlagName:    "prompt-cache-options",
 					Type:        "json",
-					Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+					Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate.",
 				},
 				{
 					Name:        "reasoning",
