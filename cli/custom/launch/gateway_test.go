@@ -176,27 +176,48 @@ func TestResolveFirstFetchedWhenDefaultAbsent(t *testing.T) {
 
 // An explicit model (flag or env) must never be reported as a substitution,
 // even when the default is absent from the catalogue.
-func TestResolveExplicitModelDoesNotWarnAboutDefault(t *testing.T) {
-	const want = "anthropic/claude-sonnet-4-6"
-	cases := map[string]func(*ResolveInput){
-		"flag": func(in *ResolveInput) { in.Flags.Model = want },
-		"env":  func(in *ResolveInput) { in.Getenv = env(map[string]string{"OPENCODE_MODEL": want}) },
+func TestResolveDefaultSubstitutionWarning(t *testing.T) {
+	const (
+		explicit = "anthropic/claude-sonnet-4-6"
+		def      = "openai/gpt-5-mini"
+	)
+	cases := []struct {
+		name      string
+		flag, env string
+		fetch     []string
+		wantModel string
+		wantWarn  bool
+	}{
+		{"flag", explicit, "", []string{explicit}, explicit, false},
+		{"env", "", explicit, []string{explicit}, explicit, false},
+		{"flag beats env", explicit, "openai/other", []string{explicit}, explicit, false},
+		{"default enabled", "", "", []string{explicit, def}, def, false},
+		{"default missing", "", "", []string{explicit}, explicit, true},
 	}
-	for name, set := range cases {
-		t.Run(name, func(t *testing.T) {
-			got, _ := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) {
-				in.Fetch = fetcherOf(want)
-				set(in)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) {
+				in.Fetch = fetcherOf(c.fetch...)
+				in.Flags.Model = c.flag
+				in.Getenv = env(map[string]string{"OPENCODE_MODEL": c.env})
 			}))
-			if got.GatewayModel != want || len(got.ModelWarnings) != 0 {
-				t.Fatalf("model %q, warnings %v", got.GatewayModel, got.ModelWarnings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.GatewayModel != c.wantModel {
+				t.Fatalf("model = %q, want %q", got.GatewayModel, c.wantModel)
+			}
+			if !c.wantWarn {
+				if len(got.ModelWarnings) != 0 {
+					t.Fatalf("unexpected warnings: %v", got.ModelWarnings)
+				}
+				return
+			}
+			if len(got.ModelWarnings) != 1 ||
+				!strings.Contains(got.ModelWarnings[0], def) || !strings.Contains(got.ModelWarnings[0], c.wantModel) {
+				t.Fatalf("want one substitution warning naming %q and %q, got %v", def, c.wantModel, got.ModelWarnings)
 			}
 		})
-	}
-
-	got, _ := ResolveGatewayConfig(resolveOpts(func(in *ResolveInput) { in.Fetch = fetcherOf(want) }))
-	if len(got.ModelWarnings) != 1 {
-		t.Fatalf("default substituted silently: %v", got.ModelWarnings)
 	}
 }
 

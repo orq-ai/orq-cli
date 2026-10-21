@@ -467,7 +467,6 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 
 	picked := firstNonEmpty(input.Flags.Model, getenv(input.ModelEnvKey))
 	if picked == "" {
-		// Substitute (and warn) only when no model was chosen.
 		switch {
 		case slices.Contains(fetched, normalize(input.DefaultModel)):
 			picked = input.DefaultModel
@@ -475,7 +474,7 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 			picked = fetched[0]
 			warnings = append(warnings, fmt.Sprintf(
 				"default model %q is not enabled in this workspace; using %q (first enabled model) — pass --model to pick explicitly",
-				input.DefaultModel, normalize(picked)))
+				input.DefaultModel, picked))
 		default:
 			picked = firstNonEmpty(first(explicitModels), input.DefaultModel)
 		}
