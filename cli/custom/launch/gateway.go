@@ -467,27 +467,21 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 		}
 	}
 
-	fallbackModel := firstNonEmpty(getenv(input.ModelEnvKey), input.DefaultModel)
-	defaultSubstituted := false
-	gatewayModel := normalize(firstNonEmpty(
-		input.Flags.Model,
-		getenv(input.ModelEnvKey),
-		func() string {
-			if slices.Contains(fetched, normalize(input.DefaultModel)) {
-				return input.DefaultModel
-			}
-			if m := first(fetched); m != "" {
-				defaultSubstituted = true
-				return m
-			}
-			return firstNonEmpty(first(explicitModels), fallbackModel)
-		}(),
-	))
-	if defaultSubstituted {
-		warnings = append(warnings, fmt.Sprintf(
-			"default model %q is not enabled in this workspace; using %q (first enabled model) — pass --model to pick explicitly",
-			input.DefaultModel, gatewayModel))
+	picked := firstNonEmpty(input.Flags.Model, getenv(input.ModelEnvKey))
+	if picked == "" {
+		switch {
+		case slices.Contains(fetched, normalize(input.DefaultModel)):
+			picked = input.DefaultModel
+		case len(fetched) > 0:
+			picked = fetched[0]
+			warnings = append(warnings, fmt.Sprintf(
+				"default model %q is not enabled in this workspace; using %q (first enabled model) — pass --model to pick explicitly",
+				input.DefaultModel, picked))
+		default:
+			picked = firstNonEmpty(first(explicitModels), input.DefaultModel)
+		}
 	}
+	gatewayModel := normalize(picked)
 
 	all := append(append(append([]string{}, fetched...), explicitModels...), gatewayModel)
 	gatewayModels := DedupeModels(all, normalize)
