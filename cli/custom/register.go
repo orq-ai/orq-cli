@@ -1081,6 +1081,7 @@ func attachAuthSubcommands(root *cobra.Command) {
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
+	authParent.AddCommand(commands.NewTokenCommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 

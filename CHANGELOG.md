@@ -120,6 +120,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `orq auth token` prints the access token of your browser login for
+the active workspace and project (or the ones `--workspace` / `--project`
+name), exchanging a fresh one first when the cached token is expired or about
+to expire. The bare output is the token alone, for `$(orq auth token)`;
+`-o json` returns `{token, expires_at, workspace, workspace_id, project_id,
+server}`. It gives tools that reuse an `orq auth login` (orqi among them) a
+supported way to get the token without reading `~/.orq/sessions/<host>.json`,
+whose secrets are moving to the OS credential store. API keys are never
+printed.
+
 ## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
 
 - **Changed:** API validation errors now print the field and reason the server

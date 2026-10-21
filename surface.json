@@ -1323,6 +1323,10 @@
       ]
     },
     {
+      "path": "orq auth token",
+      "use": "token"
+    },
+    {
       "path": "orq auth whoami",
       "use": "whoami",
       "flags": [
