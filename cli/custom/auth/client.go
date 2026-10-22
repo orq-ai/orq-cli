@@ -608,6 +608,9 @@ func (c *Client) previousSession(userID string, warn bool) *Session {
 			}
 			return nil
 		}
+		// InspectSession hydrated before it judged the file invalid, so the
+		// store answered; load the gateway key from it again for this copy.
+		_ = hydrateSecrets(previous, r.Path)
 	default: // StatusUnreadable
 		if warn {
 			reportUnreadableGatewayKey(host, r.Path)
@@ -714,7 +717,7 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*Session, error) {
 	cacheKey := c.tokenKey(workspaceKey)
 	current, cached := session.WorkspaceTokens[cacheKey]
-	refreshed := !cached || isExpired(current.ExpiresAt, 60)
+	refreshed := !cached || current.Token == "" || isExpired(current.ExpiresAt, 60)
 	if refreshed {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
@@ -762,7 +765,7 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 // exchange.
 func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, error) {
 	cacheKey := c.tokenKey(workspaceKey)
-	if tok, ok := session.WorkspaceTokens[cacheKey]; ok && !isExpired(tok.ExpiresAt, 60) {
+	if tok, ok := session.WorkspaceTokens[cacheKey]; ok && tok.Token != "" && !isExpired(tok.ExpiresAt, 60) {
 		return tok.Token, nil
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)

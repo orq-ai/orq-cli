@@ -38,6 +38,7 @@ func MigrateLayout(configDir string) error {
 	if err := migrateCredentials(configDir, renamed); err != nil {
 		return err
 	}
+	MigrateSessionSecrets()
 	// Runs unconditionally, not only when migrateCredentials just deleted a
 	// profile: a prior interrupted run (or one whose migrateCredentials wrote
 	// credentials.json but then died before clearing the selection) can leave
@@ -213,7 +214,7 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 			// and an API-key profile's server identifies the matching login.
 			fields["server"] = stringField(profile, "server")
 			if err := attachToSession(name, fields, renamed); err != nil {
-				return err
+				return deferCredentialsMigration(err)
 			}
 		}
 		if !apiKeyProfile {
@@ -231,7 +232,7 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 			continue
 		}
 		if err := attachToSession(name, stringMap(entry), renamed); err != nil {
-			return err
+			return deferCredentialsMigration(err)
 		}
 		// #63 deleted the companion keyless profile itself when it wrote
 		// state.<name>, so this should not be reachable — but a state entry
@@ -261,6 +262,25 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 	return nil
 }
 
+// errSessionSecretsUnavailable is attachToSession finding the session's
+// secrets in a store this process cannot read (file mode, a locked keychain).
+var errSessionSecretsUnavailable = errors.New("session secrets unavailable")
+
+// deferCredentialsMigration leaves credentials.json untouched for this run
+// when the session to attach to cannot be hydrated: the fields keep their only
+// copy, and the next command with the store reachable finishes the move.
+// Failing instead would stop every command, `orq auth login` and `orq doctor`
+// included, since MigrateLayout runs before each one. Sessions already
+// attached this run are not undone; set only fills empty fields, so the retry
+// is a no-op for them.
+func deferCredentialsMigration(err error) error {
+	if !errors.Is(err, errSessionSecretsUnavailable) {
+		return err
+	}
+	fmt.Fprintf(bartolocli.Stderr, "orq: left credentials.json unmigrated for now: %v\n", err)
+	return nil
+}
+
 // attachToSession writes gateway fields onto the session for the host a
 // profile named: its own server, else the session that used to carry its
 // name, else the hosted default. No session there means nothing to attach the
@@ -284,6 +304,15 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 		// only other copy, so surfacing this as success would lose the key
 		// for good. Fail closed instead.
 		return fmt.Errorf("reading session for %s: %w", host, err)
+	}
+	// A file whose tokens moved to the store must be whole before it is saved
+	// back: saving it bare would overwrite the stored refresh and bootstrap
+	// tokens with a blob holding only the gateway key, and set below would
+	// take the legacy gateway key over the stored one.
+	if s != nil {
+		if err := hydrateSecrets(s, path); err != nil {
+			return fmt.Errorf("%w for %s: %v", errSessionSecretsUnavailable, host, err)
+		}
 	}
 	if s == nil {
 		// No session for this host — the documented drop: a gateway key with

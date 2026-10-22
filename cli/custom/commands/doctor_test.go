@@ -1595,3 +1595,23 @@ func TestDoctorReportsRejectedRefresh(t *testing.T) {
 		})
 	}
 }
+
+// The credential_store row describes the whole sessions directory, so it is
+// reported whether or not the active session loads: a session that will not
+// load because its secrets are in an unusable store is when it matters most.
+func TestDoctorReportsTheCredentialStoreInEverySessionState(t *testing.T) {
+	for _, inspect := range []auth.SessionInspectResult{
+		{Status: auth.StatusOK, Session: &auth.Session{}},
+		{Status: auth.StatusMissing},
+		{Status: auth.StatusUnreadable, Code: "credential_store_error", Message: "secrets unreachable"},
+	} {
+		checks := buildSessionChecks(inspect)
+		if len(checks) < 2 || checks[0].ID != "session_file" || checks[1].ID != "credential_store" {
+			ids := make([]string, len(checks))
+			for i, c := range checks {
+				ids[i] = c.ID
+			}
+			t.Errorf("status %v: checks %v, want session_file then credential_store", inspect.Status, ids)
+		}
+	}
+}

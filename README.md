@@ -141,7 +141,7 @@ skills check, and `orq doctor -o json` returns the full value at
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable. A gateway key minted from a browser login lives in the server-keyed `~/.orq/sessions/<host>.json`; a saved API-key profile lives in `~/.orq/credentials.json`. Setup also writes the effective key to `~/.orq/env`, which it offers to source from your shell profile (`~/.orq/env.fish` for fish). These credential files are mode 0600.
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable. A gateway key minted from a browser login belongs to the server-keyed `~/.orq/sessions/<host>.json` login, stored with its tokens (see [OAuth device login](#oauth-device-login-interactive)); a saved API-key profile lives in `~/.orq/credentials.json`. Setup also writes the effective key to `~/.orq/env`, which it offers to source from your shell profile (`~/.orq/env.fish` for fish). These credential files are mode 0600.
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
@@ -180,6 +180,19 @@ Walks you through a browser device-authorization flow, stores the login in
 `~/.orq/sessions/<host>.json` (`my.orq.ai.json` for the hosted service), and
 picks an active workspace. Re-running `orq auth login` refreshes it. Sign out
 with `orq auth logout`.
+
+The login's tokens (refresh token, access tokens, the gateway key `orq setup`
+mints) go to the OS credential store: the login Keychain on macOS, the Secret
+Service via `secret-tool` on Linux when a keyring is running. The session file
+then keeps only non-secret state, so `orq auth sessions` still reads it. A file
+from an older version moves its tokens into the store on the next command.
+**Windows has no store backend yet**, so there, and on a Linux machine with no
+running keyring, the tokens stay in the 0600 session file as before. Set
+`ORQ_CREDENTIAL_STORE=file` to keep them in the file on any platform; a login
+whose tokens are already in the store then needs one `orq auth login`, and orq
+prints the command that removes the copy left in the store. `orq doctor`
+reports where the tokens actually are, and warns if any session file still
+holds them while a store is available.
 
 Another program can reuse the login by asking for its token instead of reading
 that file: `orq auth token` prints the access token for the active workspace

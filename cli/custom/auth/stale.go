@@ -219,7 +219,7 @@ func refreshStaleToken(req *http.Request, bearer string) (string, error) {
 		return "", errNotSessionToken
 	}
 	fresh := ""
-	if cur, ok := session.WorkspaceTokens[key]; ok && cur.Token != bearer && !isExpired(cur.ExpiresAt, 60) {
+	if cur, ok := session.WorkspaceTokens[key]; ok && cur.Token != "" && cur.Token != bearer && !isExpired(cur.ExpiresAt, 60) {
 		fresh = cur.Token
 	} else {
 		workspaceKey, projectID := ParseTokenCacheKey(key)
