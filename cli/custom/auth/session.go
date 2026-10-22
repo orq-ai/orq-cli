@@ -48,6 +48,13 @@ type Session struct {
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
 
+	// SignedOut records that the server rejected this login's refresh token — a
+	// definitive end, not a stale local date. It is written on a rejected
+	// refresh so `auth sessions`, `doctor` and the switch hints read the login
+	// as dead without another network call; a fresh `orq auth login` or any
+	// later successful refresh clears it.
+	SignedOut bool `json:"signedOut,omitempty"`
+
 	// ProfileTransport records which profile endpoint this host answered on
 	// ("rpc" or "rest"), so a deployment whose ingress does not route the
 	// identity RPC is not re-probed before every profile fetch. Empty on
@@ -278,6 +285,16 @@ func SaveSession(s *Session) error {
 // directory, 0600, then rename — so a session file gets the same atomicity and
 // permissions as credentials.json, from one implementation.
 func saveSessionTo(path string, s *Session) error {
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return writeSessionTo(path, s)
+}
+
+// writeSessionTo requires the caller to hold the session update lock.
+func writeSessionTo(path string, s *Session) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -294,7 +311,13 @@ func saveSessionTo(path string, s *Session) error {
 }
 
 func ClearSession() error {
-	err := os.Remove(SessionFilePath())
+	path := SessionFilePath()
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	err = os.Remove(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -351,28 +374,129 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 	return savedWS != "" && savedWS != activeWS
 }
 
+// SessionStatus is the machine-readable health of a saved login.
+type SessionStatus string
+
 // Session states reported by ListSessions. A login is never reported as
 // "expired": the only date on disk belongs to the bootstrap token, which the
 // client re-mints from the refresh token on any call that needs it, so a stale
 // one means the next command does one extra round-trip — not that the login is
 // dead. Only the server can end a login, by rejecting the refresh token.
 const (
-	SessionStatusOK           = "ok"
-	SessionStatusNeedsRefresh = "needs-refresh"
-	SessionStatusInvalid      = "invalid"
-	SessionStatusUnreadable   = "unreadable"
+	SessionStatusOK           SessionStatus = "ok"
+	SessionStatusNeedsRefresh SessionStatus = "needs-refresh"
+	SessionStatusInvalid      SessionStatus = "invalid"
+	SessionStatusUnreadable   SessionStatus = "unreadable"
+	// SessionStatusSignedOut is a login the server has ended: its refresh token
+	// was rejected. Unlike needs-refresh it is not usable, and the only fix is a
+	// new login. Recorded on the session (Session.SignedOut), so it is reported
+	// without a network call.
+	SessionStatusSignedOut SessionStatus = "signed-out"
 )
+
+// updateSessionForLogin merges into the current login under the same lock used
+// by saves and logout. A response for an old login cannot replace a new login
+// or recreate one that was removed while the request was in flight.
+func updateSessionForLogin(path, refreshToken string, update func(*Session)) error {
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var current Session
+	if err := json.Unmarshal(data, &current); err != nil {
+		return err
+	}
+	if current.RefreshToken != refreshToken {
+		return nil
+	}
+	if err := validateSession(&current); err != nil {
+		return err
+	}
+	update(&current)
+	return writeSessionTo(path, &current)
+}
+
+func mergeBootstrapToken(path string, session *Session, token StoredAccessToken) error {
+	return updateSessionForLogin(path, session.RefreshToken, func(current *Session) {
+		current.BootstrapToken = token
+		current.SignedOut = false
+	})
+}
+
+// markSessionSignedOut preserves the original auth error if recording health fails.
+func markSessionSignedOut(session *Session) {
+	if session == nil || session.SignedOut {
+		return
+	}
+	session.SignedOut = true
+	path := sessionPathFor(SessionHost(session.APIBaseURL))
+	if err := updateSessionForLogin(path, session.RefreshToken, func(current *Session) { current.SignedOut = true }); err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "orq: could not record the signed-out login to %s (%v); it will be re-checked next command\n", path, err)
+	}
+}
+
+// CheckSession attempts a refresh of one saved login and returns its status.
+// The sessions --check command calls it only for needs-refresh rows. A stored
+// signed-out mark needs no probe. A successful refresh is ok; a definitive
+// rejection is signed-out. An inconclusive response preserves local usability:
+// ok for an unexpired bootstrap token, needs-refresh otherwise. Neither value
+// promises a successful server probe. Writes target the requested host.
+func CheckSession(host string) SessionStatus {
+	data, err := os.ReadFile(sessionPathFor(host))
+	if err != nil {
+		return SessionStatusUnreadable
+	}
+	var session Session
+	if err := json.Unmarshal(data, &session); err != nil {
+		return SessionStatusInvalid
+	}
+	if err := validateSession(&session); err != nil {
+		return SessionStatusInvalid
+	}
+	if session.SignedOut {
+		return SessionStatusSignedOut
+	}
+	// ExchangeAccessToken does no disk I/O, so the probe can persist to this
+	// host rather than SaveSession's active host.
+	tok, err := NewClient(session.APIBaseURL).ExchangeAccessToken(session.RefreshToken, "")
+	if err != nil {
+		if RefreshRejected(err) {
+			markSessionSignedOut(&session)
+			return SessionStatusSignedOut
+		}
+		// A transport error or an unrecognised server response is inconclusive.
+		// Preserve the local status rather than treating it as rejection.
+		if !isExpired(session.BootstrapToken.ExpiresAt, 60) {
+			return SessionStatusOK
+		}
+		return SessionStatusNeedsRefresh
+	}
+	session.BootstrapToken = tok
+	session.SignedOut = false
+	if err := mergeBootstrapToken(sessionPathFor(host), &session, tok); err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "orq: could not save refreshed login to %s (%v)\n", sessionPathFor(host), err)
+	}
+	return SessionStatusOK
+}
 
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
-	Host      string `json:"host"`
-	Server    string `json:"server"`
-	User      string `json:"user,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Project   string `json:"project,omitempty"`
-	Status    string `json:"status"`
-	Active    bool   `json:"active"`
-	Path      string `json:"path"`
+	Host      string        `json:"host"`
+	Server    string        `json:"server"`
+	User      string        `json:"user,omitempty"`
+	Workspace string        `json:"workspace,omitempty"`
+	Project   string        `json:"project,omitempty"`
+	Status    SessionStatus `json:"status"`
+	Active    bool          `json:"active"`
+	Path      string        `json:"path"`
 }
 
 // ListSessions reads every session in the sessions directory, newest layout
@@ -433,9 +557,13 @@ func ListSessions() ([]SessionListEntry, error) {
 			row.Workspace = *session.ActiveWorkspaceKey
 		}
 		row.Project = session.ActiveProjectName
-		// Match EnsureBootstrapToken's 60-second clock skew.
+		// A server-rejected refresh is a dead login; a stale local date only
+		// means the next call re-mints. Match EnsureBootstrapToken's 60s skew.
 		row.Status = SessionStatusOK
-		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
+		switch {
+		case session.SignedOut:
+			row.Status = SessionStatusSignedOut
+		case isExpired(session.BootstrapToken.ExpiresAt, 60):
 			row.Status = SessionStatusNeedsRefresh
 		}
 		sessions = append(sessions, row)

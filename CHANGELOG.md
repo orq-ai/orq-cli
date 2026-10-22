@@ -120,22 +120,37 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-**Changed:** TOON, the default terminal format, now renders through toon-go
-1.0.1. An empty list prints as `name: []` instead of `name[0]:`, and an id
-that starts with digits but is not a number is no longer quoted (`id:
-01ABC234DEF567GH`, previously `id: "01ABC234DEF567GH"`). TOON is
-presentation-only; `-o json` is unchanged.
-
 **Added:** `orq auth token` prints the access token of your browser login for
 the active workspace and project (or the ones `--workspace` / `--project`
 name), exchanging a fresh one first when the cached token is expired or about
 to expire. `--refresh` exchanges a new one regardless, for a caller the API
 answered with `authz_stale`. The bare output is the token alone, for
 `$(orq auth token)`, whatever `ORQ_OUTPUT_FORMAT` says; a typed `-o json`
-returns `{token, expires_at, workspace, project_id, server}`. It gives tools that reuse an `orq auth login` (orqi among them) a
-supported way to get the token without reading `~/.orq/sessions/<host>.json`,
-whose secrets are moving to the OS credential store. API keys are never
-printed.
+returns `{token, expires_at, workspace, project_id, server}`. It gives tools
+that reuse an `orq auth login` (orqi among them) a supported way to get the
+token without reading `~/.orq/sessions/<host>.json`, whose secrets are moving
+to the OS credential store. API keys are never printed.
+
+## [12.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.3.0) — 2026-10-22
+
+**Changed:** the updated TOON renderer prints empty arrays as `[]` and leaves
+alphanumeric IDs such as `01ABC234DEF567GH` unquoted. JSON output is unchanged.
+
+**Added:** `orq auth sessions --check` (RES-1692) refreshes saved logins whose
+bootstrap token has expired. Each row reports `ok`, `needs-refresh`, `signed-out`,
+`invalid`, or `unreadable`. Unexpired logins use local state; an inconclusive
+refresh leaves an expired login as `needs-refresh` rather than marking it dead.
+
+**Fixed:** server-rejected refreshes are recorded as `signed-out` (RES-1692),
+including revoked refresh tokens and deactivated accounts. A fresh login clears
+the mark. `orq doctor` exits non-zero for any non-transient failing check,
+including a dead login or invalid credential. Timeouts, refused connections, and
+HTTP 5xx still appear as failing rows but do not fail the command; configuration
+errors such as DNS or TLS failures do. Server validation rejects a saved gateway
+key only on HTTP 401; a project-scoped key's HTTP 403 does not prove it invalid. Launch
+validates saved keys even when PreRun has injected a session token. Delayed
+health responses preserve a newer login, logout, and concurrent session settings
+instead of restoring an old session snapshot.
 
 ## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
 

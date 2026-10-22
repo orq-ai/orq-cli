@@ -278,7 +278,7 @@ func recordRefresh(key, old string, tok StoredAccessToken) error {
 		current.StaleTokens = map[string]StaleToken{}
 	}
 	current.StaleTokens[tokenHash(old)] = StaleToken{Key: key, ExpiresAt: expires}
-	return SaveSession(current)
+	return writeSessionTo(SessionFilePath(), current)
 }
 
 // pruneStaleTokens drops records whose old token has expired: nobody can

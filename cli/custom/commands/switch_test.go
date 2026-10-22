@@ -45,6 +45,9 @@ func switchServer(t *testing.T, workspaceKeys []string, projectRows string) *htt
 // logic touches (profile fetch, /v2/projects) are exercised.
 func switchSession(t *testing.T, apiBase, activeWorkspace string, workspaceKeys []string, activeProjectID, activeProjectName string) {
 	t.Helper()
+	previous, source := auth.Server(), auth.ServerSource()
+	auth.SetServer(apiBase, "flag")
+	t.Cleanup(func() { auth.SetServer(previous, source) })
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	tokens := map[string]auth.StoredAccessToken{}
 	for _, k := range workspaceKeys {
