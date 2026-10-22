@@ -120,6 +120,24 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** the tokens of an `orq auth login` (refresh, bootstrap and
+workspace access tokens, and the gateway key) are kept in the macOS Keychain or
+the Linux Secret Service (`secret-tool`) instead of
+`~/.orq/sessions/<host>.json` (RES-1682). The file keeps the non-secret state,
+its token fields are empty, and a new `secretStore` field names the store. An
+existing login moves on the first command, with a one-line notice on stderr.
+The file is not an interface: a tool that read tokens out of it should run
+`orq auth token`. Windows, and Linux without a reachable Secret Service, keep
+the tokens in the file as before.
+
+**Added:** `ORQ_CREDENTIAL_STORE=file` keeps the tokens in the session file on
+any platform (CI, containers). A login whose tokens are already in a store
+needs one `orq auth login` in that mode; orq says so rather than reporting a
+missing token. `orq doctor` has a `credential_store` row naming where the
+tokens are, in every session state, and warns about any session or
+`.deprecated` file still holding them in plaintext. `orq auth sessions` lists a
+login whose store this process cannot reach as `unreadable`.
+
 ## [12.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.3.0) — 2026-10-22
 
 **Changed:** the updated TOON renderer prints empty arrays as `[]` and leaves

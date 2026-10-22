@@ -398,7 +398,30 @@ func authStatusToCheck(status string) string {
 	}
 }
 
+// buildSessionChecks is the session_file row, the credential_store row, then
+// whatever the session's state adds. The store row comes in every state: it
+// describes the whole sessions directory, and a session that will not load
+// (its secrets in a store this process cannot use) is when it matters most.
 func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
+	checks := sessionStateChecks(inspect)
+	return append(checks[:1], append([]doctorCheck{credentialStoreCheck()}, checks[1:]...)...)
+}
+
+func credentialStoreCheck() doctorCheck {
+	storeLoc, storeDegraded := auth.SecretsLocation()
+	storeStatus := "pass"
+	if storeDegraded {
+		storeStatus = "warn"
+	}
+	return doctorCheck{
+		ID:      "credential_store",
+		Status:  storeStatus,
+		Message: "Session secrets stored in: " + storeLoc,
+		Details: map[string]any{"credential_store": storeLoc},
+	}
+}
+
+func sessionStateChecks(inspect auth.SessionInspectResult) []doctorCheck {
 	switch inspect.Status {
 	case auth.StatusOK:
 		bootstrapExpired := isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt)
@@ -408,23 +431,12 @@ func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
 			bootstrapStatus = "warn"
 			bootstrapMsg = "Bootstrap token is expired and will need refresh"
 		}
-		storeLoc, storeDegraded := auth.SecretsLocation()
-		storeStatus := "pass"
-		if storeDegraded {
-			storeStatus = "warn"
-		}
 		return []doctorCheck{
 			{
 				ID:      "session_file",
 				Status:  "pass",
 				Message: "Session file loaded",
 				Details: map[string]any{"session_file": inspect.Path},
-			},
-			{
-				ID:      "credential_store",
-				Status:  storeStatus,
-				Message: "Session secrets stored in: " + storeLoc,
-				Details: map[string]any{"credential_store": storeLoc},
 			},
 			{
 				ID:      "bootstrap_token",
