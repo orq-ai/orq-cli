@@ -2,15 +2,20 @@ package commands
 
 import (
 	"bytes"
+	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"orq/cli/custom/auth"
@@ -886,6 +891,11 @@ func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("doctor output is not JSON (%v): %s", err, out.String())
 	}
+	if wantErr {
+		if login := findCheck(t, report, "login"); login != nil && login["status"] == "fail" && !strings.Contains(runErr.Error(), "login") {
+			t.Fatalf("doctor error %q must name the failing login check", runErr)
+		}
+	}
 	return report
 }
 
@@ -1384,5 +1394,204 @@ func TestDoctorSummaryPrintsBaseURLOnce(t *testing.T) {
 	}
 	if !strings.Contains(out[strings.Index(out, "auth_base_url"):], "Base URL: https://my.orq.ai") {
 		t.Fatalf("base URL does not follow the *_base_url rows:\n%s", out)
+	}
+}
+
+// TestGatewayKeyServerCheck covers RES-1692 item 5: doctor validates the gateway
+// key against the server, not just its recorded expiry. A revoked key 401s and
+// must read as fail; a live key passes; an unreachable server is a warn, not a
+// verdict; and no gateway key means no check.
+func TestGatewayKeyServerCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		code       int
+		body       string
+		wantStatus string
+	}{
+		{"revoked key is fail", http.StatusUnauthorized, `{"message":"API key is not valid for this workspace"}`, "fail"},
+		{"live key is pass", http.StatusOK, `{"settings":{"key":"acme"}}`, "pass"},
+		{"server error is warn", http.StatusInternalServerError, `{}`, "warn"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.code)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			inspect := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{GatewayKey: "gw-key"}}
+			check, ok := gatewayKeyServerCheck(auth.NewClient(srv.URL), inspect)
+			if !ok {
+				t.Fatal("want a gateway_key_valid check")
+			}
+			if check.Status != tc.wantStatus {
+				t.Fatalf("status = %q, want %q (message %q)", check.Status, tc.wantStatus, check.Message)
+			}
+		})
+	}
+
+	// No gateway key on the session: no check at all.
+	if _, ok := gatewayKeyServerCheck(auth.NewClient("http://127.0.0.1:0"), auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{}}); ok {
+		t.Fatal("a session with no gateway key should produce no check")
+	}
+}
+
+func TestBlockingFailureIDs(t *testing.T) {
+	checks := []doctorCheck{
+		{ID: "api_base_url", Status: "pass"},
+		{ID: "login", Status: "fail"},
+		{ID: "credentials", Status: "warn"},
+		{ID: "gateway_key", Status: "fail"},
+		// A transient failure (unreachable server / 5xx) shows as fail but must
+		// not block the exit, so being offline does not read as a broken setup.
+		{ID: "auth_base_url", Status: "fail", Transient: true},
+	}
+	got := blockingFailureIDs(checks)
+	if len(got) != 2 || got[0] != "login" || got[1] != "gateway_key" {
+		t.Fatalf("blockingFailureIDs = %v, want [login gateway_key]", got)
+	}
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "ok", Status: "pass"}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with no fail = %v, want empty", ids)
+	}
+	if ids := blockingFailureIDs([]doctorCheck{{ID: "net", Status: "fail", Transient: true}}); len(ids) != 0 {
+		t.Fatalf("blockingFailureIDs with only a transient fail = %v, want empty", ids)
+	}
+}
+
+// A signed-out session with a bootstrap token that has NOT locally expired must
+// still read as a failing login, from the recorded mark and WITHOUT a network
+// call (RES-1692's first acceptance bullet). An unreachable host proves it is
+// local: a network-dependent verdict would be a "could not reach" warn, not a
+// signed-out fail. A fail check also makes doctor exit non-zero.
+func TestDoctorReportsSignedOutSessionWithoutNetworkCall(t *testing.T) {
+	doctorAuthHarness(t, "")
+	host := "http://127.0.0.1:1" // nothing listening
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(host, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+
+	urls := auth.ResolveURLs(host)
+	ws := "ws"
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL,
+		AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		User:               &auth.SessionUser{ID: "user-1", Email: "dead@example.com"},
+		Workspaces:         []map[string]any{{"key": ws}},
+		ActiveWorkspaceKey: &ws,
+		RefreshToken:       "refresh-token",
+		BootstrapToken:     auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens:    map[string]auth.StoredAccessToken{},
+		SignedOut:          true,
+	}); err != nil {
+		t.Fatalf("save signed-out session: %v", err)
+	}
+
+	report := runDoctor(t, true) // a fail check exits non-zero
+	login := findCheck(t, report, "login")
+	if login == nil || login["status"] != "fail" {
+		t.Fatalf("login check = %v, want a fail from the signed-out mark", login)
+	}
+	if msg, _ := login["message"].(string); !strings.Contains(msg, "signed out") {
+		t.Errorf("login message = %q, want the signed-out message, not a network warn", msg)
+	}
+	if st := doctorSection(t, report, "auth")["status"]; st != "signed-out" {
+		t.Errorf("auth.status = %v, want signed-out (not authenticated)", st)
+	}
+}
+
+func TestDoctorTransientProbeDoesNotFailCommand(t *testing.T) {
+	for _, status := range []int{0, http.StatusServiceUnavailable} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}))
+			t.Cleanup(srv.Close)
+			if status == 0 {
+				srv.Close()
+			}
+			previous, source := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previous, source) })
+			report := runDoctor(t, false)
+			check := findCheck(t, report, "api_base_url")
+			if check == nil || check["status"] != "fail" {
+				t.Fatalf("probe = %v, want visible fail beside exit zero", check)
+			}
+		})
+	}
+}
+
+func TestTransientProbeError(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err       error
+		transient bool
+	}{
+		{"timeout", context.DeadlineExceeded, true},
+		{"refused", &url.Error{Op: "Get", URL: "http://localhost", Err: syscall.ECONNREFUSED}, true},
+		{"dns", &net.DNSError{Err: "no such host", Name: "wrong.invalid"}, false},
+		{"dns timeout", &net.DNSError{Err: "timeout", IsTimeout: true}, false},
+		{"tls", x509.UnknownAuthorityError{}, false},
+		{"bad url", errors.New("unsupported protocol scheme"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := transientProbeError(tc.err); got != tc.transient {
+				t.Fatalf("transient = %v, want %v", got, tc.transient)
+			}
+		})
+	}
+}
+
+func TestDoctorTLSFailureFailsCommand(t *testing.T) {
+	doctorAuthHarness(t, "")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	defer srv.Close()
+	previous, source := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previous, source) })
+	report := runDoctor(t, true)
+	if check := findCheck(t, report, "api_base_url"); check == nil || check["status"] != "fail" {
+		t.Fatalf("TLS probe = %v, want fail", check)
+	}
+}
+
+func TestDoctorReportsRejectedRefresh(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{400, "Invalid refresh token!"}, {403, "Account has been deactivated"},
+	} {
+		t.Run(tc.message, func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				json.NewEncoder(w).Encode(map[string]string{"message": tc.message})
+			}))
+			defer srv.Close()
+			previous, source := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previous, source) })
+			saveDoctorSession(t, srv.URL, "synthetic@example.com", "acme")
+			session, err := auth.ReadSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session.BootstrapToken.ExpiresAt = "2000-01-01T00:00:00Z"
+			if err := auth.SaveSession(session); err != nil {
+				t.Fatal(err)
+			}
+			report := runDoctor(t, true)
+			login := findCheck(t, report, "login")
+			if login == nil || login["status"] != "fail" || !strings.Contains(login["message"].(string), tc.message) {
+				t.Fatalf("login = %v, want failing check preserving server cause", login)
+			}
+			if status := doctorSection(t, report, "auth")["status"]; status != "signed-out" {
+				t.Fatalf("auth.status = %v", status)
+			}
+			if tc.status == 403 && strings.Contains(login["message"].(string), "revoked") {
+				t.Fatalf("deactivation misreported as revoked token: %v", login)
+			}
+		})
 	}
 }

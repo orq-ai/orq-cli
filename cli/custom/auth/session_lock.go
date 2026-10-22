@@ -13,8 +13,12 @@ import (
 var sessionUpdateMu sync.Mutex
 
 func lockSessionUpdates() (func(), error) {
+	return lockSessionUpdatesAt(SessionFilePath())
+}
+
+func lockSessionUpdatesAt(path string) (func(), error) {
 	sessionUpdateMu.Lock()
-	release, err := acquireSessionUpdateFileLock()
+	release, err := acquireSessionUpdateFileLock(path)
 	if err != nil {
 		sessionUpdateMu.Unlock()
 		return nil, err
@@ -25,8 +29,8 @@ func lockSessionUpdates() (func(), error) {
 	}, nil
 }
 
-func acquireSessionUpdateFileLock() (func(), error) {
-	path := SessionFilePath() + ".lock"
+func acquireSessionUpdateFileLock(path string) (func(), error) {
+	path += ".lock"
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}

@@ -11,7 +11,8 @@ import (
 
 // NewSessionsCommand lists OAuth logins stored per server host.
 func NewSessionsCommand() *cobra.Command {
-	return &cobra.Command{
+	var check bool
+	cmd := &cobra.Command{
 		Use:     "sessions",
 		Aliases: []string{"session"},
 		Short:   "List saved logins, one per host",
@@ -21,12 +22,33 @@ selected inside a login by ` + "`orq switch`" + `.
 
 So switching login means switching server, and ` + "`orq doctor -o json`" + ` reports
 which host won and why. A host with no login yet needs one ` + "`orq auth login`" + `
-under it.`),
+under it.
+
+The status column reflects saved state: a login whose token has
+expired shows ` + "`needs-refresh`" + `, which the next call re-mints. Pass
+` + "`--check`" + ` to ask each expired login's server whether it still works — a
+rejected one then shows ` + "`signed-out`" + ` and is recorded as such.
+
+Statuses: ` + "`ok`" + ` means locally unexpired or successfully refreshed;
+` + "`needs-refresh`" + ` means expired, including an inconclusive probe;
+` + "`signed-out`" + ` means a recorded refresh rejection; ` + "`invalid`" + ` means
+malformed session data; ` + "`unreadable`" + ` means the file could not be read.
+An inconclusive probe does not prove that a login is valid or invalid.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
 			if err != nil {
 				return err
+			}
+			if check {
+				// One refresh per expired login: only needs-refresh rows are
+				// uncertain (ok is locally unexpired; signed-out/invalid/unreadable are already
+				// settled), so this is the minimum network to confirm them.
+				for i := range sessions {
+					if sessions[i].Status == auth.SessionStatusNeedsRefresh {
+						sessions[i].Status = auth.CheckSession(sessions[i].Host)
+					}
+				}
 			}
 			if wantsHumanView(cmd) {
 				if len(sessions) == 0 {
@@ -41,6 +63,8 @@ under it.`),
 			return emit(map[string]any{"sessions": sessions})
 		},
 	}
+	cmd.Flags().BoolVar(&check, "check", false, "Probe each expired login against its server and report whether it still works")
+	return cmd
 }
 
 // printSessionList renders the logins and marks the resolved host.
@@ -56,7 +80,7 @@ func printSessionList(rows []auth.SessionListEntry, binary string) {
 			anyActive = true
 		}
 		table = append(table, tableRow{marker: marker, cells: []string{
-			r.Host, r.User, r.Workspace, r.Project, paintStatus(r.Status),
+			r.Host, r.User, r.Workspace, r.Project, paintStatus(string(r.Status)),
 		}})
 	}
 	printTable(out, []string{"HOST", "USER", "WORKSPACE", "PROJECT", "STATE"}, table)
@@ -105,8 +129,8 @@ func switchTarget(rows []auth.SessionListEntry) string {
 
 // paintStatus highlights session states that require user action.
 func paintStatus(status string) string {
-	switch status {
-	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable:
+	switch auth.SessionStatus(status) {
+	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable, auth.SessionStatusSignedOut:
 		return paint(ansiRed, status)
 	default:
 		return paint(ansiDim, status)
@@ -130,6 +154,6 @@ func warnIfActiveSessionShadowed(rows []auth.SessionListEntry) {
 	}
 }
 
-func usableSessionStatus(status string) bool {
+func usableSessionStatus(status auth.SessionStatus) bool {
 	return status == auth.SessionStatusOK || status == auth.SessionStatusNeedsRefresh
 }
