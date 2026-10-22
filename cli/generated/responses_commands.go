@@ -32,7 +32,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "compact",
 			Short:   "Compact response",
-			Long:    bartolocli.Markdown("Compacts a conversation by summarizing older items to free up context window space. Returns a compaction item containing the generated summary.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf)\n- `instructions` (string)\n- `model` (string)\n- `previous_response_id` (string)\n- `prompt_cache_key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Compacts a conversation by summarizing older items to free up context window space. Returns the next context window: a compaction item containing the generated summary, followed by the most recent items verbatim.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf)\n- `instructions` (string)\n- `model` (string)\n- `previous_response_id` (string)\n- `prompt_cache_key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,7 +65,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "previous_response_id",
 							FlagName:    "previous-response-id",
 							Type:        "string",
-							Description: "The ID of a previous response to continue from.",
+							Description: "The ID of a stored response whose conversation is compacted; input is appended after it.",
 						},
 						{
 							Name:        "prompt_cache_key",
@@ -119,7 +119,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "previous_response_id",
 					FlagName:    "previous-response-id",
 					Type:        "string",
-					Description: "The ID of a previous response to continue from.",
+					Description: "The ID of a stored response whose conversation is compacted; input is appended after it.",
 				},
 				{
 					Name:        "prompt_cache_key",
@@ -150,7 +150,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- ... and 37 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `context_management` (array | null)\n- `conversation` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- ... and 41 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -180,10 +180,22 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
 						},
 						{
+							Name:        "context_management",
+							FlagName:    "context-management",
+							Type:        "json",
+							Description: "Context management entries. One compaction entry summarizes history older than compact_threshold into a single item. See the [Context Compaction](https://docs.orq.ai/ai-gateway/features/context-compaction) guide.",
+						},
+						{
 							Name:        "conversation",
 							FlagName:    "conversation",
 							Type:        "json",
 							Description: "Conversation context for multi-turn interactions.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 						},
 						{
 							Name:        "fallbacks",
@@ -208,6 +220,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "identity",
 							Type:        "json",
 							Description: "Identity/contact information for the end-user.",
+						},
+						{
+							Name:        "include",
+							FlagName:    "include",
+							Type:        "string-slice",
+							Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide for the supported values.",
 						},
 						{
 							Name:        "input",
@@ -261,13 +279,13 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "metadata",
 							FlagName:    "metadata",
 							Type:        "string-map",
-							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400.",
 						},
 						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
 						},
 						{
 							Name:        "parallel_tool_calls",
@@ -303,7 +321,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "prompt_cache_options",
 							FlagName:    "prompt-cache-options",
 							Type:        "json",
-							Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+							Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate.",
 						},
 						{
 							Name:        "reasoning",
@@ -402,6 +420,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Configuration for text output.",
 						},
 						{
+							Name:        "thinking",
+							FlagName:    "thinking",
+							Type:        "json",
+							Description: "Extended thinking configuration for Google Gemini and Anthropic models. Carries type, budget_tokens, and thinking_level. See the [Reasoning](https://docs.orq.ai/ai-gateway/features/reasoning) guide.",
+						},
+						{
 							Name:        "thread",
 							FlagName:    "thread",
 							Type:        "json",
@@ -492,10 +516,22 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
 				},
 				{
+					Name:        "context_management",
+					FlagName:    "context-management",
+					Type:        "json",
+					Description: "Context management entries. One compaction entry summarizes history older than compact_threshold into a single item. See the [Context Compaction](https://docs.orq.ai/ai-gateway/features/context-compaction) guide.",
+				},
+				{
 					Name:        "conversation",
 					FlagName:    "conversation",
 					Type:        "json",
 					Description: "Conversation context for multi-turn interactions.",
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 				},
 				{
 					Name:        "fallbacks",
@@ -520,6 +556,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "identity",
 					Type:        "json",
 					Description: "Identity/contact information for the end-user.",
+				},
+				{
+					Name:        "include",
+					FlagName:    "include",
+					Type:        "string-slice",
+					Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide for the supported values.",
 				},
 				{
 					Name:        "input",
@@ -573,13 +615,13 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "string-map",
-					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400.",
 				},
 				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
 				},
 				{
 					Name:        "parallel_tool_calls",
@@ -615,7 +657,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "prompt_cache_options",
 					FlagName:    "prompt-cache-options",
 					Type:        "json",
-					Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m.",
+					Description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate.",
 				},
 				{
 					Name:        "reasoning",
@@ -712,6 +754,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "text",
 					Type:        "json",
 					Description: "Configuration for text output.",
+				},
+				{
+					Name:        "thinking",
+					FlagName:    "thinking",
+					Type:        "json",
+					Description: "Extended thinking configuration for Google Gemini and Anthropic models. Carries type, budget_tokens, and thinking_level. See the [Reasoning](https://docs.orq.ai/ai-gateway/features/reasoning) guide.",
 				},
 				{
 					Name:        "thread",

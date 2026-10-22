@@ -30,7 +30,7 @@ func registerspeechCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create speech",
-			Long:    bartolocli.Markdown("Generates audio from the input text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallbacks` (array)\n- `input` (string, required)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- `response_format` (string)\n- `retry` (object)\n- ... and 3 more fields\n\nRequired fields: `input`, `model`, `voice`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Generates audio from the input text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `input` (string, required)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- `response_format` (string)\n- ... and 4 more fields\n\nRequired fields: `input`, `model`, `voice`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,6 +41,12 @@ func registerspeechCommands(root *cobra.Command) {
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
+						},
 						{
 							Name:        "fallbacks",
 							FlagName:    "fallbacks",
@@ -139,6 +145,12 @@ func registerspeechCommands(root *cobra.Command) {
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
+				},
 				{
 					Name:        "fallbacks",
 					FlagName:    "fallbacks",

@@ -30,7 +30,7 @@ func registercompletionsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create completion",
-			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (integer | null)\n- `model` (string, required)\n- `n` (integer | null)\n- ... and 14 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallback_on_codes` (array)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (integer | null)\n- `model` (string, required)\n- ... and 15 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -52,6 +52,12 @@ func registercompletionsCommands(root *cobra.Command) {
 							FlagName:    "echo",
 							Type:        "bool-nullable",
 							Description: "Echo back the prompt in addition to the completion",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 						},
 						{
 							Name:        "fallbacks",
@@ -208,6 +214,12 @@ func registercompletionsCommands(root *cobra.Command) {
 					FlagName:    "echo",
 					Type:        "bool-nullable",
 					Description: "Echo back the prompt in addition to the completion",
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Enter up to 20 unique integers from 400 to 599. When omitted or empty, defaults to [408, 429, 500, 502, 503, 504, 529].",
 				},
 				{
 					Name:        "fallbacks",

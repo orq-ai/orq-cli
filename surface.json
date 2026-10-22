@@ -154,12 +154,190 @@
       ]
     },
     {
+      "path": "orq agents external-agent-create",
+      "use": "external-agent-create",
+      "flags": [
+        {
+          "name": "agent-url",
+          "type": "string"
+        },
+        {
+          "name": "card-url",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "headers",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "preferred-transport",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "protocol-version",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq agents external-agent-delete",
+      "use": "external-agent-delete agent-key",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq agents external-agent-get",
+      "use": "external-agent-get agent-key"
+    },
+    {
+      "path": "orq agents external-agent-list",
+      "use": "external-agent-list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq agents external-agent-refresh-card",
+      "use": "external-agent-refresh-card agent-key",
+      "flags": [
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq agents external-agent-test-connection",
+      "use": "external-agent-test-connection agent-key",
+      "flags": [
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq agents external-agent-update",
+      "use": "external-agent-update agent-key",
+      "flags": [
+        {
+          "name": "agent-url",
+          "type": "string"
+        },
+        {
+          "name": "card-url",
+          "type": "string"
+        },
+        {
+          "name": "clear-headers",
+          "type": "bool"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "headers",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "preferred-transport",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "protocol-version",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq agents get-response",
-      "use": "get-response agent-key task-id"
+      "use": "get-response agent-key task-id",
+      "hidden": true
     },
     {
       "path": "orq agents invoke",
       "use": "invoke key",
+      "hidden": true,
       "flags": [
         {
           "name": "configuration",
@@ -244,6 +422,7 @@
     {
       "path": "orq agents run",
       "use": "run",
+      "hidden": true,
       "flags": [
         {
           "name": "contact",
@@ -346,6 +525,7 @@
     {
       "path": "orq agents stream",
       "use": "stream key",
+      "hidden": true,
       "flags": [
         {
           "name": "configuration",
@@ -408,6 +588,7 @@
     {
       "path": "orq agents stream-run",
       "use": "stream-run",
+      "hidden": true,
       "flags": [
         {
           "name": "contact",
@@ -616,6 +797,7 @@
     {
       "path": "orq agents-responses create",
       "use": "create agent-key",
+      "hidden": true,
       "flags": [
         {
           "name": "background",
@@ -732,6 +914,10 @@
           "type": "string"
         },
         {
+          "name": "scope",
+          "type": "string"
+        },
+        {
           "name": "signal",
           "type": "string"
         },
@@ -769,6 +955,10 @@
         },
         {
           "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "scope",
           "type": "string"
         },
         {
@@ -1180,6 +1370,162 @@
       ]
     },
     {
+      "path": "orq audit-log-destinations",
+      "use": "audit-log-destinations"
+    },
+    {
+      "path": "orq audit-log-destinations create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq audit-log-destinations delete",
+      "use": "delete destination-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq audit-log-destinations get",
+      "use": "get destination-id"
+    },
+    {
+      "path": "orq audit-log-destinations list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq audit-log-destinations list-deliveries",
+      "use": "list-deliveries destination-id",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq audit-log-destinations replay",
+      "use": "replay destination-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "to",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq audit-log-destinations rotate-secret",
+      "use": "rotate-secret destination-id"
+    },
+    {
+      "path": "orq audit-log-destinations test",
+      "use": "test destination-id"
+    },
+    {
+      "path": "orq audit-log-destinations update",
+      "use": "update destination-id",
+      "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "path": "orq auth",
       "use": "auth"
     },
@@ -1543,6 +1889,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -1832,6 +2182,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -1900,6 +2254,10 @@
         {
           "name": "example",
           "type": "bool"
+        },
+        {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
         },
         {
           "name": "fallbacks",
@@ -2281,6 +2639,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -2654,6 +3016,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -2696,6 +3062,118 @@
         {
           "name": "user",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq environments",
+      "use": "environments"
+    },
+    {
+      "path": "orq environments create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
+          "type": "string"
+        },
+        {
+          "name": "slug",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq environments delete",
+      "use": "delete environment-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq environments get",
+      "use": "get environment-id"
+    },
+    {
+      "path": "orq environments list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq environments update",
+      "use": "update environment-id",
+      "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
         }
       ]
     },
@@ -3099,90 +3577,6 @@
         },
         {
           "name": "product",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        },
-        {
-          "name": "trace-id",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq feedback evaluation",
-      "use": "evaluation",
-      "flags": [
-        {
-          "name": "evaluation-type",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "explanation",
-          "type": "string"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "human-review-id",
-          "type": "string"
-        },
-        {
-          "name": "id",
-          "type": "string"
-        },
-        {
-          "name": "reviewed-at",
-          "type": "string"
-        },
-        {
-          "name": "source",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        },
-        {
-          "name": "trace-id",
-          "type": "string"
-        },
-        {
-          "name": "type",
-          "type": "string"
-        },
-        {
-          "name": "value",
-          "type": "string"
-        },
-        {
-          "name": "values",
-          "type": "stringSlice"
-        }
-      ]
-    },
-    {
-      "path": "orq feedback evaluation-remove",
-      "use": "evaluation-remove",
-      "flags": [
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "id",
           "type": "string"
         },
         {
@@ -4029,6 +4423,10 @@
           "type": "string"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -4115,6 +4513,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -4199,6 +4601,10 @@
         {
           "name": "cache",
           "type": "string"
+        },
+        {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
         },
         {
           "name": "fallbacks",
@@ -5388,6 +5794,10 @@
           "type": "string"
         },
         {
+          "name": "skill-ids",
+          "type": "stringSlice"
+        },
+        {
           "name": "stdin",
           "type": "bool"
         },
@@ -5425,10 +5835,6 @@
         },
         {
           "name": "starting-after",
-          "type": "string"
-        },
-        {
-          "name": "status",
           "type": "string"
         }
       ]
@@ -5468,6 +5874,10 @@
           "type": "bool"
         },
         {
+          "name": "clear-skill-ids",
+          "type": "bool"
+        },
+        {
           "name": "description",
           "type": "string"
         },
@@ -5504,8 +5914,8 @@
           "type": "string"
         },
         {
-          "name": "status",
-          "type": "string"
+          "name": "skill-ids",
+          "type": "stringSlice"
         },
         {
           "name": "stdin",
@@ -6346,6 +6756,10 @@
       "use": "create",
       "flags": [
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "configuration",
           "type": "stringToString"
         },
@@ -6436,12 +6850,20 @@
           "type": "string"
         },
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "cache-read-cost",
           "type": "float64"
         },
         {
           "name": "cache-write-cost",
           "type": "float64"
+        },
+        {
+          "name": "configuration",
+          "type": "string"
         },
         {
           "name": "description",
@@ -6520,6 +6942,10 @@
           "type": "bool"
         },
         {
+          "name": "supports-mid-conversation-system",
+          "type": "bool"
+        },
+        {
           "name": "supports-strict-tool",
           "type": "bool"
         },
@@ -6550,12 +6976,20 @@
           "type": "string"
         },
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "cache-read-cost",
           "type": "float64"
         },
         {
           "name": "cache-write-cost",
           "type": "float64"
+        },
+        {
+          "name": "configuration",
+          "type": "string"
         },
         {
           "name": "cost-per-image",
@@ -6636,6 +7070,10 @@
       "use": "create-vertex",
       "flags": [
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "configuration",
           "type": "string"
         },
@@ -6649,6 +7087,10 @@
         },
         {
           "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "model-id",
           "type": "string"
         },
         {
@@ -6734,6 +7176,10 @@
       "use": "update id",
       "flags": [
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "display-name",
           "type": "string"
         },
@@ -6755,6 +7201,10 @@
         },
         {
           "name": "metadata",
+          "type": "string"
+        },
+        {
+          "name": "model-id",
           "type": "string"
         },
         {
@@ -6796,12 +7246,20 @@
           "type": "string"
         },
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "cache-read-cost",
           "type": "float64"
         },
         {
           "name": "cache-write-cost",
           "type": "float64"
+        },
+        {
+          "name": "configuration",
+          "type": "string"
         },
         {
           "name": "description",
@@ -6872,6 +7330,10 @@
           "type": "bool"
         },
         {
+          "name": "supports-mid-conversation-system",
+          "type": "bool"
+        },
+        {
           "name": "supports-strict-tool",
           "type": "bool"
         },
@@ -6898,12 +7360,20 @@
           "type": "string"
         },
         {
+          "name": "benchmark-model",
+          "type": "string"
+        },
+        {
           "name": "cache-read-cost",
           "type": "float64"
         },
         {
           "name": "cache-write-cost",
           "type": "float64"
+        },
+        {
+          "name": "configuration",
+          "type": "string"
         },
         {
           "name": "cost-per-image",
@@ -7098,6 +7568,138 @@
         {
           "name": "stdin",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq monitors",
+      "use": "monitors"
+    },
+    {
+      "path": "orq monitors create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "default-range",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "preset-key",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "widgets",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq monitors delete",
+      "use": "delete monitor-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq monitors get",
+      "use": "get monitor-id"
+    },
+    {
+      "path": "orq monitors list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "workspace-wide",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq monitors list-presets",
+      "use": "list-presets"
+    },
+    {
+      "path": "orq monitors update",
+      "use": "update monitor-id",
+      "flags": [
+        {
+          "name": "default-range",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "update-mask",
+          "type": "string"
+        },
+        {
+          "name": "widgets",
+          "type": "string"
         }
       ]
     },
@@ -7943,6 +8545,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -8059,12 +8665,20 @@
           "type": "string"
         },
         {
+          "name": "context-management",
+          "type": "string"
+        },
+        {
           "name": "conversation",
           "type": "string"
         },
         {
           "name": "example",
           "type": "bool"
+        },
+        {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
         },
         {
           "name": "fallbacks",
@@ -8085,6 +8699,10 @@
         {
           "name": "identity",
           "type": "string"
+        },
+        {
+          "name": "include",
+          "type": "stringSlice"
         },
         {
           "name": "input",
@@ -8204,6 +8822,10 @@
         },
         {
           "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "thinking",
           "type": "string"
         },
         {
@@ -8969,6 +9591,10 @@
           "type": "stringSlice"
         },
         {
+          "name": "session-affinity",
+          "type": "string"
+        },
+        {
           "name": "stdin",
           "type": "bool"
         }
@@ -9039,6 +9665,10 @@
           "type": "stringSlice"
         },
         {
+          "name": "session-affinity",
+          "type": "string"
+        },
+        {
           "name": "stdin",
           "type": "bool"
         }
@@ -9055,6 +9685,10 @@
         {
           "name": "example",
           "type": "bool"
+        },
+        {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
         },
         {
           "name": "fallbacks",
@@ -9136,8 +9770,16 @@
       "use": "list-capabilities",
       "flags": [
         {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
           "name": "source",
           "type": "string"
+        },
+        {
+          "name": "workspace-wide",
+          "type": "bool"
         }
       ]
     },
@@ -9850,6 +10492,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -9940,6 +10586,10 @@
           "type": "bool"
         },
         {
+          "name": "fallback-on-codes",
+          "type": "int64Slice"
+        },
+        {
           "name": "fallbacks",
           "type": "string"
         },
@@ -10011,6 +10661,80 @@
       "flags": [
         {
           "name": "check",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq users",
+      "use": "users"
+    },
+    {
+      "path": "orq users create",
+      "use": "create id",
+      "flags": [
+        {
+          "name": "emails",
+          "type": "stringSlice"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "roles",
+          "type": "stringSlice"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq users delete",
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq users get",
+      "use": "get id"
+    },
+    {
+      "path": "orq users list",
+      "use": "list"
+    },
+    {
+      "path": "orq users update",
+      "use": "update id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "last-activity",
+          "type": "string"
+        },
+        {
+          "name": "role",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
           "type": "bool"
         }
       ]
@@ -10372,6 +11096,254 @@
       ]
     },
     {
+      "path": "orq wikis",
+      "use": "wikis"
+    },
+    {
+      "path": "orq wikis create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "branch",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "factory-id",
+          "type": "string"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "import-existing",
+          "type": "bool"
+        },
+        {
+          "name": "repository",
+          "type": "string"
+        },
+        {
+          "name": "scm-connection-id",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis delete",
+      "use": "delete wiki-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis get",
+      "use": "get wiki-id"
+    },
+    {
+      "path": "orq wikis get-page",
+      "use": "get-page wiki-id",
+      "flags": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "run-id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis get-tree",
+      "use": "get-tree wiki-id"
+    },
+    {
+      "path": "orq wikis inspect-repository",
+      "use": "inspect-repository",
+      "flags": [
+        {
+          "name": "branch",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "repository-url",
+          "type": "string"
+        },
+        {
+          "name": "scm-connection-id",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "branch",
+          "type": "string"
+        },
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "factory-id",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "repository-key",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis list-runs",
+      "use": "list-runs wiki-id",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int64"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis refresh",
+      "use": "refresh wiki-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "full",
+          "type": "bool"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis search",
+      "use": "search wiki-id",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "query",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis update",
+      "use": "update wiki-id",
+      "flags": [
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "scm-connection-id",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq wikis update-page",
+      "use": "update-page wiki-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "expected-content-hash",
+          "type": "string"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "markdown",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq workspace",
       "use": "workspace"
     },
@@ -10607,6 +11579,10 @@
         },
         {
           "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "tracing-enabled",
           "type": "bool"
         }
       ]
