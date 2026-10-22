@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,6 +40,17 @@ type sessionSecrets struct {
 	BootstrapToken  string            `json:"bootstrapToken,omitempty"`
 	WorkspaceTokens map[string]string `json:"workspaceTokens,omitempty"`
 	GatewayKey      string            `json:"gatewayKey,omitempty"`
+	// Generation matches the file's SecretGeneration when both came from one
+	// save, so a store write whose file write then failed is never paired
+	// with the older file.
+	Generation string `json:"generation,omitempty"`
+}
+
+// newSecretGeneration stamps one save of the store and the file together.
+func newSecretGeneration() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // activeStore is the store the session read/write paths consult. A package var
@@ -174,6 +187,9 @@ func hydrateSecrets(s *Session, path string) error {
 	if err := json.Unmarshal([]byte(blob), &sec); err != nil {
 		return fmt.Errorf("credential store holds malformed secrets: %w", err)
 	}
+	if sec.Generation != s.SecretGeneration {
+		return fmt.Errorf("the %s and %s are from different saves (one was interrupted); run `orq auth login`", store.Name(), path)
+	}
 	s.applySecrets(sec)
 	return nil
 }
@@ -197,7 +213,9 @@ func storeUnusedReason() string {
 // in-memory Session keeps its secrets either way, so the command that triggered
 // the migration authenticates normally.
 func migrateSecretsToStore(s *Session, path, host string, store SecretStore) error {
-	blob, err := json.Marshal(s.extractSecrets())
+	sec := s.extractSecrets()
+	sec.Generation = newSecretGeneration()
+	blob, err := json.Marshal(sec)
 	if err != nil {
 		return err
 	}
@@ -215,6 +233,7 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 	stripped := *s
 	stripped.stripSecrets()
 	stripped.SecretStore = store.ID()
+	stripped.SecretGeneration = sec.Generation
 	data, err := json.MarshalIndent(stripped, "", "  ")
 	if err != nil {
 		return err
@@ -223,6 +242,7 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 		return err
 	}
 	s.SecretStore = store.ID()
+	s.SecretGeneration = sec.Generation
 	fmt.Fprintf(os.Stderr, "orq: moved %s session secrets into the %s\n", host, store.Name())
 	return nil
 }

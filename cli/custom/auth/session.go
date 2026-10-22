@@ -81,6 +81,9 @@ type Session struct {
 	// the file was written without them (SecretStore.ID). Empty when the
 	// tokens are inline. Lets a reader tell "moved to the store" from "missing".
 	SecretStore string `json:"secretStore,omitempty"`
+	// SecretGeneration is the stamp of the save that wrote both this file and
+	// the stored secrets; hydrateSecrets refuses a store blob with another.
+	SecretGeneration string `json:"secretGeneration,omitempty"`
 }
 
 type SessionInspectStatus string
@@ -339,7 +342,7 @@ func writeSessionTo(path string, s *Session) error {
 	// leave a secret-free file whose login no longer works. The lock spans both
 	// writes so a concurrent save or read never pairs this store write with
 	// another process's file.
-	written.SecretStore = ""
+	written.SecretStore, written.SecretGeneration = "", ""
 	store := activeStore()
 	if store == nil {
 		// About to replace a file whose secrets went to a store this process is
@@ -357,13 +360,15 @@ func writeSessionTo(path string, s *Session) error {
 	}
 	if store != nil {
 		defer lockSecretStore(path)()
-		blob, err := json.Marshal(written.extractSecrets())
+		sec := written.extractSecrets()
+		sec.Generation = newSecretGeneration()
+		blob, err := json.Marshal(sec)
 		if err != nil {
 			return err
 		}
 		if err := store.Save(hostFromSessionPath(path), string(blob)); err == nil {
 			written.stripSecrets()
-			written.SecretStore = store.ID()
+			written.SecretStore, written.SecretGeneration = store.ID(), sec.Generation
 		} else {
 			// The fallback (secrets inline in the file) keeps the login working,
 			// but silence would leave a user believing the store holds the token

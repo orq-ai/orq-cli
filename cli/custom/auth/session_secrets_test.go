@@ -611,6 +611,24 @@ func TestSignedOutMarkPersistsOnAStoredLogin(t *testing.T) {
 	}
 }
 
+// A save whose store write landed but whose file write failed leaves the
+// store one save ahead of the file. Reading must refuse the pair rather than
+// put the newer login's tokens on the older file's account and workspace.
+func TestReadRefusesAStoreAndFileFromDifferentSaves(t *testing.T) {
+	isolateHome(t)
+	mem := newMemStore()
+	withStore(t, mem)
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	host := hostFromSessionPath(SessionFilePath())
+	mem.m[host] = `{"refreshToken":"refresh-other-account","generation":"0000000000000000"}`
+	_, err := ReadSession()
+	if err == nil || !strings.Contains(err.Error(), "different saves") {
+		t.Fatalf("err = %v, want the mismatch reported", err)
+	}
+}
+
 // A store that refuses the write stops the sweep: on macOS a refusal can be
 // the user clicking Deny, which must not come back once per host.
 func TestMigrateSessionSecretsStopsAfterARefusedWrite(t *testing.T) {
