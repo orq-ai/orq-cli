@@ -134,7 +134,10 @@ the mark. `orq doctor` exits non-zero for any non-transient failing check,
 including a dead login or invalid credential. Timeouts, refused connections, and
 HTTP 5xx still appear as failing rows but do not fail the command; configuration
 errors such as DNS or TLS failures do. Server validation rejects a saved gateway
-key only on HTTP 401; a project-scoped key's HTTP 403 does not prove it invalid.
+key only on HTTP 401; a project-scoped key's HTTP 403 does not prove it invalid. Launch
+validates saved keys even when PreRun has injected a session token. Delayed
+health responses preserve a newer login, logout, and concurrent session settings
+instead of restoring an old session snapshot.
 
 ## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
 

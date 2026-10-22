@@ -181,38 +181,34 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	}
 
 	var supersededWorkspace string
+	var injectedToken string
 	var session *auth.Session
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		// Error ignored here on purpose: an unreadable session must not block a
 		// valid exported key from winning below.
 		session, _ = auth.ReadSession()
-		// installSessionPreRun puts the session's own token here on every run
-		// that has no explicit key, which is the ordinary state. That is not a
-		// key the user exported, so it does not win: the saved key is checked
-		// first, exactly as when the env is empty. Returning here on the token
-		// was what made the saved-key lookup below unreachable in a real run.
+		// PreRun's injected workspace token is not an explicit credential.
+		// Normalize it before all saved-key candidates reach the same check.
 		if session != nil && isSessionWorkspaceToken(key, session) {
-			if saved, ws := savedKeyForWorkspace(session); saved != "" {
-				return &Credentials{APIKey: saved, APIBaseURL: apiBase, Kind: CredentialAPIKey, Workspace: ws}, nil
+			injectedToken = key
+		} else {
+			savedKey, savedWS := auth.SavedAgentKey()
+			mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
+			if !superseded {
+				creds := &Credentials{
+					APIKey:         key,
+					APIBaseURL:     apiBase,
+					Kind:           CredentialAPIKey,
+					ShadowsSession: shadowsSession(key, session),
+				}
+				if savedWS != "" && savedKey == key {
+					creds.Workspace = savedWS
+				}
+				return creds, nil
 			}
-			return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialSessionToken}, nil
+			// superseded implies session != nil, so the read below is skipped.
+			supersededWorkspace = mintedFor
 		}
-		savedKey, savedWS := auth.SavedAgentKey()
-		mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
-		if !superseded {
-			creds := &Credentials{
-				APIKey:         key,
-				APIBaseURL:     apiBase,
-				Kind:           CredentialAPIKey,
-				ShadowsSession: shadowsSession(key, session),
-			}
-			if savedWS != "" && savedKey == key {
-				creds.Workspace = savedWS
-			}
-			return creds, nil
-		}
-		// superseded implies session != nil, so the read below is skipped.
-		supersededWorkspace = mintedFor
 	}
 
 	if session == nil {
@@ -254,6 +250,9 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 			}, nil
 		}
 		// Rejected by the server: fall through to a fresh session token below.
+	}
+	if injectedToken != "" {
+		return &Credentials{APIKey: injectedToken, APIBaseURL: apiBase, Kind: CredentialSessionToken}, nil
 	}
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {

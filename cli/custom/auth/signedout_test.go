@@ -1,8 +1,9 @@
 package auth
 
 import (
+	"bytes"
 	"fmt"
-	"io"
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -190,6 +191,10 @@ func TestEnsureBootstrapTokenClearsSignedOutOnSuccess(t *testing.T) {
 	isolateHome(t)
 	srv := loginServer(t, "user-1", "acme")
 
+	previous, source := Server(), ServerSource()
+	SetServer(srv.URL, "flag")
+	t.Cleanup(func() { SetServer(previous, source) })
+
 	s := validSession("acme")
 	s.APIBaseURL = srv.URL
 	s.SignedOut = true
@@ -217,6 +222,10 @@ func TestEnsureBootstrapTokenClearsSignedOutOnSuccess(t *testing.T) {
 func TestEnsureWorkspaceTokenClearsSignedOutOnSuccess(t *testing.T) {
 	isolateHome(t)
 	srv := loginServer(t, "user-1", "acme")
+
+	previous, source := Server(), ServerSource()
+	SetServer(srv.URL, "flag")
+	t.Cleanup(func() { SetServer(previous, source) })
 
 	s := validSession("acme")
 	s.APIBaseURL = srv.URL
@@ -420,6 +429,9 @@ func TestMarkSignedOutWritesOwnHostNotActive(t *testing.T) {
 
 	s := validSession("acme")
 	s.APIBaseURL = "https://other.invalid" // a different, non-active login
+	if err := saveSessionTo(sessionPathFor(SessionHost(s.APIBaseURL)), s); err != nil {
+		t.Fatal(err)
+	}
 	markSessionSignedOut(s)
 
 	own, _ := os.ReadFile(sessionPathFor(SessionHost("https://other.invalid")))
@@ -462,20 +474,11 @@ func TestCheckSessionWarnsWhenProbeCannotPersist(t *testing.T) {
 			if err := saveSessionTo(path, session); err != nil {
 				t.Fatal(err)
 			}
-			r, w, err := os.Pipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			previous := os.Stderr
-			os.Stderr = w
-			t.Cleanup(func() { os.Stderr = previous; r.Close(); w.Close() })
+			var warning bytes.Buffer
+			previous := bartolocli.Stderr
+			bartolocli.Stderr = &warning
+			t.Cleanup(func() { bartolocli.Stderr = previous })
 			status := CheckSession(host)
-			w.Close()
-			os.Stderr = previous
-			warning, err := io.ReadAll(r)
-			if err != nil {
-				t.Fatal(err)
-			}
 			want := SessionStatusOK
 			if rejected {
 				want = SessionStatusSignedOut
@@ -483,8 +486,8 @@ func TestCheckSessionWarnsWhenProbeCannotPersist(t *testing.T) {
 			if status != want {
 				t.Fatalf("status = %q, want %q", status, want)
 			}
-			if !strings.Contains(string(warning), "orq: could not") || !strings.Contains(string(warning), path) {
-				t.Fatalf("missing persistence warning: %s", warning)
+			if !strings.Contains(warning.String(), "orq: could not") || !strings.Contains(warning.String(), path) {
+				t.Fatalf("missing persistence warning: %s", warning.String())
 			}
 		})
 	}

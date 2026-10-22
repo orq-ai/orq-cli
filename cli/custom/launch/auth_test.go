@@ -791,58 +791,9 @@ func TestResolveCredentialsProfileInForce(t *testing.T) {
 // reused, so launch falls through to a fresh session token instead of wiring an
 // agent that 401s at runtime.
 func TestResolveCredentialsDropsRejectedGatewayKey(t *testing.T) {
-	future := time.Now().Add(time.Hour).Format(time.RFC3339)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "workspace-settings") {
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"message":"API key is not valid for this workspace"}`))
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
-			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
-		}})
-	}))
-	defer srv.Close()
+	for _, injectedToken := range []string{"", "workspace-token"} {
+		t.Run("env="+injectedToken, func(t *testing.T) {
 
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", "")
-	t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
-	writeSessionFile(t, home, map[string]any{
-		"version": 1, "apiBaseUrl": srv.URL, "v1BaseUrl": srv.URL, "authBaseUrl": srv.URL, "profileBaseUrl": srv.URL,
-		"activeWorkspaceKey": "ws1", "refreshToken": "refresh-token",
-		"bootstrapToken":      map[string]any{"token": "bootstrap-token", "expiresAt": future},
-		"workspaceTokens":     map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
-		"gatewayKey":          "revoked-minted-key",
-		"gatewayWorkspace":    "ws1",
-		"gatewayKeyExpiresAt": future, // unexpired locally, but revoked on the server
-	})
-
-	creds, err := ResolveCredentials(os.Getenv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if creds.APIKey == "revoked-minted-key" {
-		t.Fatal("a server-rejected gateway key must be dropped, not reused")
-	}
-	if creds.APIKey != "workspace-token" || creds.Kind != CredentialSessionToken {
-		t.Fatalf("want fall-through to the session token, got %+v", creds)
-	}
-}
-
-func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
-	for _, verdict := range []error{
-		&auth.APIError{Status: 403, Msg: "project key cannot access settings"},
-		&auth.APIError{Status: 429, Msg: "rate limited"},
-		&auth.APIError{Status: 503, Msg: "unavailable"},
-		auth.ErrNoWorkspaceKey,
-		errors.New("connection refused"),
-	} {
-		t.Run(verdict.Error(), func(t *testing.T) {
-			previous := validateReusableKey
-			validateReusableKey = func(*auth.Client, string) error { return verdict }
-			t.Cleanup(func() { validateReusableKey = previous })
 			future := time.Now().Add(time.Hour).Format(time.RFC3339)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.Contains(r.URL.Path, "workspace-settings") {
@@ -858,7 +809,7 @@ func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
 
 			home := t.TempDir()
 			t.Setenv("HOME", home)
-			t.Setenv("ORQ_API_KEY", "")
+			t.Setenv("ORQ_API_KEY", injectedToken)
 			t.Setenv("ORQ_API_BASE_URL", "")
 			t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
 			writeSessionFile(t, home, map[string]any{
@@ -866,34 +817,94 @@ func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
 				"activeWorkspaceKey": "ws1", "refreshToken": "refresh-token",
 				"bootstrapToken":      map[string]any{"token": "bootstrap-token", "expiresAt": future},
 				"workspaceTokens":     map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
-				"gatewayKey":          "saved-project-key",
+				"gatewayKey":          "revoked-minted-key",
 				"gatewayWorkspace":    "ws1",
-				"gatewayKeyExpiresAt": future, // unexpired saved key
+				"gatewayKeyExpiresAt": future, // unexpired locally, but revoked on the server
 			})
 
-			r, w, err := os.Pipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			originalStderr := os.Stderr
-			os.Stderr = w
-			t.Cleanup(func() { os.Stderr = originalStderr; r.Close(); w.Close() })
 			creds, err := ResolveCredentials(os.Getenv)
-			w.Close()
-			os.Stderr = originalStderr
-			warning, readErr := io.ReadAll(r)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if !strings.Contains(string(warning), "using the saved key anyway") {
-				t.Fatalf("inconclusive key reuse must warn: %s", warning)
-			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if creds.APIKey != "saved-project-key" || creds.Kind != CredentialAPIKey {
-				t.Fatalf("inconclusive probe must preserve saved key, got %+v", creds)
+			if creds.APIKey == "revoked-minted-key" {
+				t.Fatal("a server-rejected gateway key must be dropped, not reused")
 			}
+			if creds.APIKey != "workspace-token" || creds.Kind != CredentialSessionToken {
+				t.Fatalf("want fall-through to the session token, got %+v", creds)
+			}
+
+		})
+	}
+}
+
+func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
+	for _, injectedToken := range []string{"", "workspace-token"} {
+		t.Run("env="+injectedToken, func(t *testing.T) {
+			for _, verdict := range []error{
+				&auth.APIError{Status: 403, Msg: "project key cannot access settings"},
+				&auth.APIError{Status: 429, Msg: "rate limited"},
+				&auth.APIError{Status: 503, Msg: "unavailable"},
+				auth.ErrNoWorkspaceKey,
+				errors.New("connection refused"),
+			} {
+				t.Run(verdict.Error(), func(t *testing.T) {
+					previous := validateReusableKey
+					validateReusableKey = func(*auth.Client, string) error { return verdict }
+					t.Cleanup(func() { validateReusableKey = previous })
+					future := time.Now().Add(time.Hour).Format(time.RFC3339)
+					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						if strings.Contains(r.URL.Path, "workspace-settings") {
+							w.WriteHeader(http.StatusUnauthorized)
+							_, _ = w.Write([]byte(`{"message":"API key is not valid for this workspace"}`))
+							return
+						}
+						_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+							"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+						}})
+					}))
+					defer srv.Close()
+
+					home := t.TempDir()
+					t.Setenv("HOME", home)
+					t.Setenv("ORQ_API_KEY", injectedToken)
+					t.Setenv("ORQ_API_BASE_URL", "")
+					t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+					writeSessionFile(t, home, map[string]any{
+						"version": 1, "apiBaseUrl": srv.URL, "v1BaseUrl": srv.URL, "authBaseUrl": srv.URL, "profileBaseUrl": srv.URL,
+						"activeWorkspaceKey": "ws1", "refreshToken": "refresh-token",
+						"bootstrapToken":      map[string]any{"token": "bootstrap-token", "expiresAt": future},
+						"workspaceTokens":     map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
+						"gatewayKey":          "saved-project-key",
+						"gatewayWorkspace":    "ws1",
+						"gatewayKeyExpiresAt": future, // unexpired saved key
+					})
+
+					r, w, err := os.Pipe()
+					if err != nil {
+						t.Fatal(err)
+					}
+					originalStderr := os.Stderr
+					os.Stderr = w
+					t.Cleanup(func() { os.Stderr = originalStderr; r.Close(); w.Close() })
+					creds, err := ResolveCredentials(os.Getenv)
+					w.Close()
+					os.Stderr = originalStderr
+					warning, readErr := io.ReadAll(r)
+					if readErr != nil {
+						t.Fatal(readErr)
+					}
+					if !strings.Contains(string(warning), "using the saved key anyway") {
+						t.Fatalf("inconclusive key reuse must warn: %s", warning)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if creds.APIKey != "saved-project-key" || creds.Kind != CredentialAPIKey {
+						t.Fatalf("inconclusive probe must preserve saved key, got %+v", creds)
+					}
+				})
+			}
+
 		})
 	}
 }

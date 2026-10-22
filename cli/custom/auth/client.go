@@ -663,7 +663,7 @@ func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
 	}
 	session.BootstrapToken = tok
 	session.SignedOut = false // a successful refresh clears any prior signed-out mark
-	if err := SaveSession(session); err != nil {
+	if err := mergeBootstrapToken(sessionPathFor(SessionHost(session.APIBaseURL)), session, tok); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -679,27 +679,33 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	session.ProfileTransport = c.profileTransport
-	var activeKey *string
-	if session.ActiveWorkspaceKey != nil {
-		for _, w := range profile.Workspaces {
-			if k, ok := w["key"].(string); ok && k == *session.ActiveWorkspaceKey {
-				activeKey = session.ActiveWorkspaceKey
-				break
+	applyProfile := func(target *Session) {
+		target.ProfileTransport = c.profileTransport
+		var activeKey *string
+		if target.ActiveWorkspaceKey != nil {
+			for _, w := range profile.Workspaces {
+				if k, ok := w["key"].(string); ok && k == *target.ActiveWorkspaceKey {
+					activeKey = target.ActiveWorkspaceKey
+					break
+				}
 			}
 		}
+		if activeKey == nil {
+			activeKey = stringPtr(resolveWorkspaceKey(profile, ""))
+		}
+		target.User = &SessionUser{
+			ID:          profile.ID,
+			Email:       profile.Email,
+			DisplayName: resolveDisplayName(profile),
+		}
+		target.Workspaces = profile.Workspaces
+		target.ActiveWorkspaceKey = activeKey
 	}
-	if activeKey == nil {
-		activeKey = stringPtr(resolveWorkspaceKey(profile, ""))
-	}
-	session.User = &SessionUser{
-		ID:          profile.ID,
-		Email:       profile.Email,
-		DisplayName: resolveDisplayName(profile),
-	}
-	session.Workspaces = profile.Workspaces
-	session.ActiveWorkspaceKey = activeKey
-	if err := SaveSession(session); err != nil {
+	applyProfile(session)
+	if err := updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		applyProfile(current)
+		*session = *current
+	}); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -708,7 +714,8 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*Session, error) {
 	cacheKey := c.tokenKey(workspaceKey)
 	current, cached := session.WorkspaceTokens[cacheKey]
-	if !cached || isExpired(current.ExpiresAt, 60) {
+	refreshed := !cached || isExpired(current.ExpiresAt, 60)
+	if refreshed {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
 			if RefreshRejected(err) {
@@ -722,8 +729,20 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 		session.WorkspaceTokens[cacheKey] = tok
 		session.SignedOut = false // a successful refresh clears any prior signed-out mark
 	}
+	if workspaceKeyOf(session) != workspaceKey {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
 	session.ActiveWorkspaceKey = stringPtr(workspaceKey)
-	if err := SaveSession(session); err != nil {
+	if err := updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		if workspaceKeyOf(current) != workspaceKey {
+			current.ActiveProjectID, current.ActiveProjectName = "", ""
+		}
+		current.ActiveWorkspaceKey = stringPtr(workspaceKey)
+		if refreshed {
+			current.WorkspaceTokens[cacheKey] = session.WorkspaceTokens[cacheKey]
+			current.SignedOut = false
+		}
+	}); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -760,7 +779,7 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 	}
 	session.WorkspaceTokens[cacheKey] = tok
 	session.SignedOut = false
-	if err := mergeWorkspaceToken(cacheKey, tok); err != nil {
+	if err := mergeWorkspaceToken(session, cacheKey, tok); err != nil {
 		// Not fatal - the token works for this invocation - but a silent drop
 		// (e.g. a read-only session dir) would re-exchange on every single call
 		// with no explanation. Route through bartolo's writer so --no-color and
@@ -775,20 +794,11 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 // that changed the active workspace (or another token) is not clobbered. A
 // session that vanished between read and now (e.g. a concurrent logout) is left
 // alone rather than recreated.
-func mergeWorkspaceToken(workspaceKey string, tok StoredAccessToken) error {
-	current, err := ReadSession()
-	if err != nil {
-		return err
-	}
-	if current == nil {
-		return nil
-	}
-	if current.WorkspaceTokens == nil {
-		current.WorkspaceTokens = map[string]StoredAccessToken{}
-	}
-	current.WorkspaceTokens[workspaceKey] = tok
-	current.SignedOut = false
-	return SaveSession(current)
+func mergeWorkspaceToken(session *Session, workspaceKey string, tok StoredAccessToken) error {
+	return updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		current.WorkspaceTokens[workspaceKey] = tok
+		current.SignedOut = false
+	})
 }
 
 func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
@@ -859,13 +869,12 @@ func (c *Client) GetActiveWorkspaceAccessToken() (*ActiveAccessToken, error) {
 		return nil, errors.New("no active workspace selected. Run `orq workspace use <key>` first")
 	}
 	key := *session.ActiveWorkspaceKey
-	session, err = c.EnsureWorkspaceToken(session, key)
+	token, err := c.WorkspaceToken(session, key)
 	if err != nil {
 		return nil, err
 	}
-	tok := session.WorkspaceTokens[c.tokenKey(key)]
 	return &ActiveAccessToken{
-		AccessToken:  tok.Token,
+		AccessToken:  token,
 		Session:      session,
 		WorkspaceKey: key,
 	}, nil

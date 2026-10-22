@@ -98,6 +98,9 @@ func TestSaveSessionPrunesExpiredWorkspaceTokensOnly(t *testing.T) {
 
 func TestMergeWorkspaceTokenPreservesConcurrentActiveChange(t *testing.T) {
 	isolateHome(t)
+	previous, source := Server(), ServerSource()
+	SetServer("https://api.example", "flag")
+	t.Cleanup(func() { SetServer(previous, source) })
 	// Seed the on-disk session with active = prod.
 	if err := SaveSession(validSession("prod")); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -113,7 +116,7 @@ func TestMergeWorkspaceTokenPreservesConcurrentActiveChange(t *testing.T) {
 	// must merge onto the CURRENT on-disk session, not overwrite it with a stale
 	// prod snapshot.
 	tok := StoredAccessToken{Token: "tok-staging", ExpiresAt: "2099-01-01T00:00:00Z"}
-	if err := mergeWorkspaceToken("staging", tok); err != nil {
+	if err := mergeWorkspaceToken(validSession("prod"), "staging", tok); err != nil {
 		t.Fatalf("mergeWorkspaceToken: %v", err)
 	}
 
@@ -133,10 +136,13 @@ func TestMergeWorkspaceTokenPreservesConcurrentActiveChange(t *testing.T) {
 
 func TestMergeWorkspaceTokenSkipsWhenSessionAbsent(t *testing.T) {
 	isolateHome(t)
+	previous, source := Server(), ServerSource()
+	SetServer("https://api.example", "flag")
+	t.Cleanup(func() { SetServer(previous, source) })
 	// No session on disk: caching must be a no-op, not recreate a session a
 	// concurrent logout just deleted.
 	tok := StoredAccessToken{Token: "tok", ExpiresAt: "2099-01-01T00:00:00Z"}
-	if err := mergeWorkspaceToken("staging", tok); err != nil {
+	if err := mergeWorkspaceToken(validSession("prod"), "staging", tok); err != nil {
 		t.Fatalf("mergeWorkspaceToken on absent session: %v", err)
 	}
 	if _, err := os.Stat(SessionFilePath()); !os.IsNotExist(err) {

@@ -285,6 +285,16 @@ func SaveSession(s *Session) error {
 // directory, 0600, then rename — so a session file gets the same atomicity and
 // permissions as credentials.json, from one implementation.
 func saveSessionTo(path string, s *Session) error {
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return writeSessionTo(path, s)
+}
+
+// writeSessionTo requires the caller to hold the session update lock.
+func writeSessionTo(path string, s *Session) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -301,7 +311,13 @@ func saveSessionTo(path string, s *Session) error {
 }
 
 func ClearSession() error {
-	err := os.Remove(SessionFilePath())
+	path := SessionFilePath()
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	err = os.Remove(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -378,26 +394,52 @@ const (
 	SessionStatusSignedOut SessionStatus = "signed-out"
 )
 
-// markSessionSignedOut records a server-rejected refresh on the session file so
-// the login reads as dead without another network call. Best effort: the login
-// is already broken here, so a failed write must not mask the original auth
-// error the caller is about to return.
+// updateSessionForLogin merges into the current login under the same lock used
+// by saves and logout. A response for an old login cannot replace a new login
+// or recreate one that was removed while the request was in flight.
+func updateSessionForLogin(path, refreshToken string, update func(*Session)) error {
+	unlock, err := lockSessionUpdatesAt(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var current Session
+	if err := json.Unmarshal(data, &current); err != nil {
+		return err
+	}
+	if current.RefreshToken != refreshToken {
+		return nil
+	}
+	if err := validateSession(&current); err != nil {
+		return err
+	}
+	update(&current)
+	return writeSessionTo(path, &current)
+}
+
+func mergeBootstrapToken(path string, session *Session, token StoredAccessToken) error {
+	return updateSessionForLogin(path, session.RefreshToken, func(current *Session) {
+		current.BootstrapToken = token
+		current.SignedOut = false
+	})
+}
+
+// markSessionSignedOut preserves the original auth error if recording health fails.
 func markSessionSignedOut(session *Session) {
 	if session == nil || session.SignedOut {
 		return
 	}
 	session.SignedOut = true
-	// Write the mark to this session's OWN host file, not the active host. SaveSession
-	// targets SessionFilePath() (the active login), so marking a non-active session —
-	// EnsureBootstrapToken called on another host — would stamp the wrong file. This
-	// mirrors CheckSession, which already works around the same SaveSession behaviour.
 	path := sessionPathFor(SessionHost(session.APIBaseURL))
-	if err := saveSessionTo(path, session); err != nil {
-		// Best effort: the login is already dead, so a failed write must not mask the
-		// auth error the caller is about to return. But do not drop it silently — the
-		// mark did not persist, so the next command re-probes and re-marks (one extra
-		// round trip), and the user should know the file could not be written.
-		fmt.Fprintf(os.Stderr, "orq: could not record the signed-out login to %s (%v); it will be re-checked next command\n", path, err)
+	if err := updateSessionForLogin(path, session.RefreshToken, func(current *Session) { current.SignedOut = true }); err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "orq: could not record the signed-out login to %s (%v); it will be re-checked next command\n", path, err)
 	}
 }
 
@@ -439,8 +481,8 @@ func CheckSession(host string) SessionStatus {
 	}
 	session.BootstrapToken = tok
 	session.SignedOut = false
-	if err := saveSessionTo(sessionPathFor(host), &session); err != nil {
-		fmt.Fprintf(os.Stderr, "orq: could not save refreshed login to %s (%v)\n", sessionPathFor(host), err)
+	if err := mergeBootstrapToken(sessionPathFor(host), &session, tok); err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "orq: could not save refreshed login to %s (%v)\n", sessionPathFor(host), err)
 	}
 	return SessionStatusOK
 }
