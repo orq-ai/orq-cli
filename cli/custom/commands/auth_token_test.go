@@ -15,7 +15,6 @@ import (
 	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/spf13/viper"
 )
 
 // tokenTestEnv isolates HOME and the format, and seeds a login on apiBase
@@ -23,9 +22,10 @@ import (
 func tokenTestEnv(t *testing.T, apiBase string, tokens map[string]auth.StoredAccessToken) {
 	t.Helper()
 	switchTestEnv(t)
-	prevFormat, prevExplicit := viper.GetString("output-format"), explicitAPIKey
-	t.Cleanup(func() { viper.Set("output-format", prevFormat); explicitAPIKey = prevExplicit })
+	prevExplicit, prevScope := explicitAPIKey, sessionScope
+	t.Cleanup(func() { explicitAPIKey, sessionScope = prevExplicit, prevScope })
 	explicitAPIKey = false
+	SetSessionScope("", "")
 	origServer, origSource := auth.Server(), auth.ServerSource()
 	auth.SetServer(apiBase, "flag")
 	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
@@ -43,18 +43,20 @@ func tokenTestEnv(t *testing.T, apiBase string, tokens map[string]auth.StoredAcc
 	}
 }
 
-func runToken(t *testing.T, format string) (string, error) {
+func runToken(t *testing.T, format string, args ...string) (string, error) {
 	t.Helper()
-	// ORQ_OUTPUT_FORMAT stands in for -o: the command's own flag set has no
-	// root to inherit -o from here.
-	t.Setenv("ORQ_OUTPUT_FORMAT", format)
-	viper.Set("output-format", format)
 	var out bytes.Buffer
 	previous := bartolocli.Stdout
 	bartolocli.Stdout = &out
 	t.Cleanup(func() { bartolocli.Stdout = previous })
 	cmd := NewTokenCommand()
-	cmd.SetArgs(nil)
+	// -o is the root's persistent flag in a real tree; declare it here so a
+	// typed -o reaches the command the same way.
+	cmd.Flags().StringP("output-format", "o", "", "")
+	if format != "" {
+		args = append(args, "-o", format)
+	}
+	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
 }
@@ -68,33 +70,33 @@ func decodeTokenReport(t *testing.T, out string) tokenReport {
 	return r
 }
 
-// The PreRun already exchanged a token for the pair this run resolved
-// (--workspace/--project included) into ORQ_API_KEY; auth token must report
-// that one, not re-derive the active pair and disagree with it.
-func TestAuthTokenReportsThePreRunToken(t *testing.T) {
+// The PreRun records the pair it resolved (--workspace/--project included);
+// auth token reports that slot, not the active pair.
+func TestAuthTokenReportsThePreRunScope(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	tokenTestEnv(t, "http://127.0.0.1:1", map[string]auth.StoredAccessToken{
 		"acme#p1":  {Token: "tok-active", ExpiresAt: exp},
-		"other#p9": {Token: "tok-override", ExpiresAt: exp, WorkspaceID: "ws-9"},
+		"other#p9": {Token: "tok-override", ExpiresAt: exp},
 	})
-	t.Setenv("ORQ_API_KEY", "tok-override")
+	SetSessionScope("other", "p9")
 
 	out, err := runToken(t, "json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := decodeTokenReport(t, out)
-	want := tokenReport{Token: "tok-override", ExpiresAt: exp, Workspace: "other", WorkspaceID: "ws-9", ProjectID: "p9", Server: "http://127.0.0.1:1"}
+	want := tokenReport{Token: "tok-override", ExpiresAt: exp, Workspace: "other", ProjectID: "p9", Server: "http://127.0.0.1:1"}
 	if r != want {
 		t.Errorf("report = %+v, want %+v", r, want)
 	}
 }
 
-// Without -o json the output is the token alone, so $(orq auth token) works.
+// Without a typed -o the output is the token alone, so $(orq auth token) works
+// even where a standing default asks for JSON.
 func TestAuthTokenPrintsTheBareToken(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	tokenTestEnv(t, "http://127.0.0.1:1", map[string]auth.StoredAccessToken{"acme#p1": {Token: "tok-active", ExpiresAt: exp}})
-	t.Setenv("ORQ_API_KEY", "tok-active")
+	t.Setenv("ORQ_OUTPUT_FORMAT", "json")
 
 	out, err := runToken(t, "")
 	if err != nil {
@@ -105,7 +107,7 @@ func TestAuthTokenPrintsTheBareToken(t *testing.T) {
 	}
 }
 
-// With an API key in force the PreRun mints nothing, so the active pair's
+// With an API key in force the PreRun records no scope, so the active pair's
 // cached token is the answer, and an unexpired one needs no request.
 func TestAuthTokenUsesTheActivePairUnderAnExplicitKey(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
@@ -122,9 +124,8 @@ func TestAuthTokenUsesTheActivePairUnderAnExplicitKey(t *testing.T) {
 	}
 }
 
-// A token that is expired, or inherited stale in ORQ_API_KEY after the PreRun's
-// own exchange failed, is replaced by a fresh exchange, and the new token is
-// cached for the next command.
+// An expired token, which the PreRun leaves in the slot when its own exchange
+// failed, is replaced by a fresh exchange, and the new token is cached.
 func TestAuthTokenExchangesAnExpiredToken(t *testing.T) {
 	const fresh = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig" // exp 2100-01-01
 	var exchanges atomic.Int32
@@ -142,7 +143,7 @@ func TestAuthTokenExchangesAnExpiredToken(t *testing.T) {
 	t.Cleanup(srv.Close)
 	past := time.Now().Add(-time.Minute).Format(time.RFC3339)
 	tokenTestEnv(t, srv.URL, map[string]auth.StoredAccessToken{"acme#p1": {Token: "tok-stale", ExpiresAt: past}})
-	t.Setenv("ORQ_API_KEY", "tok-stale")
+	SetSessionScope("acme", "p1")
 
 	out, err := runToken(t, "json")
 	if err != nil {
@@ -161,6 +162,21 @@ func TestAuthTokenExchangesAnExpiredToken(t *testing.T) {
 	session, err := auth.ReadSession()
 	if err != nil || session == nil || session.WorkspaceTokens["acme#p1"].Token != fresh {
 		t.Errorf("fresh token not cached in the session (err %v)", err)
+	}
+}
+
+func TestAuthTokenWithoutAnActiveWorkspaceSaysSo(t *testing.T) {
+	tokenTestEnv(t, "http://127.0.0.1:1", nil)
+	session, err := auth.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.ActiveWorkspaceKey = nil
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runToken(t, ""); err == nil || !strings.Contains(err.Error(), "orq workspace use") {
+		t.Fatalf("err = %v, want the workspace use remedy", err)
 	}
 }
 

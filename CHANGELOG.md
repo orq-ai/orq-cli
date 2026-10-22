@@ -121,17 +121,18 @@ controls on surface changes, whichever side they originate from.
 ## Unreleased
 
 **Changed:** TOON, the default terminal format, now renders through toon-go
-1.0.1. An empty list prints as `name: []` instead of `name[0]:`, and a string
-that cannot be read as a number or keyword is no longer quoted (`id:
+1.0.1. An empty list prints as `name: []` instead of `name[0]:`, and an id
+that starts with digits but is not a number is no longer quoted (`id:
 01ABC234DEF567GH`, previously `id: "01ABC234DEF567GH"`). TOON is
 presentation-only; `-o json` is unchanged.
 
 **Added:** `orq auth token` prints the access token of your browser login for
 the active workspace and project (or the ones `--workspace` / `--project`
 name), exchanging a fresh one first when the cached token is expired or about
-to expire. The bare output is the token alone, for `$(orq auth token)`;
-`-o json` returns `{token, expires_at, workspace, workspace_id, project_id,
-server}`. It gives tools that reuse an `orq auth login` (orqi among them) a
+to expire. `--refresh` exchanges a new one regardless, for a caller the API
+answered with `authz_stale`. The bare output is the token alone, for
+`$(orq auth token)`, whatever `ORQ_OUTPUT_FORMAT` says; a typed `-o json`
+returns `{token, expires_at, workspace, project_id, server}`. It gives tools that reuse an `orq auth login` (orqi among them) a
 supported way to get the token without reading `~/.orq/sessions/<host>.json`,
 whose secrets are moving to the OS credential store. API keys are never
 printed.

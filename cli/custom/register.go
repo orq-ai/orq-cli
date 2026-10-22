@@ -254,6 +254,7 @@ func installSessionPreRun() {
 		// its session; every user-supplied env key remains authoritative.
 		explicitKey := profileInForce() || storedLoginActive || (apiKeyConfigured() && !ownExportedKey() && !auth.IsSessionMinted(configuredAPIKey()))
 		commands.SetExplicitAPIKey(explicitKey)
+		commands.SetSessionScope("", "")
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -282,6 +283,7 @@ func installSessionPreRun() {
 			return err
 		}
 		if override != "" {
+			commands.SetSessionScope(override, projectID)
 			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context()).WithProject(projectID)
 			token, err := client.WorkspaceToken(session, override)
 			if err != nil {
@@ -289,6 +291,9 @@ func installSessionPreRun() {
 			}
 			os.Setenv("ORQ_API_KEY", token)
 			return nil
+		}
+		if session.ActiveWorkspaceKey != nil && *session.ActiveWorkspaceKey != "" {
+			commands.SetSessionScope(*session.ActiveWorkspaceKey, projectID)
 		}
 		if token := activeWorkspaceToken(cmd.Context(), projectID); token != "" {
 			os.Setenv("ORQ_API_KEY", token)

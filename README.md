@@ -182,13 +182,15 @@ picks an active workspace. Re-running `orq auth login` refreshes it. Sign out
 with `orq auth logout`.
 
 Another program can reuse the login by asking for its token instead of reading
-that file: `orq auth token` prints the active workspace's access token,
-refreshed when needed, and `orq auth token -o json` adds its expiry, workspace,
-project and server. The token lasts about an hour, so ask again rather than
-storing it.
+that file: `orq auth token` prints the access token for the active workspace
+and project (or the ones `--workspace` / `--project` name), refreshed when
+needed, and `orq auth token -o json` adds its expiry, workspace, project and
+server. The token is only valid against that server and lasts about an hour,
+so ask again rather than storing it; `--refresh` forces a new one after an
+`authz_stale` answer.
 
 ```sh
-curl -H "Authorization: Bearer $(orq auth token)" https://my.orq.ai/v2/projects
+curl -H "Authorization: Bearer $(orq auth token)" https://my.orq.ai/v2/projects   # hosted service
 ```
 
 A second server is a second login, selected the way every other command selects
