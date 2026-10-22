@@ -1329,6 +1329,16 @@
       ]
     },
     {
+      "path": "orq auth token",
+      "use": "token",
+      "flags": [
+        {
+          "name": "refresh",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq auth whoami",
       "use": "whoami",
       "flags": [

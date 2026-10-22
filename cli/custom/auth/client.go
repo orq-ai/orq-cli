@@ -792,6 +792,32 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 	return tok.Token, nil
 }
 
+// RefreshWorkspaceToken exchanges a new token for the workspace even when the
+// cached one has not expired, for a caller the server told its token is stale
+// (authz_stale). The replaced token is recorded as stale, as the retry
+// transport's own refresh does, so a process still sending it gets the new one.
+func (c *Client) RefreshWorkspaceToken(session *Session, workspaceKey string) (StoredAccessToken, error) {
+	cacheKey := c.tokenKey(workspaceKey)
+	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
+	if err != nil {
+		return StoredAccessToken{}, err
+	}
+	old := session.WorkspaceTokens[cacheKey].Token
+	if session.WorkspaceTokens == nil {
+		session.WorkspaceTokens = map[string]StoredAccessToken{}
+	}
+	session.WorkspaceTokens[cacheKey] = tok
+	if old == "" {
+		err = mergeWorkspaceToken(session, cacheKey, tok)
+	} else {
+		err = recordRefresh(cacheKey, old, tok)
+	}
+	if err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "warning: could not cache the refreshed workspace token (%v); it will be re-exchanged next invocation\n", err)
+	}
+	return tok, nil
+}
+
 // mergeWorkspaceToken persists a single workspace token by re-reading the
 // on-disk session and writing back only the added entry, so a concurrent writer
 // that changed the active workspace (or another token) is not clobbered. A
