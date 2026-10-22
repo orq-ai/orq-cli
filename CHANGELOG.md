@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.3.0) — 2026-10-22
+
 **Changed:** the updated TOON renderer prints empty arrays as `[]` and leaves
 alphanumeric IDs such as `01ABC234DEF567GH` unquoted. JSON output is unchanged.
 
