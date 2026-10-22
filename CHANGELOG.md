@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
+
 **Added:** `orq auth token` prints the access token of your browser login for
 the active workspace and project (or the ones `--workspace` / `--project`
 name), exchanging a fresh one first when the cached token is expired or about
