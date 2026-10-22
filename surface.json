@@ -1279,6 +1279,12 @@
       "use": "sessions",
       "aliases": [
         "session"
+      ],
+      "flags": [
+        {
+          "name": "check",
+          "type": "bool"
+        }
       ]
     },
     {
@@ -1309,6 +1315,10 @@
         },
         {
           "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {
@@ -1993,6 +2003,10 @@
         },
         {
           "name": "status",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {
@@ -8787,6 +8801,10 @@
         },
         {
           "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "subscription",
           "type": "bool"
         },
         {

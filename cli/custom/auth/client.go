@@ -413,13 +413,13 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 // server is named because "belongs to another host" is the case the user
 // cannot otherwise see: --server, ORQ_SERVER and `orq server use` all move the
 // call away from the host the session was minted on. The APIError is preserved
-// so Unauthorized() still reads the status.
+// so RefreshRejected still reads the status and message.
 func withRefreshTokenRemedy(err error, server string) error {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		return err
 	}
-	if apiErr.Status != http.StatusUnauthorized && !strings.Contains(strings.ToLower(apiErr.Msg), "refresh token") {
+	if !RefreshRejected(err) || apiErr.Status == http.StatusForbidden {
 		return err
 	}
 	where := strings.TrimSpace(server)
@@ -571,6 +571,10 @@ func sessionForLogin(previous *Session) *Session {
 		return &Session{}
 	}
 	kept := *previous
+	// A fresh login is a new credential, so it is not signed out — clear any mark a
+	// prior rejected refresh left, otherwise the new working login still reads dead
+	// (usableSessionStatus drops it, and CheckSession returns signed-out before it probes).
+	kept.SignedOut = false
 	return &kept
 }
 
@@ -651,10 +655,18 @@ func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, "")
 	if err != nil {
+		// The server ending the login (refresh token rejected, account gone or
+		// deactivated) is recorded so the login reads as dead without another
+		// call. That answer is a 400/403, not a 401 (see RefreshRejected). A
+		// transient failure leaves the status untouched.
+		if RefreshRejected(err) {
+			markSessionSignedOut(session)
+		}
 		return nil, err
 	}
 	session.BootstrapToken = tok
-	if err := SaveSession(session); err != nil {
+	session.SignedOut = false // a successful refresh clears any prior signed-out mark
+	if err := mergeBootstrapToken(sessionPathFor(SessionHost(session.APIBaseURL)), session, tok); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -670,27 +682,33 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	session.ProfileTransport = c.profileTransport
-	var activeKey *string
-	if session.ActiveWorkspaceKey != nil {
-		for _, w := range profile.Workspaces {
-			if k, ok := w["key"].(string); ok && k == *session.ActiveWorkspaceKey {
-				activeKey = session.ActiveWorkspaceKey
-				break
+	applyProfile := func(target *Session) {
+		target.ProfileTransport = c.profileTransport
+		var activeKey *string
+		if target.ActiveWorkspaceKey != nil {
+			for _, w := range profile.Workspaces {
+				if k, ok := w["key"].(string); ok && k == *target.ActiveWorkspaceKey {
+					activeKey = target.ActiveWorkspaceKey
+					break
+				}
 			}
 		}
+		if activeKey == nil {
+			activeKey = stringPtr(resolveWorkspaceKey(profile, ""))
+		}
+		target.User = &SessionUser{
+			ID:          profile.ID,
+			Email:       profile.Email,
+			DisplayName: resolveDisplayName(profile),
+		}
+		target.Workspaces = profile.Workspaces
+		target.ActiveWorkspaceKey = activeKey
 	}
-	if activeKey == nil {
-		activeKey = stringPtr(resolveWorkspaceKey(profile, ""))
-	}
-	session.User = &SessionUser{
-		ID:          profile.ID,
-		Email:       profile.Email,
-		DisplayName: resolveDisplayName(profile),
-	}
-	session.Workspaces = profile.Workspaces
-	session.ActiveWorkspaceKey = activeKey
-	if err := SaveSession(session); err != nil {
+	applyProfile(session)
+	if err := updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		applyProfile(current)
+		*session = *current
+	}); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -699,18 +717,35 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*Session, error) {
 	cacheKey := c.tokenKey(workspaceKey)
 	current, cached := session.WorkspaceTokens[cacheKey]
-	if !cached || current.Token == "" || isExpired(current.ExpiresAt, 60) {
+	refreshed := !cached || current.Token == "" || isExpired(current.ExpiresAt, 60)
+	if refreshed {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
+			if RefreshRejected(err) {
+				markSessionSignedOut(session)
+			}
 			return nil, err
 		}
 		if session.WorkspaceTokens == nil {
 			session.WorkspaceTokens = map[string]StoredAccessToken{}
 		}
 		session.WorkspaceTokens[cacheKey] = tok
+		session.SignedOut = false // a successful refresh clears any prior signed-out mark
+	}
+	if workspaceKeyOf(session) != workspaceKey {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
 	}
 	session.ActiveWorkspaceKey = stringPtr(workspaceKey)
-	if err := SaveSession(session); err != nil {
+	if err := updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		if workspaceKeyOf(current) != workspaceKey {
+			current.ActiveProjectID, current.ActiveProjectName = "", ""
+		}
+		current.ActiveWorkspaceKey = stringPtr(workspaceKey)
+		if refreshed {
+			current.WorkspaceTokens[cacheKey] = session.WorkspaceTokens[cacheKey]
+			current.SignedOut = false
+		}
+	}); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -735,6 +770,9 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 	if err != nil {
+		if RefreshRejected(err) {
+			markSessionSignedOut(session)
+		}
 		return "", err
 	}
 	// Keep the in-memory session usable for this invocation regardless of the
@@ -743,7 +781,8 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 		session.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
 	session.WorkspaceTokens[cacheKey] = tok
-	if err := mergeWorkspaceToken(cacheKey, tok); err != nil {
+	session.SignedOut = false
+	if err := mergeWorkspaceToken(session, cacheKey, tok); err != nil {
 		// Not fatal - the token works for this invocation - but a silent drop
 		// (e.g. a read-only session dir) would re-exchange on every single call
 		// with no explanation. Route through bartolo's writer so --no-color and
@@ -758,19 +797,11 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 // that changed the active workspace (or another token) is not clobbered. A
 // session that vanished between read and now (e.g. a concurrent logout) is left
 // alone rather than recreated.
-func mergeWorkspaceToken(workspaceKey string, tok StoredAccessToken) error {
-	current, err := ReadSession()
-	if err != nil {
-		return err
-	}
-	if current == nil {
-		return nil
-	}
-	if current.WorkspaceTokens == nil {
-		current.WorkspaceTokens = map[string]StoredAccessToken{}
-	}
-	current.WorkspaceTokens[workspaceKey] = tok
-	return SaveSession(current)
+func mergeWorkspaceToken(session *Session, workspaceKey string, tok StoredAccessToken) error {
+	return updateSessionForLogin(sessionPathFor(SessionHost(session.APIBaseURL)), session.RefreshToken, func(current *Session) {
+		current.WorkspaceTokens[workspaceKey] = tok
+		current.SignedOut = false
+	})
 }
 
 func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
@@ -841,13 +872,12 @@ func (c *Client) GetActiveWorkspaceAccessToken() (*ActiveAccessToken, error) {
 		return nil, errors.New("no active workspace selected. Run `orq workspace use <key>` first")
 	}
 	key := *session.ActiveWorkspaceKey
-	session, err = c.EnsureWorkspaceToken(session, key)
+	token, err := c.WorkspaceToken(session, key)
 	if err != nil {
 		return nil, err
 	}
-	tok := session.WorkspaceTokens[c.tokenKey(key)]
 	return &ActiveAccessToken{
-		AccessToken:  tok.Token,
+		AccessToken:  token,
 		Session:      session,
 		WorkspaceKey: key,
 	}, nil
@@ -883,6 +913,11 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Msg }
 
+// ErrNoWorkspaceKey is a 200 from /v2/workspace-settings that carried no
+// workspace key. The key authenticated but maps to no workspace, so the launch
+// reuse guard treats it as a verdict (do not reuse) rather than a transient blip.
+var ErrNoWorkspaceKey = errors.New("workspace-settings returned no workspace key")
+
 // Unauthorized reports whether err is the API refusing the credential itself.
 //
 // 401 only, and deliberately: measured against the live API, a revoked gateway
@@ -895,6 +930,41 @@ func (e *APIError) Error() string { return e.Msg }
 func Unauthorized(err error) bool {
 	var apiErr *APIError
 	return errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized
+}
+
+// RefreshRejected reports whether err is the auth server ending the login: the
+// refresh token itself was invalid/revoked, or the account was deactivated.
+//
+// The /access-token endpoint can use 401. The hosted auth API also returns
+// 400 "Invalid refresh token!" and a deactivated account 403 "Account has been
+// deactivated". Match these responses too, so a rejected login does not
+// silently read as merely needs-refresh.
+//
+// Deliberately NOT matched: the 400 "Account not found!" that the same endpoint
+// returns when a valid, active login requests a workspace or project it cannot
+// access (returned only after the refresh token has verified and the account is
+// confirmed active). That is an authorization miss
+// on the requested scope, not a dead login; signing the whole session out on it
+// would wrongly kill a working login (e.g. a stale ActiveProjectID). The match
+// is on the specific dead-login messages, not a bare "account" substring, and
+// transient failures (5xx, timeouts, transport errors) are not APIErrors of
+// this shape, so none of them sign the user out.
+func RefreshRejected(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.Status == http.StatusUnauthorized {
+		return true
+	}
+	msg := strings.ToLower(apiErr.Msg)
+	if apiErr.Status == http.StatusBadRequest {
+		return strings.Contains(msg, "refresh token")
+	}
+	if apiErr.Status == http.StatusForbidden {
+		return strings.Contains(msg, "deactivat")
+	}
+	return false
 }
 
 // Forbidden reports whether err is the API accepting the credential but
@@ -962,6 +1032,7 @@ func DescribeAPIError(status int, raw []byte) string {
 	}
 	var body struct {
 		Message   string  `json:"message"`
+		Param     string  `json:"param"`
 		Error     string  `json:"error"`
 		Detail    string  `json:"detail"`
 		RequestID string  `json:"request_id"`
@@ -970,6 +1041,7 @@ func DescribeAPIError(status int, raw []byte) string {
 		Errors    []issue `json:"errors"`
 		Details   struct {
 			Issues []issue `json:"issues"`
+			Reason string  `json:"reason"`
 		} `json:"details"`
 	}
 	parsed := json.Unmarshal(raw, &body) == nil
@@ -980,6 +1052,14 @@ func DescribeAPIError(status int, raw []byte) string {
 	}
 
 	details := []string{}
+	// Current API errors carry one problem as details.reason plus the
+	// offending top-level field in param.
+	if r := body.Details.Reason; r != "" {
+		if body.Param != "" {
+			r = body.Param + ": " + r
+		}
+		details = append(details, r)
+	}
 	all := append(append(append([]issue{}, body.Details.Issues...), body.Issues...), body.Errors...)
 	for _, i := range all {
 		line := joinPathMessage(i.Path, i.Message)
@@ -1075,7 +1155,7 @@ func (c *Client) KeyWorkspace(bearer string) (string, error) {
 	// still report success.
 	ws := strings.TrimSpace(resp.Settings.Key)
 	if ws == "" {
-		return "", errors.New("workspace-settings returned no workspace key")
+		return "", ErrNoWorkspaceKey
 	}
 	return ws, nil
 }

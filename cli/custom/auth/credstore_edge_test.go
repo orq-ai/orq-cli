@@ -165,16 +165,30 @@ func TestMacKeychainCorruptStoreFailsSafe(t *testing.T) {
 	}
 }
 
-// A one-item value written before the header existed still loads, alone: a
-// stray continuation item is never joined onto it.
-func TestMacKeychainLoadsAHeaderlessItem(t *testing.T) {
+// No released build wrote an item without the header, so one is corrupt, not
+// a value to read alone without its checksum.
+func TestMacKeychainRejectsAHeaderlessItem(t *testing.T) {
 	fk := withFakeKeychain(t, 44)
 	const host = "api.orq.ai"
 	fk.items[host] = base64.StdEncoding.EncodeToString([]byte(`{"refreshToken":"r"}`))
-	fk.items[host+".1"] = "QUJD"
-	got, ok, err := (macKeychainStore{}).Load(host)
-	if err != nil || !ok || got != `{"refreshToken":"r"}` {
-		t.Fatalf("headerless item: got=%q ok=%v err=%v", got, ok, err)
+	if _, ok, err := (macKeychainStore{}).Load(host); !errors.Is(err, errKeychainSecretCorrupt) || ok {
+		t.Fatalf("headerless item: ok=%v err=%v, want errKeychainSecretCorrupt", ok, err)
+	}
+}
+
+// secret-tool stores only the first 8192 bytes of a longer value and still
+// exits 0, so Save must refuse it rather than report success.
+func TestSecretToolRefusesASecretItWouldTruncate(t *testing.T) {
+	fk := withFakeKeychain(t, 1)
+	const host = "api.orq.ai"
+	if err := (secretToolStore{}).Save(host, strings.Repeat("x", maxSecretToolSecret+1)); err == nil {
+		t.Fatal("Save of an oversized secret succeeded")
+	}
+	if _, ok := fk.items[host]; ok {
+		t.Fatal("a truncated copy was stored")
+	}
+	if err := (secretToolStore{}).Save(host, strings.Repeat("x", maxSecretToolSecret)); err != nil {
+		t.Fatalf("Save at the limit: %v", err)
 	}
 }
 

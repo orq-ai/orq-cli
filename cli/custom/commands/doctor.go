@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,6 +34,27 @@ type doctorCheck struct {
 	// prefix. Set it explicitly rather than relying on an ID that happens not
 	// to match the prefix.
 	AlwaysShow bool `json:"-"`
+	// Transient marks a failure that is not the user's setup: the server was
+	// temporarily unavailable (timeout/refused connection) or returned a 5xx.
+	// It still shows as a failing row, but does
+	// not make the command exit non-zero, so being offline is not reported as a
+	// broken login. A rejected credential or a dead login is NOT transient.
+	Transient bool `json:"-"`
+}
+
+// blockingFailureIDs returns the ids of checks that should make the command exit
+// non-zero: any check with status "fail" that is not transient. A dead login, a
+// revoked gateway key, a rejected credential, or a permissions repair that could
+// not run all block. Timeouts, refused connections, and 5xx (marked Transient)
+// do not; DNS, TLS, and malformed server configuration still block.
+func blockingFailureIDs(checks []doctorCheck) []string {
+	var ids []string
+	for _, c := range checks {
+		if c.Status == "fail" && !c.Transient {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
 }
 
 type resolvedValue struct {
@@ -118,6 +140,9 @@ func NewDoctorCommand() *cobra.Command {
 			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
 				checks = append(checks, expiry)
 			}
+			if valid, ok := gatewayKeyServerCheck(client, inspect); ok {
+				checks = append(checks, valid)
+			}
 			var permsErr error
 			if perms, ok, err := credentialPermsCheck(fixPerms); ok {
 				checks = append(checks, perms)
@@ -131,8 +156,52 @@ func NewDoctorCommand() *cobra.Command {
 			// 401s there by design. Probing it unauthenticated was worse than
 			// useless (a guaranteed 401 reported as a green "Reachable"), and
 			// probing it with a key would fail every API-key setup.
-			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
-				checks = append(checks, profileChecks(cmd.Context(), client, inspect.Session.BootstrapToken.Token)...)
+			if inspect.Status == auth.StatusOK {
+				if inspect.Session.SignedOut {
+					// The server ended this login (a prior refresh was rejected, recorded
+					// on the session). Report it WITHOUT a network call — the behaviour
+					// RES-1692 asks for — and skip the profile probe; the login is dead
+					// even while the bootstrap token has minutes left on its local clock.
+					checks = append(checks, doctorCheck{
+						ID:         "login",
+						Status:     "fail",
+						Message:    fmt.Sprintf("This login was ended by the server (signed out). Run: orq auth login --server %s", client.URLs.APIBaseURL),
+						AlwaysShow: true,
+					})
+				} else {
+					// Refresh an expired login before probing, rather than skip it:
+					// skipping the one authenticated check whenever the token had
+					// expired hid exactly the dead logins doctor exists to catch. A
+					// rejected refresh is a fail with the one fix (EnsureBootstrapToken
+					// also records signed-out on the session).
+					bearer := inspect.Session.BootstrapToken.Token
+					if isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
+						refreshed, err := client.EnsureBootstrapToken(inspect.Session)
+						switch {
+						case err == nil:
+							bearer = refreshed.BootstrapToken.Token
+						case auth.RefreshRejected(err):
+							bearer = ""
+							checks = append(checks, doctorCheck{
+								ID:         "login",
+								Status:     "fail",
+								Message:    fmt.Sprintf("Login rejected by the server: %v", err),
+								AlwaysShow: true,
+							})
+						default:
+							bearer = ""
+							checks = append(checks, doctorCheck{
+								ID:         "login",
+								Status:     "warn",
+								Message:    fmt.Sprintf("Could not verify the login: %v", err),
+								AlwaysShow: true,
+							})
+						}
+					}
+					if bearer != "" {
+						checks = append(checks, profileChecks(cmd.Context(), client, bearer)...)
+					}
+				}
 			}
 
 			authStatus := string(inspect.Status)
@@ -141,7 +210,14 @@ func NewDoctorCommand() *cobra.Command {
 			var activeWS any
 			workspaceCount := 0
 			if inspect.Status == auth.StatusOK {
-				authStatus = "authenticated"
+				if inspect.Session.SignedOut {
+					// A signed-out session is not authenticated, even with a bootstrap
+					// token that has not locally expired; the server ended it. Reporting
+					// "authenticated" beside a failing login check was the contradiction.
+					authStatus = "signed-out"
+				} else {
+					authStatus = "authenticated"
+				}
 				authSource = "session-file"
 				if inspect.Session.User != nil {
 					userEmail = inspect.Session.User.Email
@@ -215,14 +291,26 @@ func NewDoctorCommand() *cobra.Command {
 			// format request always get the structured report.
 			// The report goes out first either way: a failed --fix has to name
 			// which path it could not repair before the error ends the run.
+			// A failing check must end the run non-zero, so a non-TTY caller sees the
+			// broken login (or gateway key) the ticket is about, not an exit 0 beside a
+			// "fail" line. The report prints first either way. permsErr (a --fix repair
+			// that could not run) is joined with the failing checks rather than masking
+			// them, so the message names both the repair failure and what is broken.
+			var doctorErr error
+			if failed := blockingFailureIDs(checks); len(failed) > 0 {
+				doctorErr = fmt.Errorf("doctor found %d failing check(s): %s", len(failed), strings.Join(failed, ", "))
+			}
+			if permsErr != nil {
+				doctorErr = errors.Join(permsErr, doctorErr)
+			}
 			if wantsHumanView(cmd) {
 				printDoctorSummary(authStatus, userEmail, client.URLs.APIBaseURL, checks)
-				return permsErr
+				return doctorErr
 			}
 			if err := emit(report); err != nil {
 				return err
 			}
-			return permsErr
+			return doctorErr
 		},
 	}
 	DeprecatedAPIBaseFlag(cmd)
@@ -419,6 +507,16 @@ func profileTransportSource(inspect auth.SessionInspectResult) string {
 	return "default"
 }
 
+// transientProbeError excludes configuration failures from the offline exemption.
+func transientProbeError(err error) bool {
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return false
+	}
+	var network net.Error
+	return (errors.As(err, &network) && network.Timeout()) || errors.Is(err, syscall.ECONNREFUSED)
+}
+
 func probeURL(parent context.Context, id, method, url, bearer string) doctorCheck {
 	authenticated := bearer != ""
 	if parent == nil {
@@ -451,11 +549,14 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {
+		// Timeouts and refused connections can be temporary. DNS, TLS, and
+		// malformed server configuration must still fail the command.
 		return doctorCheck{
-			ID:      id,
-			Status:  "fail",
-			Message: err.Error(),
-			Details: map[string]any{"url": url},
+			ID:        id,
+			Status:    "fail",
+			Message:   err.Error(),
+			Details:   map[string]any{"url": url},
+			Transient: transientProbeError(err),
 		}
 	}
 	defer res.Body.Close()
@@ -469,19 +570,22 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	// credential is not — which is exactly what someone runs doctor to find out.
 	status := "pass"
 	message := "Reachable"
+	transient := false
 	switch {
 	case res.StatusCode >= 500:
 		status = "fail"
+		transient = true // reachable but server-side: not the user's setup
 		message = fmt.Sprintf("Reachable but returned a server error (HTTP %d)", res.StatusCode)
 	case authenticated && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden):
 		status = "fail"
 		message = fmt.Sprintf("Reachable, but the credential was rejected (HTTP %d)", res.StatusCode)
 	}
 	return doctorCheck{
-		ID:      id,
-		Status:  status,
-		Message: message,
-		Details: map[string]any{"url": url, "http_status": res.StatusCode},
+		ID:        id,
+		Status:    status,
+		Message:   message,
+		Details:   map[string]any{"url": url, "http_status": res.StatusCode},
+		Transient: transient,
 	}
 }
 
@@ -627,6 +731,32 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("The gateway key expires in %d days", days)
 	}
+	return check, true
+}
+
+// gatewayKeyServerCheck verifies the gateway key against the server with one
+// authenticated call, on top of the expiry countdown. A key revoked or disabled
+// before its recorded expiry passes the date check but still 401s at runtime, so
+// wired agents fail; only the server can tell a live key from a dead one. 401 is
+// a dead key (see auth.Unauthorized); any other error is an inconclusive warning,
+// not a verdict on the key.
+func gatewayKeyServerCheck(client *auth.Client, inspect auth.SessionInspectResult) (doctorCheck, bool) {
+	if inspect.Status != auth.StatusOK || inspect.Session == nil || inspect.Session.GatewayKey == "" {
+		return doctorCheck{}, false
+	}
+	check := doctorCheck{ID: "gateway_key_valid", AlwaysShow: true}
+	if _, err := client.KeyWorkspace(inspect.Session.GatewayKey); err != nil {
+		if auth.Unauthorized(err) {
+			check.Status = "fail"
+			check.Message = "The gateway key was revoked or disabled on the server — wired agents will fail with 401. Run 'orq setup' to replace it, then 'orq connect' to rewire"
+			return check, true
+		}
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("Could not verify the gateway key against the server: %v", err)
+		return check, true
+	}
+	check.Status = "pass"
+	check.Message = "The gateway key is accepted by the server"
 	return check, true
 }
 

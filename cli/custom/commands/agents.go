@@ -45,6 +45,8 @@ type agentSpec struct {
 	providerConfig func(global bool) (string, error)
 	// writeProvider registers the provider and its models, returning how many models it listed.
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
+	// writeChatGPTProvider is writeProvider for --chatgpt: the agent keeps its own ChatGPT login as the model credential.
+	writeChatGPTProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
 	// providerPresent is the read-side pair of writeProvider, in that agent's own format; required whenever writeProvider is set.
 	providerPresent func(path string) bool
 	// removeProvider is writeProvider's inverse; required whenever the writer is set.
@@ -109,11 +111,12 @@ func agentRegistry() []agentSpec {
 			ID:    "codex",
 			Label: "Codex",
 			// Same resolution the writers use, or a CODEX_HOME machine is never offered codex.
-			detect:          detectPath(codexPath("")),
-			providerConfig:  codexPath(codexProfileName + ".config.toml"),
-			writeProvider:   writeCodexProviderTOML,
-			removeProvider:  removeCodexProfile,
-			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
+			detect:               detectPath(codexPath("")),
+			providerConfig:       codexPath(codexProfileName + ".config.toml"),
+			writeProvider:        writeCodexProviderTOML,
+			writeChatGPTProvider: writeCodexChatGPTProviderTOML,
+			removeProvider:       removeCodexProfile,
+			providerPresent:      tomlTablePresent("model_providers." + launch.CodexProvider),
 			// The base config.toml, not the orq.config.toml profile: MCP servers are
 			// not profile-scoped in codex, and writeCodexProviderTOML owns the
 			// profile file outright and rewrites it wholesale, so an entry placed
@@ -951,6 +954,25 @@ func codexDefaultModel(models []auth.RouterModel, chosen string) string {
 
 // writeCodexProviderTOML owns this profile file outright and rewrites it wholesale; the credential stays out, codex resolves ORQ_API_KEY via env_key.
 func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
+	return writeCodexProfile(path, routerURL, models, defaultModel, false)
+}
+
+// writeCodexChatGPTProviderTOML offers only openai/ models: the gateway accepts a ChatGPT subscription credential for nothing else.
+func writeCodexChatGPTProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
+	return writeCodexProfile(path, routerURL, openAIRouterModels(models), defaultModel, true)
+}
+
+func openAIRouterModels(models []auth.RouterModel) []auth.RouterModel {
+	openAI := make([]auth.RouterModel, 0, len(models))
+	for _, m := range models {
+		if m.Provider == "openai" {
+			openAI = append(openAI, m)
+		}
+	}
+	return openAI
+}
+
+func writeCodexProfile(path, routerURL string, models []auth.RouterModel, defaultModel string, chatGPT bool) (int, error) {
 	if len(models) == 0 {
 		return 0, errNoModelsToOffer
 	}
@@ -958,13 +980,13 @@ func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel
 		return 0, err
 	}
 	body := renderTOMLSettings(launch.CodexProviderSettings(
-		codexDefaultModel(models, defaultModel), routerURL, ""))
+		codexDefaultModel(models, defaultModel), routerURL, "", chatGPT))
 	header := "# Written by 'orq setup'. Use it with: codex --profile " + codexProfileName + "\n" +
 		"# Regenerated on every run; edit " + codexBaseConfigPath() + " instead.\n\n"
 	return 0, os.WriteFile(path, []byte(header+body), 0o600)
 }
 
-// renderTOMLSettings hoists undotted keys above the tables: a root key after a table header belongs to that table.
+// renderTOMLSettings hoists undotted keys above the tables: a root key after a table header belongs to that table. Values arrive TOML-encoded.
 func renderTOMLSettings(settings [][2]string) string {
 	var root strings.Builder
 	tables := map[string]*strings.Builder{}
@@ -973,7 +995,7 @@ func renderTOMLSettings(settings [][2]string) string {
 		key, value := kv[0], kv[1]
 		dot := strings.LastIndex(key, ".")
 		if dot < 0 {
-			fmt.Fprintf(&root, "%s = %s\n", key, launch.TOMLString(value))
+			fmt.Fprintf(&root, "%s = %s\n", key, value)
 			continue
 		}
 		header, field := key[:dot], key[dot+1:]
@@ -984,7 +1006,7 @@ func renderTOMLSettings(settings [][2]string) string {
 			order = append(order, header)
 			fmt.Fprintf(b, "[%s]\n", header)
 		}
-		fmt.Fprintf(b, "%s = %s\n", field, launch.TOMLString(value))
+		fmt.Fprintf(b, "%s = %s\n", field, value)
 	}
 	out := root.String()
 	for _, header := range order {

@@ -1064,7 +1064,7 @@ components:
       properties:
         file_data:
           type: "string"
-          description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+          description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
         uri:
           type: "string"
           description: "URL of the file. Supported for PDFs on Anthropic Claude models and for `https://` and Google Cloud Storage `gs://` URIs on Vertex AI Gemini models."
@@ -1747,21 +1747,19 @@ components:
           description: "MCP tool type"
         key:
           type: "string"
-          description: "The key of the parent MCP tool"
+          description: "The key of the MCP server or MCP gateway"
         id:
           type: "string"
-          description: "The ID of the parent MCP tool"
+          description: "The ID of the MCP server or MCP gateway"
         tool_id:
           type: "string"
-          description: "The ID of the specific nested tool within the MCP server"
+          description: "The ID of a specific tool within the MCP server. Omit to attach every tool the server or gateway exposes."
         requires_approval:
           type: "boolean"
           default: false
           description: "Whether this tool requires approval before execution"
-      required:
-        - "tool_id"
       title: "MCP Tool"
-      description: "Executes tools from Model Context Protocol (MCP) servers. Specify the parent MCP tool using \"key\" or \"id\", and the specific nested tool using \"tool_id\"."
+      description: "Executes tools from Model Context Protocol (MCP) servers and gateways. Reference the server or gateway using \"key\" or \"id\"; add \"tool_id\" to attach a single tool, or omit it to attach every tool it exposes."
       example:
         type: "mcp"
         id: "01KA84ND5J0SWQMA2Q8HY5WZZZ"
@@ -2558,7 +2556,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m5a5qh3ybevdbts47echc5h7"
+              default: "reasoning_01m5hpwhvhmsnkza780w5cv3qj"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -3069,6 +3067,9 @@ components:
                       tool_id:
                         type: "string"
                         description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                      whole_server:
+                        type: "boolean"
+                        description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                       conditions:
                         type: "array"
                         items:
@@ -3814,6 +3815,9 @@ components:
                 tool_id:
                   type: "string"
                   description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                whole_server:
+                  type: "boolean"
+                  description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                 conditions:
                   type: "array"
                   items:
@@ -8693,7 +8697,7 @@ components:
           type: "object"
           additionalProperties:
             type: "string"
-          description: "Maps each placeholder (e.g. \"<PERSON_1>\") to the original value it replaced."
+          description: "Maps each placeholder (e.g. `<PERSON_1>`) to the original value it replaced."
     RestoreRequest:
       type: "object"
       properties:
@@ -11071,6 +11075,8 @@ components:
         cache_write_cost:
           format: "double"
           type: "number"
+        configuration:
+          $ref: "#/components/schemas/PrivateModelConfiguration"
         description:
           type: "string"
         display_name:
@@ -11091,6 +11097,7 @@ components:
         model_family:
           type: "string"
         model_id:
+          description: "Immutable workspace-unique slug when configuration.model_id is supplied."
           type: "string"
         model_type:
           type: "string"
@@ -11106,6 +11113,8 @@ components:
         supports_json_mode:
           type: "boolean"
         supports_json_schema:
+          type: "boolean"
+        supports_mid_conversation_system:
           type: "boolean"
         supports_strict_tool:
           type: "boolean"
@@ -11173,6 +11182,7 @@ components:
         model_family:
           type: "string"
         model_id:
+          description: "Immutable workspace-unique slug when configuration.model_id is supplied."
           maxLength: 256
           type: "string"
         model_type:
@@ -11218,6 +11228,8 @@ components:
         cache_write_cost:
           format: "double"
           type: "number"
+        configuration:
+          $ref: "#/components/schemas/PrivateModelConfiguration"
         cost_per_image:
           format: "double"
           type: "number"
@@ -11235,6 +11247,7 @@ components:
           format: "int64"
           type: "integer"
         model_id:
+          description: "Immutable workspace-unique slug when configuration.model_id is supplied."
           type: "string"
         model_type:
           type: "string"
@@ -11304,6 +11317,10 @@ components:
         configuration:
           $ref: "#/components/schemas/VertexConfiguration"
         display_name:
+          type: "string"
+        model_id:
+          description: "Immutable private-model slug; defaults to display_name."
+          maxLength: 128
           type: "string"
       required:
         - "display_name"
@@ -11380,6 +11397,9 @@ components:
       properties:
         litellm_params:
           $ref: "#/components/schemas/LiteLLMParams"
+        model_id:
+          maxLength: 128
+          type: "string"
         model_info:
           $ref: "#/components/schemas/LiteLLMModelInfo"
         model_name:
@@ -11494,6 +11514,8 @@ components:
         is_tuned_model:
           type: "boolean"
         location:
+          type: "string"
+        model_id:
           type: "string"
         project_id:
           type: "string"
@@ -11687,6 +11709,8 @@ components:
         cost_per_image:
           format: "double"
           type: "number"
+        default_speech_response_format:
+          type: "string"
         deprecation_date:
           type: "string"
         embedding_dimensions:
@@ -11900,6 +11924,8 @@ components:
           type: "boolean"
         supports_max_completion_tokens:
           type: "boolean"
+        supports_mid_conversation_system:
+          type: "boolean"
         supports_native_classify:
           type: "boolean"
         supports_openai_realtime_api:
@@ -11917,6 +11943,8 @@ components:
         supports_reasoning_effort_default:
           type: "boolean"
         supports_reasoning_effort_high:
+          type: "boolean"
+        supports_reasoning_effort_instant:
           type: "boolean"
         supports_reasoning_effort_low:
           type: "boolean"
@@ -12193,6 +12221,8 @@ components:
           $ref: "#/components/schemas/Price"
         cache_read:
           $ref: "#/components/schemas/Price"
+        cache_write_12h:
+          $ref: "#/components/schemas/Price"
         cache_write_1h:
           $ref: "#/components/schemas/Price"
         cache_write_30m:
@@ -12229,6 +12259,8 @@ components:
           $ref: "#/components/schemas/Price"
         cache_read:
           $ref: "#/components/schemas/Price"
+        cache_write_12h:
+          $ref: "#/components/schemas/Price"
         cache_write_1h:
           $ref: "#/components/schemas/Price"
         cache_write_30m:
@@ -12251,6 +12283,15 @@ components:
           type: "string"
       required:
         - "when"
+      type: "object"
+    PrivateModelConfiguration:
+      additionalProperties: false
+      properties:
+        model_id:
+          description: "Model identifier sent to the provider."
+          type: "string"
+      required:
+        - "model_id"
       type: "object"
     RequestLimit:
       additionalProperties: false
@@ -12324,6 +12365,8 @@ components:
         cache_write_cost:
           format: "double"
           type: "number"
+        configuration:
+          $ref: "#/components/schemas/PrivateModelConfiguration"
         description:
           type: "string"
         display_name:
@@ -12355,6 +12398,8 @@ components:
         supports_json_mode:
           type: "boolean"
         supports_json_schema:
+          type: "boolean"
+        supports_mid_conversation_system:
           type: "boolean"
         supports_strict_tool:
           type: "boolean"
@@ -12407,6 +12452,9 @@ components:
           type: "number"
         metadata:
           $ref: "#/components/schemas/ModelMetadata"
+        model_id:
+          description: "Immutable private-model slug."
+          type: "string"
         model_type:
           type: "string"
         output_cost:
@@ -12430,6 +12478,8 @@ components:
         cache_write_cost:
           format: "double"
           type: "number"
+        configuration:
+          $ref: "#/components/schemas/PrivateModelConfiguration"
         cost_per_image:
           format: "double"
           type: "number"
@@ -15132,11 +15182,6 @@ components:
       type: "string"
       enum:
         - "DOMAIN_GROUP_WORKSPACE_ADMIN"
-    McpGatewayStatus:
-      type: "string"
-      enum:
-        - "MCP_GATEWAY_STATUS_ACTIVE"
-        - "MCP_GATEWAY_STATUS_DISABLED"
     ListMcpGatewaysResponse:
       type: "object"
       properties:
@@ -15240,9 +15285,6 @@ components:
         tool_naming:
           description: "How upstream tool names are namespaced before they are exposed."
           $ref: "#/components/schemas/McpToolNaming"
-        status:
-          description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration."
-          $ref: "#/components/schemas/McpGatewayStatus"
         mode:
           description: "Shape of the tool surface presented to MCP clients: CODE or DIRECT."
           $ref: "#/components/schemas/McpGatewayMode"
@@ -15294,9 +15336,6 @@ components:
         tool_naming:
           description: "How upstream tool names are namespaced before they are exposed."
           $ref: "#/components/schemas/McpToolNaming"
-        status:
-          description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration."
-          $ref: "#/components/schemas/McpGatewayStatus"
         public_url:
           type: "string"
           description: "Endpoint MCP clients connect to; relative when the deployment has no public base URL configured."
@@ -18880,6 +18919,19 @@ components:
       required:
         - "type"
       type: "object"
+    CacheWriteTokensDetails:
+      additionalProperties: false
+      properties:
+        ttl_12h_tokens:
+          format: "int64"
+          type: "integer"
+        ttl_30m_tokens:
+          format: "int64"
+          type: "integer"
+      required:
+        - "ttl_30m_tokens"
+        - "ttl_12h_tokens"
+      type: "object"
     ClassifyAnswer:
       description: "One answer to a classification question. The type selects the answer fields. A refusal contains only type."
       discriminator:
@@ -19529,6 +19581,8 @@ components:
         cache_write_tokens:
           format: "int64"
           type: "integer"
+        cache_write_tokens_details:
+          $ref: "#/components/schemas/CacheWriteTokensDetails"
         cached_tokens:
           format: "int64"
           type: "integer"
@@ -19638,6 +19692,7 @@ components:
         ttl:
           enum:
             - "30m"
+            - "12h"
           type: "string"
       type: "object"
     OrqAdvisorTool:
@@ -19668,6 +19723,7 @@ components:
           description: "Reasoning effort for supported models. Omit to use the provider default."
           enum:
             - "none"
+            - "instant"
             - "minimal"
             - "low"
             - "medium"
@@ -19717,6 +19773,7 @@ components:
           description: "Reasoning effort for supported models. Omit to use the provider default."
           enum:
             - "none"
+            - "instant"
             - "minimal"
             - "low"
             - "medium"
@@ -20016,6 +20073,21 @@ components:
                                     - "type"
                                   title: "Cache control"
                                   type: "object"
+                                prompt_cache_breakpoint:
+                                  description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                  properties:
+                                    mode:
+                                      enum:
+                                        - "explicit"
+                                      type: "string"
+                                    ttl:
+                                      enum:
+                                        - "30m"
+                                        - "12h"
+                                      type: "string"
+                                  required:
+                                    - "mode"
+                                  type: "object"
                                 text:
                                   description: "The text content."
                                   type: "string"
@@ -20061,6 +20133,21 @@ components:
                                 image_url:
                                   description: "The URL of the image."
                                   type: "string"
+                                prompt_cache_breakpoint:
+                                  description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                  properties:
+                                    mode:
+                                      enum:
+                                        - "explicit"
+                                      type: "string"
+                                    ttl:
+                                      enum:
+                                        - "30m"
+                                        - "12h"
+                                      type: "string"
+                                  required:
+                                    - "mode"
+                                  type: "object"
                                 type:
                                   enum:
                                     - "input_image"
@@ -20104,6 +20191,21 @@ components:
                                 mime_type:
                                   description: "The MIME type of the file (e.g., application/pdf)."
                                   type: "string"
+                                prompt_cache_breakpoint:
+                                  description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                  properties:
+                                    mode:
+                                      enum:
+                                        - "explicit"
+                                      type: "string"
+                                    ttl:
+                                      enum:
+                                        - "30m"
+                                        - "12h"
+                                      type: "string"
+                                  required:
+                                    - "mode"
+                                  type: "object"
                                 type:
                                   enum:
                                     - "input_file"
@@ -20214,10 +20316,10 @@ components:
         metadata:
           additionalProperties:
             type: "string"
-          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400."
+          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400."
           type: "object"
         model:
-          description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform."
+          description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform."
           type: "string"
         parallel_tool_calls:
           description: "Whether to allow parallel tool calls."
@@ -20241,7 +20343,7 @@ components:
           type: "string"
         prompt_cache_options:
           $ref: "#/components/schemas/OpenAIPromptCacheOptions"
-          description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m."
+          description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate."
         reasoning:
           $ref: "#/components/schemas/ReasoningParam"
           description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
@@ -20778,7 +20880,7 @@ components:
         metadata:
           additionalProperties:
             type: "string"
-          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+          description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
           type: "object"
         model:
           type: "string"
@@ -21094,6 +21196,7 @@ components:
           description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
           enum:
             - "none"
+            - "instant"
             - "minimal"
             - "low"
             - "medium"
@@ -21119,6 +21222,7 @@ components:
           description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
           enum:
             - "none"
+            - "instant"
             - "minimal"
             - "low"
             - "medium"
@@ -23306,6 +23410,7 @@ paths:
                       - "tensorix"
                       - "scaleway"
                       - "hcompany"
+                      - "inception"
                       - "inceptron"
                       - "wafer"
                       - "poolside"
@@ -24592,6 +24697,7 @@ paths:
                           - tensorix
                           - scaleway
                           - hcompany
+                          - inception
                           - inceptron
                           - wafer
                           - poolside
@@ -25215,6 +25321,7 @@ paths:
                                 - "tensorix"
                                 - "scaleway"
                                 - "hcompany"
+                                - "inception"
                                 - "inceptron"
                                 - "wafer"
                                 - "poolside"
@@ -25309,7 +25416,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -25714,6 +25821,7 @@ paths:
                                 - "tensorix"
                                 - "scaleway"
                                 - "hcompany"
+                                - "inception"
                                 - "inceptron"
                                 - "wafer"
                                 - "poolside"
@@ -25808,7 +25916,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -26113,6 +26221,7 @@ paths:
                                   - "tensorix"
                                   - "scaleway"
                                   - "hcompany"
+                                  - "inception"
                                   - "inceptron"
                                   - "wafer"
                                   - "poolside"
@@ -26249,7 +26358,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M5A5QH2SK2FFMFZ4QTVFBK4F"
+                                default: "01M5HPWHT2YFQ79PRBS0XG8SGH"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -27477,7 +27586,7 @@ paths:
                                         properties:
                                           file_data:
                                             type: "string"
-                                            description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                            description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                           uri:
                                             type: "string"
                                             description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -27884,13 +27993,14 @@ paths:
                               type: "string"
                               enum:
                                 - "none"
+                                - "instant"
                                 - "minimal"
                                 - "low"
                                 - "medium"
                                 - "high"
                                 - "xhigh"
                                 - "max"
-                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                             verbosity:
                               type: "string"
                               description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -28240,13 +28350,14 @@ paths:
                                 type: "string"
                                 enum:
                                   - "none"
+                                  - "instant"
                                   - "minimal"
                                   - "low"
                                   - "medium"
                                   - "high"
                                   - "xhigh"
                                   - "max"
-                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                               verbosity:
                                 type: "string"
                                 description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -28874,6 +28985,9 @@ paths:
                             tool_id:
                               type: "string"
                               description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                            whole_server:
+                              type: "boolean"
+                              description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                             conditions:
                               type: "array"
                               items:
@@ -29061,13 +29175,14 @@ paths:
                             type: "string"
                             enum:
                               - "none"
+                              - "instant"
                               - "minimal"
                               - "low"
                               - "medium"
                               - "high"
                               - "xhigh"
                               - "max"
-                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                           verbosity:
                             type: "string"
                             description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -29414,13 +29529,14 @@ paths:
                                       type: "string"
                                       enum:
                                         - "none"
+                                        - "instant"
                                         - "minimal"
                                         - "low"
                                         - "medium"
                                         - "high"
                                         - "xhigh"
                                         - "max"
-                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                     verbosity:
                                       type: "string"
                                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -29953,6 +30069,9 @@ paths:
                                   tool_id:
                                     type: "string"
                                     description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                                  whole_server:
+                                    type: "boolean"
+                                    description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                                   conditions:
                                     type: "array"
                                     items:
@@ -30140,13 +30259,14 @@ paths:
                                   type: "string"
                                   enum:
                                     - "none"
+                                    - "instant"
                                     - "minimal"
                                     - "low"
                                     - "medium"
                                     - "high"
                                     - "xhigh"
                                     - "max"
-                                  description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                  description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                 verbosity:
                                   type: "string"
                                   description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -30493,13 +30613,14 @@ paths:
                                             type: "string"
                                             enum:
                                               - "none"
+                                              - "instant"
                                               - "minimal"
                                               - "low"
                                               - "medium"
                                               - "high"
                                               - "xhigh"
                                               - "max"
-                                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                           verbosity:
                                             type: "string"
                                             description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -30788,6 +30909,7 @@ paths:
       x-speakeasy-max-method-params: 13
       x-cli-group: "agents-responses"
       x-cli-name: "create"
+      x-cli-hidden: true
       x-code-samples:
         - lang: "curl"
           label: "cURL"
@@ -30846,6 +30968,7 @@ paths:
       x-speakeasy-name-override: "get"
       x-cli-group: "agents"
       x-cli-name: "getResponse"
+      x-cli-hidden: true
       operationId: "GetAgentResponse"
       summary: "Get response"
       description: "Retrieve an agent response by task ID, including output, model info, token usage, and execution status."
@@ -31144,6 +31267,9 @@ paths:
                             tool_id:
                               type: "string"
                               description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                            whole_server:
+                              type: "boolean"
+                              description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                             conditions:
                               type: "array"
                               items:
@@ -31331,13 +31457,14 @@ paths:
                             type: "string"
                             enum:
                               - "none"
+                              - "instant"
                               - "minimal"
                               - "low"
                               - "medium"
                               - "high"
                               - "xhigh"
                               - "max"
-                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                           verbosity:
                             type: "string"
                             description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -31684,13 +31811,14 @@ paths:
                                       type: "string"
                                       enum:
                                         - "none"
+                                        - "instant"
                                         - "minimal"
                                         - "low"
                                         - "medium"
                                         - "high"
                                         - "xhigh"
                                         - "max"
-                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                     verbosity:
                                       type: "string"
                                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -32114,13 +32242,14 @@ paths:
                               type: "string"
                               enum:
                                 - "none"
+                                - "instant"
                                 - "minimal"
                                 - "low"
                                 - "medium"
                                 - "high"
                                 - "xhigh"
                                 - "max"
-                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                             verbosity:
                               type: "string"
                               description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -32470,13 +32599,14 @@ paths:
                                 type: "string"
                                 enum:
                                   - "none"
+                                  - "instant"
                                   - "minimal"
                                   - "low"
                                   - "medium"
                                   - "high"
                                   - "xhigh"
                                   - "max"
-                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                               verbosity:
                                 type: "string"
                                 description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -33106,6 +33236,9 @@ paths:
                             tool_id:
                               type: "string"
                               description: "Nested tool ID for MCP tools (identifies specific tool within MCP server)"
+                            whole_server:
+                              type: "boolean"
+                              description: "Set by the API on MCP tools resolved from a whole MCP server or gateway; they are resolved again on every save."
                             conditions:
                               type: "array"
                               items:
@@ -33293,13 +33426,14 @@ paths:
                             type: "string"
                             enum:
                               - "none"
+                              - "instant"
                               - "minimal"
                               - "low"
                               - "medium"
                               - "high"
                               - "xhigh"
                               - "max"
-                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                           verbosity:
                             type: "string"
                             description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -33646,13 +33780,14 @@ paths:
                                       type: "string"
                                       enum:
                                         - "none"
+                                        - "instant"
                                         - "minimal"
                                         - "low"
                                         - "medium"
                                         - "high"
                                         - "xhigh"
                                         - "max"
-                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                     verbosity:
                                       type: "string"
                                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -33943,6 +34078,7 @@ paths:
         - "Agents"
       x-cli-group: "agents"
       x-cli-name: "invoke"
+      x-cli-hidden: true
       deprecated: true
       x-speakeasy-group: "agents"
       x-speakeasy-name-override: "invoke"
@@ -34268,6 +34404,7 @@ paths:
         - "Agents"
       x-cli-group: "agents"
       x-cli-name: "run"
+      x-cli-hidden: true
       deprecated: true
       x-speakeasy-group: "agents"
       x-speakeasy-name-override: "run"
@@ -34381,13 +34518,14 @@ paths:
                               type: "string"
                               enum:
                                 - "none"
+                                - "instant"
                                 - "minimal"
                                 - "low"
                                 - "medium"
                                 - "high"
                                 - "xhigh"
                                 - "max"
-                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                             verbosity:
                               type: "string"
                               description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -34737,13 +34875,14 @@ paths:
                                 type: "string"
                                 enum:
                                   - "none"
+                                  - "instant"
                                   - "minimal"
                                   - "low"
                                   - "medium"
                                   - "high"
                                   - "xhigh"
                                   - "max"
-                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                               verbosity:
                                 type: "string"
                                 description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -35606,7 +35745,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5A5QH5N8YJC2RFZW5PSDHSC"
+                                          default: "01M5HPWHXX60PW1AW6ANAAW8JM"
                                         name:
                                           type: "string"
                                         description:
@@ -35887,6 +36026,7 @@ paths:
         - "Agents"
       x-cli-group: "agents"
       x-cli-name: "streamRun"
+      x-cli-hidden: true
       deprecated: true
       x-speakeasy-group: "agents"
       x-speakeasy-name-override: "streamRun"
@@ -36000,13 +36140,14 @@ paths:
                               type: "string"
                               enum:
                                 - "none"
+                                - "instant"
                                 - "minimal"
                                 - "low"
                                 - "medium"
                                 - "high"
                                 - "xhigh"
                                 - "max"
-                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                             verbosity:
                               type: "string"
                               description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -36356,13 +36497,14 @@ paths:
                                 type: "string"
                                 enum:
                                   - "none"
+                                  - "instant"
                                   - "minimal"
                                   - "low"
                                   - "medium"
                                   - "high"
                                   - "xhigh"
                                   - "max"
-                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                               verbosity:
                                 type: "string"
                                 description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -37225,7 +37367,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5A5QH6ATEHBTFC1GY3H5FY5"
+                                          default: "01M5HPWHYN2Z6C0WWAWZB48SNK"
                                         name:
                                           type: "string"
                                         description:
@@ -37466,6 +37608,7 @@ paths:
         - "Agents"
       x-cli-group: "agents"
       x-cli-name: "stream"
+      x-cli-hidden: true
       deprecated: true
       x-speakeasy-group: "agents"
       x-speakeasy-name-override: "stream"
@@ -38073,6 +38216,7 @@ paths:
                                 - "tensorix"
                                 - "scaleway"
                                 - "hcompany"
+                                - "inception"
                                 - "inceptron"
                                 - "wafer"
                                 - "poolside"
@@ -38180,7 +38324,7 @@ paths:
                                                   properties:
                                                     file_data:
                                                       type: "string"
-                                                      description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                      description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                     uri:
                                                       type: "string"
                                                       description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -38361,13 +38505,14 @@ paths:
                               type: "string"
                               enum:
                                 - "none"
+                                - "instant"
                                 - "minimal"
                                 - "low"
                                 - "medium"
                                 - "high"
                                 - "xhigh"
                                 - "max"
-                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                              description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                             verbosity:
                               type: "string"
                               description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -39362,13 +39507,14 @@ paths:
                       type: "string"
                       enum:
                         - "none"
+                        - "instant"
                         - "minimal"
                         - "low"
                         - "medium"
                         - "high"
                         - "xhigh"
                         - "max"
-                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                     verbosity:
                       type: "string"
                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -39933,6 +40079,7 @@ paths:
                           - "tensorix"
                           - "scaleway"
                           - "hcompany"
+                          - "inception"
                           - "inceptron"
                           - "wafer"
                           - "poolside"
@@ -40040,7 +40187,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -40221,13 +40368,14 @@ paths:
                         type: "string"
                         enum:
                           - "none"
+                          - "instant"
                           - "minimal"
                           - "low"
                           - "medium"
                           - "high"
                           - "xhigh"
                           - "max"
-                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                       verbosity:
                         type: "string"
                         description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -41086,6 +41234,7 @@ paths:
                           - "tensorix"
                           - "scaleway"
                           - "hcompany"
+                          - "inception"
                           - "inceptron"
                           - "wafer"
                           - "poolside"
@@ -41193,7 +41342,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -41374,13 +41523,14 @@ paths:
                         type: "string"
                         enum:
                           - "none"
+                          - "instant"
                           - "minimal"
                           - "low"
                           - "medium"
                           - "high"
                           - "xhigh"
                           - "max"
-                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                       verbosity:
                         type: "string"
                         description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -42359,13 +42509,14 @@ paths:
                       type: "string"
                       enum:
                         - "none"
+                        - "instant"
                         - "minimal"
                         - "low"
                         - "medium"
                         - "high"
                         - "xhigh"
                         - "max"
-                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                     verbosity:
                       type: "string"
                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -42968,6 +43119,7 @@ paths:
                           - "tensorix"
                           - "scaleway"
                           - "hcompany"
+                          - "inception"
                           - "inceptron"
                           - "wafer"
                           - "poolside"
@@ -43075,7 +43227,7 @@ paths:
                                             properties:
                                               file_data:
                                                 type: "string"
-                                                description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                               uri:
                                                 type: "string"
                                                 description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -43256,13 +43408,14 @@ paths:
                         type: "string"
                         enum:
                           - "none"
+                          - "instant"
                           - "minimal"
                           - "low"
                           - "medium"
                           - "high"
                           - "xhigh"
                           - "max"
-                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                        description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                       verbosity:
                         type: "string"
                         description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -44175,6 +44328,7 @@ paths:
                                     - "tensorix"
                                     - "scaleway"
                                     - "hcompany"
+                                    - "inception"
                                     - "inceptron"
                                     - "wafer"
                                     - "poolside"
@@ -44282,7 +44436,7 @@ paths:
                                                       properties:
                                                         file_data:
                                                           type: "string"
-                                                          description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                          description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                         uri:
                                                           type: "string"
                                                           description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -44463,13 +44617,14 @@ paths:
                                   type: "string"
                                   enum:
                                     - "none"
+                                    - "instant"
                                     - "minimal"
                                     - "low"
                                     - "medium"
                                     - "high"
                                     - "xhigh"
                                     - "max"
-                                  description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                                  description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                                 verbosity:
                                   type: "string"
                                   description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -45329,6 +45484,7 @@ paths:
                               - "tensorix"
                               - "scaleway"
                               - "hcompany"
+                              - "inception"
                               - "inceptron"
                               - "wafer"
                               - "poolside"
@@ -45436,7 +45592,7 @@ paths:
                                                 properties:
                                                   file_data:
                                                     type: "string"
-                                                    description: "The file data as a data URI string in the format 'data:<mime-type>;base64,<base64-encoded-data>'. Example: 'data:image/png;base64,iVBORw0KGgoAAAANS...'"
+                                                    description: "The file data as a data URI string in the format `data:<mime-type>;base64,<base64-encoded-data>`. Example: `data:image/png;base64,iVBORw0KGgoAAAANS...`"
                                                   uri:
                                                     type: "string"
                                                     description: "URL to the file. Only supported by Anthropic Claude models for PDF files."
@@ -45617,13 +45773,14 @@ paths:
                             type: "string"
                             enum:
                               - "none"
+                              - "instant"
                               - "minimal"
                               - "low"
                               - "medium"
                               - "high"
                               - "xhigh"
                               - "max"
-                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                            description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                           verbosity:
                             type: "string"
                             description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -46239,7 +46396,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5A5QH7WXM0MN6T0YGF1DJH4"
+                              default: "tool_01M5HPWJ0D1SF2SAG7SS8SQVE8"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46340,7 +46497,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5A5QH7XRW48GBV6PZEV62P7"
+                              default: "tool_01M5HPWJ0EQPQ3R5JHYMM5QF9N"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46443,7 +46600,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5A5QH7XH1ACKQP2EMME7J6P"
+                              default: "tool_01M5HPWJ0F6GSM0DJD6FDPFZ01"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46587,7 +46744,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5A5QH7YY9VYB0EANKM56B0A"
+                              default: "tool_01M5HPWJ0GSBA8PG0RGVDV6V7N"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47074,7 +47231,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH82G17CP8FSM7ZDM6JN"
+                        default: "tool_01M5HPWJ0N9DA2PKMS6KDGGR4H"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47175,7 +47332,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH833WTFZQZJR3VS17A3"
+                        default: "tool_01M5HPWJ0NF1ESKCG42YDTCQY2"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47278,7 +47435,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH863R0CRAT0EEP6D125"
+                        default: "tool_01M5HPWJ0PTZ9FPX8XJ726YTEX"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47422,7 +47579,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH86EAH30WGET0VRR3TH"
+                        default: "tool_01M5HPWJ0Q9D29MEQ7AWNMBNHF"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47926,7 +48083,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH89X06S70W2ZBJKWY06"
+                        default: "tool_01M5HPWJ0TAQP3DABSQEQ3MCGG"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48027,7 +48184,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8AW8SBZEHZEA7STMF2"
+                        default: "tool_01M5HPWJ0VQ3VTD8RZEHP4MKE2"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48130,7 +48287,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8AGHYY32F4P64J1N4Q"
+                        default: "tool_01M5HPWJ0W8T3J8S0AXMM4KAA8"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48274,7 +48431,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8BZ9A43DVRXAKT0PZQ"
+                        default: "tool_01M5HPWJ0XP46KJRDS2NCPE0SY"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48441,7 +48598,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8JQZS3NM4DG6XEN1K0"
+                        default: "tool_01M5HPWJ14C6T19EQC2GMEG96Z"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48542,7 +48699,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8J2TT78K82RK3WBKAK"
+                        default: "tool_01M5HPWJ14KYW75VSXZEYV298G"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48645,7 +48802,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8KPDB63ESHVZB1DQ3B"
+                        default: "tool_01M5HPWJ15JB60Q0HJ2Z0DJYH6"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48789,7 +48946,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5A5QH8M044NNGMY06JBGBGV"
+                        default: "tool_01M5HPWJ169HSYN292TK98H921"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49491,13 +49648,14 @@ paths:
                       type: "string"
                       enum:
                         - "none"
+                        - "instant"
                         - "minimal"
                         - "low"
                         - "medium"
                         - "high"
                         - "xhigh"
                         - "max"
-                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
+                      description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `instant`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"instant\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"."
                     verbosity:
                       type: "string"
                       description: "Adjusts response verbosity. Lower levels yield shorter answers."
@@ -55242,235 +55400,6 @@ paths:
                 $ref: "#/components/schemas/APIErrorResponse"
       security:
         - ApiKey: []
-  /v2/feedback/evaluation/remove:
-    post:
-      tags:
-        - "Feedback"
-      deprecated: true
-      x-speakeasy-group: "feedback"
-      x-speakeasy-name-override: "removeEvaluation"
-      x-cli-group: "feedback"
-      x-cli-name: "evaluationRemove"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                id:
-                  type: "string"
-                  format: "ulid"
-                trace_id:
-                  type: "string"
-              required:
-                - "id"
-                - "trace_id"
-      responses:
-        "200":
-          description: "Event has been dispatched to delete the evaluation"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      security:
-        - ApiKey: []
-  /v2/feedback/evaluation:
-    post:
-      tags:
-        - "Feedback"
-      deprecated: true
-      x-speakeasy-group: "feedback"
-      x-speakeasy-name-override: "createEvaluation"
-      x-cli-group: "feedback"
-      x-cli-name: "evaluation"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              oneOf:
-                - type: "object"
-                  properties:
-                    id:
-                      type: "string"
-                      description: "The unique identifier of the human evaluation"
-                    evaluation_type:
-                      type: "string"
-                      enum:
-                        - "human_review"
-                      description: "The type of evaluation"
-                    human_review_id:
-                      type: "string"
-                      description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema."
-                    source:
-                      type: "string"
-                      enum:
-                        - "orq"
-                        - "external"
-                      default: "orq"
-                    explanation:
-                      type: "string"
-                      description: "Optional free-text explanation of the value"
-                    reviewed_at:
-                      type: "string"
-                      format: "date-time"
-                      default: "2026-10-19T13:31:02.848Z"
-                      deprecated: true
-                      description: "Deprecated. The date and time the item was reviewed"
-                    type:
-                      type: "string"
-                      enum:
-                        - "string"
-                    value:
-                      type: "string"
-                    trace_id:
-                      type: "string"
-                  required:
-                    - "id"
-                    - "evaluation_type"
-                    - "type"
-                    - "value"
-                    - "trace_id"
-                - type: "object"
-                  properties:
-                    id:
-                      type: "string"
-                      description: "The unique identifier of the human evaluation"
-                    evaluation_type:
-                      type: "string"
-                      enum:
-                        - "human_review"
-                      description: "The type of evaluation"
-                    human_review_id:
-                      type: "string"
-                      description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema."
-                    source:
-                      type: "string"
-                      enum:
-                        - "orq"
-                        - "external"
-                      default: "orq"
-                    explanation:
-                      type: "string"
-                      description: "Optional free-text explanation of the value"
-                    reviewed_at:
-                      type: "string"
-                      format: "date-time"
-                      default: "2026-10-19T13:31:02.848Z"
-                      deprecated: true
-                      description: "Deprecated. The date and time the item was reviewed"
-                    type:
-                      type: "string"
-                      enum:
-                        - "number"
-                    value:
-                      type: "number"
-                    trace_id:
-                      type: "string"
-                  required:
-                    - "id"
-                    - "evaluation_type"
-                    - "type"
-                    - "value"
-                    - "trace_id"
-                - type: "object"
-                  properties:
-                    id:
-                      type: "string"
-                      description: "The unique identifier of the human evaluation"
-                    evaluation_type:
-                      type: "string"
-                      enum:
-                        - "human_review"
-                      description: "The type of evaluation"
-                    human_review_id:
-                      type: "string"
-                      description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema."
-                    source:
-                      type: "string"
-                      enum:
-                        - "orq"
-                        - "external"
-                      default: "orq"
-                    explanation:
-                      type: "string"
-                      description: "Optional free-text explanation of the value"
-                    reviewed_at:
-                      type: "string"
-                      format: "date-time"
-                      default: "2026-10-19T13:31:02.848Z"
-                      deprecated: true
-                      description: "Deprecated. The date and time the item was reviewed"
-                    type:
-                      type: "string"
-                      enum:
-                        - "boolean"
-                    value:
-                      type: "boolean"
-                    trace_id:
-                      type: "string"
-                  required:
-                    - "id"
-                    - "evaluation_type"
-                    - "type"
-                    - "value"
-                    - "trace_id"
-                - type: "object"
-                  properties:
-                    id:
-                      type: "string"
-                      description: "The unique identifier of the human evaluation"
-                    evaluation_type:
-                      type: "string"
-                      enum:
-                        - "human_review"
-                      description: "The type of evaluation"
-                    human_review_id:
-                      type: "string"
-                      description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema."
-                    source:
-                      type: "string"
-                      enum:
-                        - "orq"
-                        - "external"
-                      default: "orq"
-                    explanation:
-                      type: "string"
-                      description: "Optional free-text explanation of the value"
-                    reviewed_at:
-                      type: "string"
-                      format: "date-time"
-                      default: "2026-10-19T13:31:02.848Z"
-                      deprecated: true
-                      description: "Deprecated. The date and time the item was reviewed"
-                    type:
-                      type: "string"
-                      enum:
-                        - "string_array"
-                    values:
-                      type: "array"
-                      items:
-                        type: "string"
-                    trace_id:
-                      type: "string"
-                  required:
-                    - "id"
-                    - "evaluation_type"
-                    - "type"
-                    - "values"
-                    - "trace_id"
-      responses:
-        "200":
-          description: "Event has been dispatched to report the feedback"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      security:
-        - ApiKey: []
   /v2/human-eval-sets:
     get:
       tags:
@@ -55478,6 +55407,8 @@ paths:
       x-cli-group: "human-review-sets"
       x-cli-name: "getAll"
       x-cli-hidden: true
+      deprecated: true
+      description: "Deprecated: Human Review Sets are replaced by project-level human reviews (Annotations) and will be removed in release 4.18."
       x-speakeasy-group: "humanReviewSets"
       x-speakeasy-name-override: "list"
       summary: "Get all human review sets"
@@ -55551,7 +55482,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-19T13:30:54.734Z"
+                          default: "2026-10-22T11:45:26.177Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55559,7 +55490,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-19T13:30:54.735Z"
+                              default: "2026-10-22T11:45:26.178Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55629,7 +55560,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-19T13:30:54.734Z"
+                          default: "2026-10-22T11:45:26.177Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55637,7 +55568,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-19T13:30:54.735Z"
+                              default: "2026-10-22T11:45:26.178Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55672,6 +55603,8 @@ paths:
       x-cli-group: "human-review-sets"
       x-cli-name: "create"
       x-cli-hidden: true
+      deprecated: true
+      description: "Deprecated: Human Review Sets are replaced by project-level human reviews (Annotations) and will be removed in release 4.18."
       x-speakeasy-group: "humanReviewSets"
       x-speakeasy-name-override: "create"
       summary: "Create a human review set"
@@ -55820,7 +55753,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55828,7 +55761,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55898,7 +55831,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55906,7 +55839,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55942,6 +55875,8 @@ paths:
       x-cli-group: "human-review-sets"
       x-cli-name: "get"
       x-cli-hidden: true
+      deprecated: true
+      description: "Deprecated: Human Review Sets are replaced by project-level human reviews (Annotations) and will be removed in release 4.18."
       x-speakeasy-group: "humanReviewSets"
       x-speakeasy-name-override: "get"
       summary: "Get a human review set by ID"
@@ -56007,7 +55942,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56015,7 +55950,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56085,7 +56020,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56093,7 +56028,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56134,6 +56069,8 @@ paths:
       x-cli-group: "human-review-sets"
       x-cli-name: "update"
       x-cli-hidden: true
+      deprecated: true
+      description: "Deprecated: Human Review Sets are replaced by project-level human reviews (Annotations) and will be removed in release 4.18."
       x-speakeasy-group: "humanReviewSets"
       x-speakeasy-name-override: "update"
       summary: "Update a human review set"
@@ -56290,7 +56227,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56298,7 +56235,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56368,7 +56305,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-19T13:30:54.734Z"
+                        default: "2026-10-22T11:45:26.177Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56376,7 +56313,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-19T13:30:54.735Z"
+                            default: "2026-10-22T11:45:26.178Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56411,6 +56348,8 @@ paths:
       x-cli-group: "human-review-sets"
       x-cli-name: "delete"
       x-cli-hidden: true
+      deprecated: true
+      description: "Deprecated: Human Review Sets are replaced by project-level human reviews (Annotations) and will be removed in release 4.18."
       x-speakeasy-group: "humanReviewSets"
       x-speakeasy-name-override: "delete"
       summary: "Delete a human review set"
@@ -64665,6 +64604,7 @@ paths:
                 model_family:
                   type: "string"
                 model_id:
+                  description: "Immutable workspace-unique slug when configuration.model_id is supplied."
                   maxLength: 256
                   type: "string"
                 model_type:
@@ -64853,6 +64793,8 @@ paths:
                 cache_write_cost:
                   format: "double"
                   type: "number"
+                configuration:
+                  $ref: "#/components/schemas/PrivateModelConfiguration"
                 description:
                   type: "string"
                 display_name:
@@ -64873,6 +64815,7 @@ paths:
                 model_family:
                   type: "string"
                 model_id:
+                  description: "Immutable workspace-unique slug when configuration.model_id is supplied."
                   type: "string"
                 model_type:
                   type: "string"
@@ -64888,6 +64831,8 @@ paths:
                 supports_json_mode:
                   type: "boolean"
                 supports_json_schema:
+                  type: "boolean"
+                supports_mid_conversation_system:
                   type: "boolean"
                 supports_strict_tool:
                   type: "boolean"
@@ -65121,6 +65066,8 @@ paths:
                 cache_write_cost:
                   format: "double"
                   type: "number"
+                configuration:
+                  $ref: "#/components/schemas/PrivateModelConfiguration"
                 description:
                   type: "string"
                 display_name:
@@ -65152,6 +65099,8 @@ paths:
                 supports_json_mode:
                   type: "boolean"
                 supports_json_schema:
+                  type: "boolean"
+                supports_mid_conversation_system:
                   type: "boolean"
                 supports_strict_tool:
                   type: "boolean"
@@ -65455,6 +65404,8 @@ paths:
                 cache_write_cost:
                   format: "double"
                   type: "number"
+                configuration:
+                  $ref: "#/components/schemas/PrivateModelConfiguration"
                 cost_per_image:
                   format: "double"
                   type: "number"
@@ -65472,6 +65423,7 @@ paths:
                   format: "int64"
                   type: "integer"
                 model_id:
+                  description: "Immutable workspace-unique slug when configuration.model_id is supplied."
                   type: "string"
                 model_type:
                   type: "string"
@@ -65657,6 +65609,8 @@ paths:
                 cache_write_cost:
                   format: "double"
                   type: "number"
+                configuration:
+                  $ref: "#/components/schemas/PrivateModelConfiguration"
                 cost_per_image:
                   format: "double"
                   type: "number"
@@ -65895,6 +65849,10 @@ paths:
                   $ref: "#/components/schemas/VertexConfiguration"
                 display_name:
                   type: "string"
+                model_id:
+                  description: "Immutable private-model slug; defaults to display_name."
+                  maxLength: 128
+                  type: "string"
               required:
                 - "display_name"
                 - "configuration"
@@ -66088,6 +66046,9 @@ paths:
                   type: "number"
                 metadata:
                   $ref: "#/components/schemas/ModelMetadata"
+                model_id:
+                  description: "Immutable private-model slug."
+                  type: "string"
                 model_type:
                   type: "string"
                 output_cost:
@@ -69929,11 +69890,6 @@ paths:
           description: "Case-insensitive match against the gateway key and display name."
           schema:
             type: "string"
-        - name: "status"
-          in: "query"
-          description: "Returns only gateways in this status."
-          schema:
-            $ref: "#/components/schemas/McpGatewayStatus"
       responses:
         "200":
           description: "OK"
@@ -69954,13 +69910,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List MCP gateways"
-          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'status=MCP_GATEWAY_STATUS_ACTIVE'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List MCP gateways"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list(\n    limit=25,\n    status=\"MCP_GATEWAY_STATUS_ACTIVE\",\n)\n\nfor gateway in page.data:\n    print(gateway.key, gateway.public_url, gateway.exposed_tools_count)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list(limit=25)\n\nfor gateway in page.data:\n    print(gateway.key, gateway.public_url, gateway.exposed_tools_count)\n"
         - lang: "typescript"
           label: "Node.js - List MCP gateways"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.mcpGateways.list({\n  limit: 25,\n  status: 'MCP_GATEWAY_STATUS_ACTIVE',\n});\n\nfor (const gateway of page.data) {\n  console.log(gateway.key, gateway.publicUrl, gateway.exposedToolsCount);\n}\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.mcpGateways.list({\n  limit: 25,\n});\n\nfor (const gateway of page.data) {\n  console.log(gateway.key, gateway.publicUrl, gateway.exposedToolsCount);\n}\n"
       security:
         - ApiKey: []
     post:
@@ -70120,10 +70076,10 @@ paths:
           source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an MCP gateway"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_gateways.retrieve(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n\n# public_url is the endpoint MCP clients connect to.\nprint(result.mcp_gateway.public_url, result.mcp_gateway.status)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_gateways.retrieve(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n\n# public_url is the endpoint MCP clients connect to.\nprint(result.mcp_gateway.public_url)\n"
         - lang: "typescript"
           label: "Node.js - Retrieve an MCP gateway"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpGateways.retrieve({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n});\n\n// publicUrl is the endpoint MCP clients connect to.\nconsole.log(result.mcpGateway.publicUrl, result.mcpGateway.status);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpGateways.retrieve({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n});\n\n// publicUrl is the endpoint MCP clients connect to.\nconsole.log(result.mcpGateway.publicUrl);\n"
       security:
         - ApiKey: []
     delete:
@@ -70208,9 +70164,6 @@ paths:
         - lang: "curl"
           label: "Core - Narrow the tools a gateway exposes"
           source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": {\n          \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n          \"tool_ids\": [\n            \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n            \"01JQ0KB5P9WF2G7H4J6K8L1NQD\"\n          ]\n        }\n      }\n    ]\n  }'\n"
-        - lang: "curl"
-          label: "Core - Disable a gateway"
-          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"status\": \"MCP_GATEWAY_STATUS_DISABLED\" }'\n"
         - lang: "python"
           label: "Python - Narrow the tools a gateway exposes"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_ids come from McpTool.id. A tool renamed upstream gets a new id\n# on the next sync, which drops it from this allowlist.\nresult = client.mcp_gateways.update(\n    id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\n                \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n                \"tool_ids\": [\n                    \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n                    \"01JQ0KB5P9WF2G7H4J6K8L1NQD\",\n                ],\n            },\n        },\n    ],\n)\n\nprint(result.mcp_gateway.exposed_tools_count)\n"
@@ -76548,6 +76501,21 @@ paths:
                                             - "type"
                                           title: "Cache control"
                                           type: "object"
+                                        prompt_cache_breakpoint:
+                                          description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                          properties:
+                                            mode:
+                                              enum:
+                                                - "explicit"
+                                              type: "string"
+                                            ttl:
+                                              enum:
+                                                - "30m"
+                                                - "12h"
+                                              type: "string"
+                                          required:
+                                            - "mode"
+                                          type: "object"
                                         text:
                                           description: "The text content."
                                           type: "string"
@@ -76593,6 +76561,21 @@ paths:
                                         image_url:
                                           description: "The URL of the image."
                                           type: "string"
+                                        prompt_cache_breakpoint:
+                                          description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                          properties:
+                                            mode:
+                                              enum:
+                                                - "explicit"
+                                              type: "string"
+                                            ttl:
+                                              enum:
+                                                - "30m"
+                                                - "12h"
+                                              type: "string"
+                                          required:
+                                            - "mode"
+                                          type: "object"
                                         type:
                                           enum:
                                             - "input_image"
@@ -76636,6 +76619,21 @@ paths:
                                         mime_type:
                                           description: "The MIME type of the file (e.g., application/pdf)."
                                           type: "string"
+                                        prompt_cache_breakpoint:
+                                          description: "An explicit OpenAI cache boundary for GPT-5.6 and later. Omitted ttl inherits prompt_cache_options.ttl."
+                                          properties:
+                                            mode:
+                                              enum:
+                                                - "explicit"
+                                              type: "string"
+                                            ttl:
+                                              enum:
+                                                - "30m"
+                                                - "12h"
+                                              type: "string"
+                                          required:
+                                            - "mode"
+                                          type: "object"
                                         type:
                                           enum:
                                             - "input_file"
@@ -76746,10 +76744,10 @@ paths:
                 metadata:
                   additionalProperties:
                     type: "string"
-                  description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400."
+                  description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`). Non-string values are rejected with a 400."
                   type: "object"
                 model:
-                  description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform."
+                  description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform."
                   type: "string"
                 parallel_tool_calls:
                   description: "Whether to allow parallel tool calls."
@@ -76773,7 +76771,7 @@ paths:
                   type: "string"
                 prompt_cache_options:
                   $ref: "#/components/schemas/OpenAIPromptCacheOptions"
-                  description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m."
+                  description: "OpenAI prompt cache options. GPT-5.6 and later support ttl=30m (default) or 12h. 12h cache writes cost twice the 30m rate."
                 reasoning:
                   $ref: "#/components/schemas/ReasoningParam"
                   description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
@@ -77168,7 +77166,7 @@ paths:
                   metadata:
                     additionalProperties:
                       type: "string"
-                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
                     type: "object"
                   model:
                     type: "string"
@@ -77408,7 +77406,7 @@ paths:
                   metadata:
                     additionalProperties:
                       type: "string"
-                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>)."
+                    description: "Developer-defined key-value pairs attached to the response (OpenAI spec: `Map<string, string>`)."
                     type: "object"
                   model:
                     type: "string"

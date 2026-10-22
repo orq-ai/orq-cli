@@ -294,3 +294,27 @@ func TestDefaultLaunchLeavesProviderSwitchesAlone(t *testing.T) {
 		t.Errorf("a default launch touched the provider switch: %v", plan.Env)
 	}
 }
+
+func TestClaudeSubscriptionKeepsOwnLogin(t *testing.T) {
+	flags := routerFlags(GatewayFlags{Subscription: true})
+	plan, err := resolveClaude(claudeCtx(nil, flags))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		plan.Cleanup()
+	}
+	if v, ok := plan.Env["ANTHROPIC_AUTH_TOKEN"]; !ok || v != "" {
+		t.Fatalf("auth token must be set empty, got %q", v)
+	}
+	if plan.Env["ANTHROPIC_CUSTOM_HEADERS"] != "x-orq-api-key: orq-key" {
+		t.Fatalf("headers: %q", plan.Env["ANTHROPIC_CUSTOM_HEADERS"])
+	}
+	flags.Model = "openai/gpt-5.4"
+	if _, err := resolveClaude(claudeCtx(nil, flags)); err == nil {
+		t.Fatal("non-anthropic model should be rejected")
+	}
+	if _, err := resolveClaude(claudeCtx(nil, GatewayFlags{Subscription: true})); err == nil {
+		t.Fatal("--subscription with --no-gateway should be rejected")
+	}
+}

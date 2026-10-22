@@ -17,11 +17,11 @@ import (
 // file. A login's tokens — the refresh token, the bootstrap and workspace
 // access tokens, the gateway key — are the crown jewels: the refresh token
 // alone re-mints workspace access for every workspace the user can reach.
-// Until now they sat in ~/.orq/sessions/<host>.json at 0600, which stops other
-// users but not any process running as the user, nor the backup, sync, and
-// crash-report tools that walk $HOME. This moves them into the OS secure store,
-// keyed per server host exactly like the session files, and leaves the
-// non-secret state in the JSON so it stays inspectable.
+// A 0600 file such as ~/.orq/sessions/<host>.json stops other users but not
+// any process running as the user, nor the backup, sync, and crash-report tools
+// that walk $HOME, so they live in the OS secure store, keyed per server host
+// exactly like the session files. The non-secret state stays in the JSON so it
+// stays inspectable.
 //
 // Shelling out to the platform tool is deliberate: it needs no cgo and no new
 // dependency. The one cost is that the write must not pass the secret in argv,
@@ -47,6 +47,8 @@ type SecretStore interface {
 	Load(host string) (secret string, ok bool, err error)
 	Save(host, secret string) error
 	Delete(host string) error
+	// ID is the stable marker a session file records, e.g. "keychain".
+	ID() string
 	// Name is a short label for `orq doctor`, e.g. "macOS Keychain".
 	Name() string
 	// ClearHint is the shell command that removes host's entry by hand, printed
@@ -122,22 +124,39 @@ func ResolveSecretStore(getenv func(string) string) SecretStore {
 	return nil
 }
 
-// storeNamed returns the store whose Name is name, so a session file's
-// SecretStore marker can be turned back into a ClearHint when this process
-// resolved no store. nil for a name no build of this CLI writes.
-func storeNamed(name string) SecretStore {
+// storeNamed returns the store whose ID is id, so a session file's
+// SecretStore marker can be turned back into a name and a ClearHint when this
+// process resolved no store. nil for an id no build of this CLI writes.
+func storeNamed(id string) SecretStore {
 	for _, s := range []SecretStore{macKeychainStore{}, secretToolStore{}} {
-		if s.Name() == name {
+		if s.ID() == id {
 			return s
 		}
 	}
 	return nil
 }
 
+// storeLabel names a SecretStore marker for a message: the store's Name when
+// this build knows the id, else the id itself.
+func storeLabel(id string) string {
+	if s := storeNamed(id); s != nil {
+		return s.Name()
+	}
+	return id
+}
+
+// storeServes reports whether this process's store is the one a session file's
+// marker names, i.e. whether its secrets can be loaded here.
+func storeServes(id string) bool {
+	s := activeStore()
+	return s != nil && s.ID() == id
+}
+
 // ---- macOS: security(1) / Keychain ----
 
 type macKeychainStore struct{}
 
+func (macKeychainStore) ID() string   { return "keychain" }
 func (macKeychainStore) Name() string { return "macOS Keychain" }
 
 func (macKeychainStore) Load(host string) (string, bool, error) {
@@ -147,10 +166,7 @@ func (macKeychainStore) Load(host string) (string, bool, error) {
 	}
 	count, sum, body, framed := parseChunkHeader(first)
 	if !framed {
-		// A one-item value from a pre-release build of this store, before the
-		// header existed. Nothing says how many chunks it had, so read it alone
-		// rather than guess at a tail.
-		body, count = first, 1
+		return "", false, fmt.Errorf("%w: chunk 0 has no header", errKeychainSecretCorrupt)
 	}
 	var enc strings.Builder
 	enc.WriteString(body)
@@ -164,7 +180,7 @@ func (macKeychainStore) Load(host string) (string, bool, error) {
 		}
 		enc.WriteString(chunk)
 	}
-	if framed && chunkChecksum(enc.String()) != sum {
+	if chunkChecksum(enc.String()) != sum {
 		return "", false, fmt.Errorf("%w: checksum mismatch across %d chunks", errKeychainSecretCorrupt, count)
 	}
 	dec, derr := base64.StdEncoding.DecodeString(enc.String())
@@ -195,8 +211,8 @@ var errKeychainSecretCorrupt = errors.New("keychain secret is incomplete or corr
 
 // Chunk 0 starts with a fixed-width header, "orq1.<count>.<checksum>.", so Load
 // knows how many chunks to read and can tell a complete value from a gap or
-// from chunks of two different writes. '.' is not in the base64 alphabet, which
-// is how a pre-release headerless value is told apart.
+// from chunks of two different writes. '.' is not in the base64 alphabet, so
+// the header can never be mistaken for the start of the encoded value.
 const (
 	chunkHeaderPrefix = "orq1."
 	chunkHeaderLen    = len(chunkHeaderPrefix) + 3 + 1 + 16 + 1
@@ -248,10 +264,10 @@ func addGenericPasswordLine(service, account, value string) string {
 }
 
 // keychainContService holds continuation chunks for a secret too large for one
-// keychain item. Chunk 0 stays under keychainService with the bare host account
-// (so a one-item secret is read by a plain lookup and stores written before
-// chunking still load); chunk i>=1 lives here as "<host>.<i>", a separate
-// namespace so it never collides with a primary per-host item.
+// keychain item. Chunk 0 stays under keychainService with the bare host account,
+// so a one-item secret is read by a plain lookup; chunk i>=1 lives here as
+// "<host>.<i>", a separate namespace so it never collides with a primary
+// per-host item.
 const keychainContService = keychainService + ".cont"
 
 // errSecretTooLarge is returned only in degenerate cases: the service and host
@@ -309,10 +325,10 @@ func (macKeychainStore) Save(host, secret string) error {
 			// Best-effort: drop every chunk so Load never finds a half-written
 			// secret (the header would reject it) and no stale tail fragment
 			// from a previous larger secret is orphaned. Delete the chunks we may
-			// have written (0..i), then keep going until a continuation chunk is
-			// absent, so logout's Delete — which stops at the first gap — is never
-			// left with items it cannot reach. Leaving none lets the caller fall
-			// back to the 0600 file cleanly.
+			// have written (0..i), then keep going until a continuation delete
+			// fails, absent or not, so logout's Delete — which stops at the first
+			// gap — is rarely left with items it cannot reach. The caller then
+			// falls back to the 0600 file.
 			for j := 0; ; j++ {
 				s, a := chunkTarget(host, j)
 				_, _, derr := runSecretTool("", "security", "delete-generic-password", "-s", s, "-a", a)
@@ -377,10 +393,11 @@ func (macKeychainStore) Delete(host string) error {
 }
 
 // ClearHint removes chunk 0 and then each continuation chunk until one is
-// missing, the same walk Delete does. Hosts are sanitized to [a-z0-9._-] by
-// SessionHost, so they need no shell quoting.
+// missing, the same walk Delete does. It runs under sh so it also works when
+// pasted into fish. Hosts are sanitized to [a-z0-9._-] by SessionHost, so they
+// need no shell quoting.
 func (macKeychainStore) ClearHint(host string) string {
-	return fmt.Sprintf("security delete-generic-password -s %s -a %s; i=1; while security delete-generic-password -s %s -a %s.$i >/dev/null 2>&1; do i=$((i+1)); done",
+	return fmt.Sprintf("sh -c 'security delete-generic-password -s %s -a %s; i=1; while security delete-generic-password -s %s -a %s.$i >/dev/null 2>&1; do i=$((i+1)); done'",
 		keychainService, host, keychainContService, host)
 }
 
@@ -388,6 +405,7 @@ func (macKeychainStore) ClearHint(host string) string {
 
 type secretToolStore struct{}
 
+func (secretToolStore) ID() string   { return "secret-service" }
 func (secretToolStore) Name() string { return "Linux secret-tool (libsecret)" }
 
 func (secretToolStore) ClearHint(host string) string {
@@ -410,7 +428,18 @@ func (secretToolStore) Load(host string) (string, bool, error) {
 	return out, true, nil
 }
 
+// maxSecretToolSecret is the largest value `secret-tool store` keeps whole:
+// libsecret reads stdin into an 8192-byte buffer and, on a longer value, prints
+// "password is too long" but still stores the truncated prefix and exits 0
+// (tool/secret-tool.c, read_password_stdin). A larger secret is refused, so the
+// caller keeps it in the 0600 file and says so, rather than strip the file
+// against a truncated copy.
+const maxSecretToolSecret = 8191
+
 func (secretToolStore) Save(host, secret string) error {
+	if len(secret) > maxSecretToolSecret {
+		return fmt.Errorf("secret-tool store: the session secrets are %d bytes, over secret-tool's %d", len(secret), maxSecretToolSecret)
+	}
 	// The secret is fed on stdin, never argv.
 	_, stderr, err := runSecretTool(secret, "secret-tool", "store",
 		"--label", "orq-cli "+host,
@@ -425,6 +454,10 @@ func (secretToolStore) Delete(host string) error {
 	_, stderr, err := runSecretTool("", "secret-tool", "clear",
 		"service", keychainService, "account", host)
 	if err != nil {
+		// A quiet exit 1 is "nothing removed", the same not-found Load reads.
+		if exitCode(err) == 1 && stderr == "" {
+			return nil
+		}
 		return fmt.Errorf("secret-tool clear: %w: %s", err, stderr)
 	}
 	return nil

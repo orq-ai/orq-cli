@@ -79,9 +79,16 @@ func (f *fakeKeychain) run(stdin, name string, args ...string) (string, string, 
 			}
 			return "", "", fakeExit{f.notFound} // quiet: not found
 		case "store":
+			// libsecret's read_password_stdin keeps 8192 bytes and exits 0.
+			if len(stdin) > 8192 {
+				stdin = stdin[:8192]
+			}
 			f.items[host] = stdin
 			return "", "", nil
 		case "clear":
+			if _, ok := f.items[host]; !ok {
+				return "", "", fakeExit{f.notFound} // quiet: nothing removed
+			}
 			delete(f.items, host)
 			return "", "", nil
 		}

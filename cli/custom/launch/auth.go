@@ -181,38 +181,34 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	}
 
 	var supersededWorkspace string
+	var injectedToken string
 	var session *auth.Session
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		// Error ignored here on purpose: an unreadable session must not block a
 		// valid exported key from winning below.
 		session, _ = auth.ReadSession()
-		// installSessionPreRun puts the session's own token here on every run
-		// that has no explicit key, which is the ordinary state. That is not a
-		// key the user exported, so it does not win: the saved key is checked
-		// first, exactly as when the env is empty. Returning here on the token
-		// was what made the saved-key lookup below unreachable in a real run.
+		// PreRun's injected workspace token is not an explicit credential.
+		// Normalize it before all saved-key candidates reach the same check.
 		if session != nil && isSessionWorkspaceToken(key, session) {
-			if saved, ws := savedKeyForWorkspace(session); saved != "" {
-				return &Credentials{APIKey: saved, APIBaseURL: apiBase, Kind: CredentialAPIKey, Workspace: ws}, nil
+			injectedToken = key
+		} else {
+			savedKey, savedWS := auth.SavedAgentKey()
+			mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
+			if !superseded {
+				creds := &Credentials{
+					APIKey:         key,
+					APIBaseURL:     apiBase,
+					Kind:           CredentialAPIKey,
+					ShadowsSession: shadowsSession(key, session),
+				}
+				if savedWS != "" && savedKey == key {
+					creds.Workspace = savedWS
+				}
+				return creds, nil
 			}
-			return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialSessionToken}, nil
+			// superseded implies session != nil, so the read below is skipped.
+			supersededWorkspace = mintedFor
 		}
-		savedKey, savedWS := auth.SavedAgentKey()
-		mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
-		if !superseded {
-			creds := &Credentials{
-				APIKey:         key,
-				APIBaseURL:     apiBase,
-				Kind:           CredentialAPIKey,
-				ShadowsSession: shadowsSession(key, session),
-			}
-			if savedWS != "" && savedKey == key {
-				creds.Workspace = savedWS
-			}
-			return creds, nil
-		}
-		// superseded implies session != nil, so the read below is skipped.
-		supersededWorkspace = mintedFor
 	}
 
 	if session == nil {
@@ -233,18 +229,31 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// The key `orq setup` minted lives for 90 days; the session token below
 	// lives about an hour and is baked into the child process once, so an agent
 	// running longer than that meets a 401.
-	if key, ws := savedKeyForWorkspace(session); key != "" {
-		return &Credentials{
-			APIKey:              key,
-			APIBaseURL:          apiBase,
-			Kind:                CredentialAPIKey,
-			Workspace:           ws,
-			SupersededWorkspace: supersededWorkspace,
-		}, nil
-	}
 	// apiBase, not session.APIBaseURL: an explicit --server diverts the token
 	// fetch too, so one run cannot straddle two hosts.
 	client := auth.NewClient(apiBase)
+	if key, ws := savedKeyForWorkspace(session); key != "" {
+		// Check revocation before launching. Only 401 is a verdict: this
+		// endpoint returns 403 for valid project-scoped keys. Preserve the
+		// saved key with a warning when the probe cannot establish validity.
+		reuse, warn := reuseAfterCheck(validateReusableKey(client, key))
+		if reuse {
+			if warn != "" {
+				fmt.Fprintf(os.Stderr, "orq: %s; using the saved key anyway\n", warn)
+			}
+			return &Credentials{
+				APIKey:              key,
+				APIBaseURL:          apiBase,
+				Kind:                CredentialAPIKey,
+				Workspace:           ws,
+				SupersededWorkspace: supersededWorkspace,
+			}, nil
+		}
+		// Rejected by the server: fall through to a fresh session token below.
+	}
+	if injectedToken != "" {
+		return &Credentials{APIKey: injectedToken, APIBaseURL: apiBase, Kind: CredentialSessionToken}, nil
+	}
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		// Only the superseded path earns the re-login advice: a working exported
@@ -274,6 +283,27 @@ func profileKey() (name, key string, ok bool) {
 		return "", "", false
 	}
 	return name, strings.TrimSpace(bartolocli.GetProfile()["api_key"]), true
+}
+
+// validateReusableKey verifies a saved gateway key against the server before
+// launch reuses it. Swappable in tests. A nil error means the server accepts
+// the key; auth.Unauthorized(err) means it was revoked or disabled.
+var validateReusableKey = func(client *auth.Client, key string) error {
+	_, err := client.KeyWorkspace(key)
+	return err
+}
+
+// reuseAfterCheck uses the same rejection rule as setup and doctor. The
+// workspace-settings route can reject valid project-scoped keys with 403;
+// only a 401 proves the key invalid. Every inconclusive check carries a warning.
+func reuseAfterCheck(err error) (reuse bool, warn string) {
+	if err == nil {
+		return true, ""
+	}
+	if auth.Unauthorized(err) {
+		return false, ""
+	}
+	return true, fmt.Sprintf("could not verify the saved key (%v)", err)
 }
 
 // savedKeyForWorkspace returns the saved agent key when it is recorded for the

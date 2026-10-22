@@ -53,6 +53,7 @@ func newMemStore() *memStore { return &memStore{m: map[string]string{}} }
 func (s *memStore) Load(host string) (string, bool, error) { v, ok := s.m[host]; return v, ok, nil }
 func (s *memStore) Save(host, secret string) error         { s.m[host] = secret; return nil }
 func (s *memStore) Delete(host string) error               { delete(s.m, host); return nil }
+func (s *memStore) ID() string                             { return "test" }
 func (s *memStore) Name() string                           { return "test store" }
 func (s *memStore) ClearHint(string) string                { return "" }
 
@@ -82,6 +83,7 @@ func (s *flakyStore) Save(host, secret string) error {
 }
 
 func (s *flakyStore) Delete(host string) error { delete(s.m, host); return nil }
+func (s *flakyStore) ID() string               { return "flaky" }
 func (s *flakyStore) Name() string             { return "flaky store" }
 func (s *flakyStore) ClearHint(string) string  { return "" }
 
@@ -433,28 +435,52 @@ func TestMacClearHintCoversEveryChunk(t *testing.T) {
 // store (ORQ_CREDENTIAL_STORE=file, or SSH with no Secret Service), must say
 // where the secrets are rather than report a missing refresh token.
 func TestMigratedSessionInFileModeSaysWhereTheSecretsAre(t *testing.T) {
+	for _, tc := range []struct {
+		name, forced, reason, remedy string
+	}{
+		{"forced file", "file", CredentialStoreEnv + "=file is set", "unset " + CredentialStoreEnv},
+		{"store unreachable", "", "reachable from this process", "make the store reachable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateHome(t)
+			withStore(t, newMemStore())
+			if err := SaveSession(validSession("prod")); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(sessionFileText(t), `"secretStore": "test"`) {
+				t.Fatalf("stripped file does not record its store's id: %s", sessionFileText(t))
+			}
+
+			withStore(t, nil)
+			t.Setenv(CredentialStoreEnv, tc.forced)
+			_, err := ReadSession()
+			if err == nil {
+				t.Fatal("a migrated session read without its store must error")
+			}
+			for _, want := range []string{tc.reason, tc.remedy, "orq auth login"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not mention %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "missing refresh token") {
+				t.Errorf("reported as a missing token: %v", err)
+			}
+		})
+	}
+}
+
+// A file whose marker names another machine's store (a home directory synced
+// from a Mac to Linux) says where the secrets are, not that they were removed.
+func TestSessionFromAnotherStoreSaysWhichOne(t *testing.T) {
 	isolateHome(t)
 	withStore(t, newMemStore())
 	if err := SaveSession(validSession("prod")); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sessionFileText(t), `"secretStore": "test store"`) {
-		t.Fatalf("stripped file does not record its store: %s", sessionFileText(t))
-	}
-
-	withStore(t, nil)
-	t.Setenv(CredentialStoreEnv, "file")
+	withStore(t, &flakyStore{})
 	_, err := ReadSession()
-	if err == nil {
-		t.Fatal("a migrated session read without its store must error")
-	}
-	for _, want := range []string{"test store", CredentialStoreEnv + "=file is set", "orq auth login"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
-		}
-	}
-	if strings.Contains(err.Error(), "missing refresh token") {
-		t.Errorf("reported as a missing token: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "but this machine uses the flaky store") {
+		t.Fatalf("err = %v, want it to name both stores", err)
 	}
 }
 
@@ -540,6 +566,105 @@ func TestMigrateSessionSecretsSweepsEveryHost(t *testing.T) {
 	}
 	if !strings.Contains(mem.m[hostFromSessionPath(otherPath)], "refresh-staging") {
 		t.Errorf("staging secrets not stored under its own host: %q", mem.m[hostFromSessionPath(otherPath)])
+	}
+}
+
+// A login whose secrets are in a store this process cannot use fails every
+// command, so the listing must not call it ok.
+func TestStoredSessionListsAsUnreadableWithoutItsStore(t *testing.T) {
+	isolateHome(t)
+	withStore(t, newMemStore())
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	withStore(t, nil)
+	rows, err := ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Status != SessionStatusUnreadable {
+		t.Fatalf("want one unreadable session, got %+v", rows)
+	}
+}
+
+// A signed-out mark is merged into the current login by its refresh token. For
+// a stored login the file has none, so the merge must hydrate first, and the
+// write must keep the stored secrets.
+func TestSignedOutMarkPersistsOnAStoredLogin(t *testing.T) {
+	isolateHome(t)
+	mem := newMemStore()
+	withStore(t, mem)
+	// Named for its own host, as markSessionSignedOut addresses it.
+	if err := SaveSession(sessionOn(DefaultAPIBaseURL, "prod")); err != nil {
+		t.Fatal(err)
+	}
+	session, err := ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	markSessionSignedOut(session)
+	if !strings.Contains(sessionFileText(t), `"signedOut": true`) {
+		t.Fatalf("signed-out mark not written: %s", sessionFileText(t))
+	}
+	if !strings.Contains(mem.m[hostFromSessionPath(SessionFilePath())], "refresh-abc") {
+		t.Fatalf("the merge dropped the stored refresh token: %q", mem.m[hostFromSessionPath(SessionFilePath())])
+	}
+}
+
+// A store that refuses the write stops the sweep: on macOS a refusal can be
+// the user clicking Deny, which must not come back once per host.
+func TestMigrateSessionSecretsStopsAfterARefusedWrite(t *testing.T) {
+	isolateHome(t)
+	withStore(t, nil)
+	for _, base := range []string{DefaultAPIBaseURL, "https://staging.example"} {
+		s := sessionOn(base, "prod")
+		if err := saveSessionTo(sessionPathFor(SessionHost(base)), s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refusing := &countingStore{flakyStore: flakyStore{m: map[string]string{}, failSave: true}}
+	withStore(t, refusing)
+	captureStderr(t, MigrateSessionSecrets)
+	if refusing.saves != 1 {
+		t.Fatalf("store asked %d times, want once before the sweep stops", refusing.saves)
+	}
+}
+
+type countingStore struct {
+	flakyStore
+	saves int
+}
+
+func (s *countingStore) Save(host, secret string) error {
+	s.saves++
+	return s.flakyStore.Save(host, secret)
+}
+
+// hydrateSecrets re-reads the file under the lock. A session read inline before
+// another process migrated and then saved newer secrets must end up with the
+// newer ones, not migrate its stale copy over them.
+func TestHydrateUsesTheFileAsOfTheLock(t *testing.T) {
+	isolateHome(t)
+	withStore(t, nil)
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := readSessionFile(SessionFilePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := newMemStore()
+	withStore(t, mem)
+	newer := validSession("prod")
+	newer.RefreshToken = "refresh-rotated"
+	if err := SaveSession(newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := hydrateSecrets(stale, SessionFilePath()); err != nil {
+		t.Fatal(err)
+	}
+	if stale.RefreshToken != "refresh-rotated" || !strings.Contains(mem.m[hostFromSessionPath(SessionFilePath())], "refresh-rotated") {
+		t.Fatalf("hydrated %q, store %q; want the rotated token in both", stale.RefreshToken, mem.m[hostFromSessionPath(SessionFilePath())])
 	}
 }
 

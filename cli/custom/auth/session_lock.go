@@ -13,8 +13,12 @@ import (
 var sessionUpdateMu sync.Mutex
 
 func lockSessionUpdates() (func(), error) {
+	return lockSessionUpdatesAt(SessionFilePath())
+}
+
+func lockSessionUpdatesAt(path string) (func(), error) {
 	sessionUpdateMu.Lock()
-	release, err := acquireSessionUpdateFileLock()
+	release, err := acquireSessionUpdateFileLock(path)
 	if err != nil {
 		sessionUpdateMu.Unlock()
 		return nil, err
@@ -25,8 +29,8 @@ func lockSessionUpdates() (func(), error) {
 	}, nil
 }
 
-func acquireSessionUpdateFileLock() (func(), error) {
-	return acquireFileLock(SessionFilePath() + ".lock")
+func acquireSessionUpdateFileLock(path string) (func(), error) {
+	return acquireFileLock(path + ".lock")
 }
 
 // secretStoreMu and the per-host ".secrets.lock" file serialize every read and
@@ -40,7 +44,8 @@ var secretStoreMu sync.Mutex
 
 // lockSecretStore is best effort: a lock file that cannot be created (a
 // read-only ~/.orq) must not take every command down, so the caller proceeds
-// unlocked, which is no worse than before the lock existed.
+// with only the in-process lock. A concurrent process may then read a mixed
+// multi-chunk write, which the chunk checksum rejects as corrupt.
 func lockSecretStore(sessionPath string) func() {
 	secretStoreMu.Lock()
 	release, err := acquireFileLock(sessionPath + ".secrets.lock")

@@ -22,16 +22,17 @@ const (
 
 func claudeAgent() AgentDef {
 	return AgentDef{
-		Name:        "claude",
-		Binary:      "claude",
-		Label:       "Claude Code",
-		InstallHint: "npm install -g @anthropic-ai/claude-code",
-		AllowModels: false,
-		Traceable:   true,
-		HelpRoute:   helpRoute("Anthropic", DefaultClaudeGatewayURL),
-		HelpModel:   "Model to start with (with gateway routing, a gateway ref: provider/model_id)",
-		Prompt:      nil, // claude's own -p passes through untouched
-		Resolve:     resolveClaude,
+		Name:             "claude",
+		Binary:           "claude",
+		Label:            "Claude Code",
+		InstallHint:      "npm install -g @anthropic-ai/claude-code",
+		AllowModels:      false,
+		Traceable:        true,
+		SubscriptionAuth: true,
+		HelpRoute:        helpRoute("Anthropic", DefaultClaudeGatewayURL),
+		HelpModel:        "Model to start with (with gateway routing, a gateway ref: provider/model_id)",
+		Prompt:           nil, // claude's own -p passes through untouched
+		Resolve:          resolveClaude,
 	}
 }
 
@@ -59,6 +60,14 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
+	if ctx.Flags.Subscription {
+		if !ctx.Flags.Router {
+			return nil, fmt.Errorf("--subscription needs gateway routing; drop --no-gateway")
+		}
+		if m := ctx.Flags.Model; m != "" && !strings.HasPrefix(m, "anthropic/") {
+			return nil, fmt.Errorf("--subscription bills calls to your Claude subscription, which serves only anthropic/ models; got %q", m)
+		}
+	}
 	routed := false
 	if ctx.Flags.Router {
 		routed = routeThroughGateway(ctx, plan)
@@ -161,8 +170,15 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
 	}
 	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
-	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
-	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
+	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token (or its own login)
+	if ctx.Flags.Subscription {
+		// Empty AUTH_TOKEN leaves claude on its own OAuth login, which it sends
+		// as the bearer; the orq key rides in a header instead.
+		plan.Env["ANTHROPIC_AUTH_TOKEN"] = ""
+		plan.Env["ANTHROPIC_CUSTOM_HEADERS"] = orqAPIKeyHeader + ": " + ctx.Creds.APIKey
+	} else {
+		plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
+	}
 	// Each of these picks a provider whose own base URL claude reads instead of
 	// ANTHROPIC_BASE_URL. One left in the shell is the user's own arrangement,
 	// so it stays in force, but gateway routing then routes nothing and says so.
@@ -176,9 +192,14 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"%s set in your shell sends claude to that provider, so gateway routing does nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
 	} else {
-		billed := firstNonEmpty(ctx.Creds.Workspace, "the workspace this API key belongs to")
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"gateway routing sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
+		if ctx.Flags.Subscription {
+			plan.Warnings = append(plan.Warnings,
+				"--subscription sends this session's model calls through the orq.ai AI Router on your own Claude login; usage bills to your Claude subscription, and orq traces the calls")
+		} else {
+			billed := firstNonEmpty(ctx.Creds.Workspace, "the workspace this API key belongs to")
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+				"gateway routing sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
+		}
 	}
 	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
 	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude

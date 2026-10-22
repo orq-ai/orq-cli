@@ -138,7 +138,7 @@ func hydrateSecrets(s *Session, path string) error {
 			}
 			return fmt.Errorf("the %s session secrets are in the %s, which this command is not using (%s). "+
 				"To use them, %s; or run `orq auth login` to sign in again with the secrets in the session file",
-				host, s.SecretStore, storeUnusedReason(), remedy)
+				host, storeLabel(s.SecretStore), storeUnusedReason(), remedy)
 		}
 		return nil
 	}
@@ -150,6 +150,12 @@ func hydrateSecrets(s *Session, path string) error {
 	}
 	if s.hasInlineSecrets() {
 		return migrateSecretsToStore(s, path, host, store)
+	}
+	if s.SecretStore != "" && s.SecretStore != store.ID() {
+		// A home directory synced from another OS: the secrets are in that
+		// machine's store, and this one's would only answer "nothing here".
+		return fmt.Errorf("the %s session secrets are in the %s, but this machine uses the %s; run `orq auth login` to sign in here",
+			host, storeLabel(s.SecretStore), store.Name())
 	}
 	blob, ok, err := store.Load(host)
 	if err != nil {
@@ -178,6 +184,9 @@ func storeUnusedReason() string {
 	if credentialStoreForcedFile() {
 		return CredentialStoreEnv + "=file is set"
 	}
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return "this platform has no supported credential store yet"
+	}
 	return "no credential store is reachable from this process, for example over SSH without a desktop session"
 }
 
@@ -205,7 +214,7 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 	}
 	stripped := *s
 	stripped.stripSecrets()
-	stripped.SecretStore = store.Name()
+	stripped.SecretStore = store.ID()
 	data, err := json.MarshalIndent(stripped, "", "  ")
 	if err != nil {
 		return err
@@ -213,7 +222,7 @@ func migrateSecretsToStore(s *Session, path, host string, store SecretStore) err
 	if err := WriteSecretFile(path, data); err != nil {
 		return err
 	}
-	s.SecretStore = store.Name()
+	s.SecretStore = store.ID()
 	fmt.Fprintf(os.Stderr, "orq: moved %s session secrets into the %s\n", host, store.Name())
 	return nil
 }
@@ -226,7 +235,8 @@ func credentialStoreForcedFile() bool {
 // into the store, not just the active host's, so a login to a server you no
 // longer use does not keep its refresh token in plaintext until you next use
 // it. MigrateLayout calls it before every command; it never fails the command.
-// Once everything has moved it costs a directory read. While some file still
+// Once everything has moved it costs a directory read and a parse of each
+// session file. While some file still
 // holds inline secrets it also resolves the store (on Linux a secret-tool
 // probe, which any session read pays anyway), and a store that refuses the
 // write warns once and stops the sweep for this process, leaving the files as
