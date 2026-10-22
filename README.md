@@ -181,6 +181,18 @@ Walks you through a browser device-authorization flow, stores the login in
 picks an active workspace. Re-running `orq auth login` refreshes it. Sign out
 with `orq auth logout`.
 
+Another program can reuse the login by asking for its token instead of reading
+that file: `orq auth token` prints the access token for the active workspace
+and project (or the ones `--workspace` / `--project` name), refreshed when
+needed, and `orq auth token -o json` adds its expiry, workspace, project and
+server. The token is only valid against that server and lasts about an hour,
+so ask again rather than storing it; `--refresh` forces a new one after an
+`authz_stale` answer.
+
+```sh
+curl -H "Authorization: Bearer $(orq auth token)" https://my.orq.ai/v2/projects   # hosted service
+```
+
 A second server is a second login, selected the way every other command selects
 a server:
 
@@ -339,6 +351,7 @@ surface changes are always a reviewed diff.
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
 | `orq auth sessions` | List saved logins, one per host |
+| `orq auth token` | Print the browser login's access token (`-o json` adds expiry and scope) |
 | `orq auth profile add\|list\|current\|use\|clear` | Save and select API-key profiles |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |

@@ -120,6 +120,17 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `orq auth token` prints the access token of your browser login for
+the active workspace and project (or the ones `--workspace` / `--project`
+name), exchanging a fresh one first when the cached token is expired or about
+to expire. `--refresh` exchanges a new one regardless, for a caller the API
+answered with `authz_stale`. The bare output is the token alone, for
+`$(orq auth token)`, whatever `ORQ_OUTPUT_FORMAT` says; a typed `-o json`
+returns `{token, expires_at, workspace, project_id, server}`. It gives tools
+that reuse an `orq auth login` (orqi among them) a supported way to get the
+token without reading `~/.orq/sessions/<host>.json`, whose secrets are moving
+to the OS credential store. API keys are never printed.
+
 ## [12.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.3.0) — 2026-10-22
 
 **Changed:** the updated TOON renderer prints empty arrays as `[]` and leaves
