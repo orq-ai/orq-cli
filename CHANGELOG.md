@@ -120,6 +120,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** TOON, the default terminal format, now renders through toon-go
+1.0.1. An empty list prints as `name: []` instead of `name[0]:`, and a string
+that cannot be read as a number or keyword is no longer quoted (`id:
+01ABC234DEF567GH`, previously `id: "01ABC234DEF567GH"`). TOON is
+presentation-only; `-o json` is unchanged.
+
 **Added:** `orq auth token` prints the access token of your browser login for
 the active workspace and project (or the ones `--workspace` / `--project`
 name), exchanging a fresh one first when the cached token is expired or about
