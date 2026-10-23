@@ -3380,8 +3380,16 @@
           "type": "stringSlice"
         },
         {
+          "name": "retry",
+          "type": "string"
+        },
+        {
           "name": "stdin",
           "type": "bool"
+        },
+        {
+          "name": "timeout",
+          "type": "string"
         },
         {
           "name": "variables",
