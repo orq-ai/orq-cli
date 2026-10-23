@@ -2557,7 +2557,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m5jntmgpwj9ht0xew9c2r8f8"
+              default: "reasoning_01m5mn8fxtbj443d19mf32g7sx"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -7209,6 +7209,12 @@ components:
           additionalProperties:
             $ref: "#/components/schemas/JsonValue"
           description: "Template variables for evaluator prompt substitution. Folds into\n `context.variables`."
+        retry:
+          allOf:
+            - $ref: "#/components/schemas/EvaluatorRetryConfig"
+          description: "Overrides llm_eval provider retries for this invocation, including every jury judge."
+        timeout:
+          $ref: "#/components/schemas/EvaluatorCallTimeout"
       description: "Accepts two shapes. `context` names its fields after the template variables\n they feed and is the one to use; the flat fields below are folded into\n `context` when it is absent. Setting `context` wins."
     EvaluationResult:
       type: "object"
@@ -7262,6 +7268,26 @@ components:
           additionalProperties:
             $ref: "#/components/schemas/JsonValue"
       description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn."
+    EvaluatorRetryConfig:
+      type: "object"
+      properties:
+        count:
+          type: "integer"
+          description: "Retries after the first attempt. Zero disables retries; omitted retry preserves existing policy."
+          format: "uint32"
+        on_codes:
+          type: "array"
+          items:
+            type: "integer"
+            format: "uint32"
+          description: "Omitted uses the gateway's default transient status codes."
+    EvaluatorCallTimeout:
+      type: "object"
+      properties:
+        call_timeout:
+          type: "integer"
+          description: "Maximum milliseconds per provider attempt (or execution for non-LLM evaluators).\n Omitted uses the server default (120000). The server caps each invocation at ten minutes."
+          format: "uint32"
     StructuredInput:
       type: "object"
       properties:
@@ -10838,26 +10864,35 @@ components:
       additionalProperties: false
       properties:
         benchmark_model:
+          description: "Catalog model whose benchmarks this private model copies to join Smart Router pools."
           type: "string"
         economical_model:
+          description: "Model used when the router classifies a request as simple."
           type: "string"
         id:
+          description: "Identifier of the Smart Router configuration."
           type: "string"
         models:
+          description: "Models the router chooses from, written as provider/model_id."
           items:
             type: "string"
           type:
             - "array"
             - "null"
         profile:
+          description: "Routing preference: quality, balanced, or cost."
           type: "string"
         session_affinity:
           $ref: "#/components/schemas/SessionAffinityConfig"
+          description: "Whether later turns of a thread stay on the model chosen for its first turn."
         strong_model:
+          description: "Model used when the router classifies a request as complex."
           type: "string"
         v2:
           $ref: "#/components/schemas/AutoRouterV2Config"
+          description: "Benchmark data each model in the pool is ranked by."
         version:
+          description: "Version of the Smart Router configuration format."
           type: "string"
       type: "object"
     AutoRouterV2Config:
@@ -10865,31 +10900,41 @@ components:
       properties:
         aa_creator:
           $ref: "#/components/schemas/AutoRouterV2CreatorConfig"
+          description: "Model creator reported by Artificial Analysis."
         aa_evaluations:
           additionalProperties:
             format: "double"
             type:
               - "number"
               - "null"
+          description: "Benchmark scores reported by Artificial Analysis, keyed by evaluation."
           type: "object"
         aa_index_is_estimated:
+          description: "Whether the intelligence index is estimated rather than measured."
           type: "boolean"
         aa_index_version:
+          description: "Version of the intelligence index the score came from."
           type: "string"
         aa_is_reasoning:
+          description: "Whether Artificial Analysis classifies the model as a reasoning model."
           type: "boolean"
         aa_median_output_tokens_per_second:
+          description: "Median output tokens per second measured by Artificial Analysis."
           format: "double"
           type: "number"
         aa_median_time_to_first_answer_token:
+          description: "Median time to the first answer token measured by Artificial Analysis."
           format: "double"
           type: "number"
         aa_median_time_to_first_token_seconds:
+          description: "Median time to first token in seconds measured by Artificial Analysis."
           format: "double"
           type: "number"
         aa_model_id:
+          description: "Artificial Analysis model identifier."
           type: "string"
         aa_name:
+          description: "Model name reported by Artificial Analysis."
           type: "string"
         aa_pricing:
           additionalProperties:
@@ -10897,26 +10942,35 @@ components:
             type:
               - "number"
               - "null"
+          description: "Token prices reported by Artificial Analysis, keyed by price type."
           type: "object"
         aa_reasoning_effort:
+          description: "Reasoning effort the benchmarked score applies to."
           type: "string"
         aa_release_date:
+          description: "Model release date reported by Artificial Analysis."
           type: "string"
         aa_slug:
+          description: "Artificial Analysis slug of the model."
           type: "string"
         default_effort:
+          description: "Reasoning effort applied when a request does not set one."
           type: "string"
         default_effort_scored:
+          description: "Whether the default effort has a benchmarked score."
           type: "boolean"
         intelligence_index:
+          description: "Artificial Analysis intelligence index the router ranks the model by."
           format: "double"
           type: "number"
         price:
+          description: "Blended price per million tokens, in USD."
           format: "double"
           type: "number"
         reasoning_efforts:
           additionalProperties:
             $ref: "#/components/schemas/AutoRouterV2EffortConfig"
+          description: "Benchmark data for each reasoning effort the model exposes."
           type: "object"
       required:
         - "intelligence_index"
@@ -10926,10 +10980,13 @@ components:
       additionalProperties: false
       properties:
         id:
+          description: "Artificial Analysis identifier of the creator."
           type: "string"
         name:
+          description: "Creator name reported by Artificial Analysis."
           type: "string"
         slug:
+          description: "Artificial Analysis slug of the creator."
           type: "string"
       required:
         - "id"
@@ -10939,16 +10996,22 @@ components:
       additionalProperties: false
       properties:
         aa_index_is_estimated:
+          description: "Whether the score at this effort is estimated."
           type: "boolean"
         aa_index_version:
+          description: "Version of the intelligence index measured at this effort."
           type: "string"
         aa_is_reasoning:
+          description: "Whether the model runs as a reasoning model at this effort."
           type: "boolean"
         aa_reasoning_effort:
+          description: "Reasoning effort label Artificial Analysis reports for this entry."
           type: "string"
         aa_slug:
+          description: "Artificial Analysis slug of the model at this effort."
           type: "string"
         intelligence_index:
+          description: "Intelligence index measured at this effort."
           format: "double"
           type: "number"
       required:
@@ -11067,8 +11130,10 @@ components:
         auth_mode:
           type: "string"
         autorouter_id:
+          description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
           type: "string"
         autorouter_version:
+          description: "Version of the Smart Router catalog entry, set with autorouter_id."
           type: "string"
         benchmark_model:
           type: "string"
@@ -12363,8 +12428,10 @@ components:
         assume_role_external_id:
           type: "string"
         autorouter_id:
+          description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
           type: "string"
         autorouter_version:
+          description: "Version of the Smart Router catalog entry, set with autorouter_id."
           type: "string"
         benchmark_model:
           type: "string"
@@ -14050,7 +14117,7 @@ components:
       properties:
         cel:
           type: "string"
-      description: "CEL expression that decides whether a budget applies to a request. Available variables: `model`, `provider`, `model_id`, `api_key`, `identity`, `project`, `metadata` (map), `headers` (map, lowercase keys). An empty expression always matches. Expressions are syntax-validated at write time."
+      description: "CEL expression that decides whether a budget applies to a request. Available variables: `model`, `provider`, `model_id`, `api_key`, `identity`, `project`, `metadata` (map), `headers` (map, lowercase keys). Required unless the budget is created from a `scope`, and rejected on update when left empty. A workspace-wide budget stores an empty expression, which matches every request in the workspace. Expressions are syntax-validated at write time."
     BudgetLimits:
       type: "object"
       properties:
@@ -19139,23 +19206,21 @@ components:
       additionalProperties: false
       properties:
         count:
-          description: "Number of retries per model after the initial attempt (1-5). No retries are made when retry is omitted."
+          description: "Number of retries per model after the initial attempt (0-5). Set 0 to disable retries. When retry is omitted, the gateway retries twice."
           format: "int64"
           maximum: 5
-          minimum: 1
+          minimum: 0
           type: "integer"
         on_codes:
-          description: "HTTP status codes that trigger retries, between 100 and 599. Retry-After is honored; otherwise the gateway waits one second."
+          description: "HTTP status codes that trigger retries, between 100 and 599. Defaults to [408, 429, 500, 502, 503, 504, 529]. Retry-After is honored; otherwise the gateway backs off exponentially."
           items:
             format: "int64"
             maximum: 599
             minimum: 100
             type: "integer"
-          minItems: 1
           type: "array"
       required:
         - "count"
-        - "on_codes"
       type: "object"
     ClassifyScoreAnswer:
       additionalProperties: false
@@ -19554,11 +19619,11 @@ components:
       additionalProperties: false
       properties:
         count:
-          description: "Number of retry attempts (1-5)."
+          description: "Number of retries per model after the initial attempt (0-5). Set 0 to disable retries. When retry is omitted, the gateway retries twice."
           format: "int64"
           type: "integer"
         on_codes:
-          description: "HTTP status codes that trigger retry logic."
+          description: "HTTP status codes that trigger a retry. Defaults to [408, 429, 500, 502, 503, 504, 529]."
           items:
             format: "int64"
             type: "integer"
@@ -19567,7 +19632,6 @@ components:
             - "null"
       required:
         - "count"
-        - "on_codes"
       type: "object"
     EmbeddingTimeoutConfig:
       additionalProperties: false
@@ -19630,6 +19694,11 @@ components:
             - "array"
             - "null"
         type:
+          description: "Strategy used to pick a model: weight_based splits traffic by weight, round_robin rotates through the list, latency_based favors the fastest model. An unrecognized value falls back to weight_based."
+          enum:
+            - "weight_based"
+            - "round_robin"
+            - "latency_based"
           type: "string"
       required:
         - "type"
@@ -21221,6 +21290,12 @@ components:
     Reasoning:
       additionalProperties: false
       properties:
+        context:
+          enum:
+            - "auto"
+            - "current_turn"
+            - "all_turns"
+          type: "string"
         effort:
           description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
           enum:
@@ -21247,6 +21322,12 @@ components:
     ReasoningParam:
       additionalProperties: false
       properties:
+        context:
+          enum:
+            - "auto"
+            - "current_turn"
+            - "all_turns"
+          type: "string"
         effort:
           description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
           enum:
@@ -22712,11 +22793,11 @@ components:
       additionalProperties: false
       properties:
         count:
-          description: "Number of retries (1-5)."
+          description: "Number of retries per model after the initial attempt (0-5). Set 0 to disable retries. When retry is omitted, the gateway retries twice."
           format: "int64"
           type: "integer"
         on_codes:
-          description: "HTTP status codes that trigger a retry (e.g. [429, 500, 502, 503])."
+          description: "HTTP status codes that trigger a retry. Defaults to [408, 429, 500, 502, 503, 504, 529]."
           items:
             format: "int64"
             type: "integer"
@@ -22725,7 +22806,6 @@ components:
             - "null"
       required:
         - "count"
-        - "on_codes"
       type: "object"
     ResponseShellCallCommandAddedStreamEvent:
       additionalProperties: true
@@ -26387,7 +26467,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M5JNTMF855722K62EVBRMTQ3"
+                                default: "01M5MN8FWES6VG9FHCP1BR6Y92"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -35778,7 +35858,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5JNTMJKD0Q4R5C91YXX99VP"
+                                          default: "01M5MN8FZP7R5AQ42WDNMBAH2X"
                                         name:
                                           type: "string"
                                         description:
@@ -37401,7 +37481,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5JNTMKAAQ1P9GRFVQ8E9AJ5"
+                                          default: "01M5MN8G0F8YR4HTEP0SJE5KY1"
                                         name:
                                           type: "string"
                                         description:
@@ -46431,7 +46511,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5JNTMN369D53FJGX3HYJRGK"
+                              default: "tool_01M5MN8G27NTDRFDGHT4E5C7R0"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46532,7 +46612,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5JNTMN4MCEB5ARHKRQ62WFE"
+                              default: "tool_01M5MN8G28GC8W7YAZ96MB1N51"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46635,7 +46715,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5JNTMN5R65P08ZH4DT1ACWD"
+                              default: "tool_01M5MN8G28ZSRSE39T51Q8ES7K"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46779,7 +46859,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5JNTMN6MNB0EE7H58GQM8CM"
+                              default: "tool_01M5MN8G2AB3FA661Q94H5RPRQ"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47270,7 +47350,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNBSGVQ7Z9W1HQKCFBF"
+                        default: "tool_01M5MN8G2ES354BQE3EYTYRYNE"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47371,7 +47451,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNC5HHKXE777R9G60KK"
+                        default: "tool_01M5MN8G2F5SQEQGBECXHMJXZM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47474,7 +47554,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMND1QD0XXWHAJAD4NVK"
+                        default: "tool_01M5MN8G2G2MJPR0NEX04B744B"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47618,7 +47698,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNEHPDNPC4X0GD3R2C4"
+                        default: "tool_01M5MN8G2HJAEXH0DAM23CJQ37"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48122,7 +48202,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNH9PCJDDE8ZAM1S5VX"
+                        default: "tool_01M5MN8G2M6SXMAMRNEPNKAC21"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48223,7 +48303,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNHR29J28RF2ZHMRFKK"
+                        default: "tool_01M5MN8G2MHYJ52ZWVJTJGNKCZ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48326,7 +48406,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNJR0V3JW6Y0C4W97PT"
+                        default: "tool_01M5MN8G2NRMQ5AVFR0DRS4SNA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48470,7 +48550,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNK9FVZHZ1S58S4PXND"
+                        default: "tool_01M5MN8G2P9RM4G1Y947JDH6PS"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48637,7 +48717,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNT534DMH1R3H82DCXG"
+                        default: "tool_01M5MN8G2X68S92GP34JAJQAZJ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48738,7 +48818,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNV92QB3EVMSRT7G1SH"
+                        default: "tool_01M5MN8G2Y625CJK27MW53JG7N"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48841,7 +48921,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNW4ZEP9H0Y8S5HVYZN"
+                        default: "tool_01M5MN8G2Z0KA1Q4529YHHTW6B"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48985,7 +49065,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5JNTMNXTJVM8PVTJYERKCD1"
+                        default: "tool_01M5MN8G30ZYM19SNA44TYY4HJ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -55533,7 +55613,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-22T20:46:09.165Z"
+                          default: "2026-10-23T15:14:43.538Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55541,7 +55621,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-22T20:46:09.166Z"
+                              default: "2026-10-23T15:14:43.538Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55611,7 +55691,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-22T20:46:09.165Z"
+                          default: "2026-10-23T15:14:43.538Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55619,7 +55699,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-22T20:46:09.166Z"
+                              default: "2026-10-23T15:14:43.538Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55804,7 +55884,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55812,7 +55892,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55882,7 +55962,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55890,7 +55970,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55993,7 +56073,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56001,7 +56081,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56071,7 +56151,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56079,7 +56159,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56278,7 +56358,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56286,7 +56366,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56356,7 +56436,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-22T20:46:09.165Z"
+                        default: "2026-10-23T15:14:43.538Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56364,7 +56444,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-22T20:46:09.166Z"
+                            default: "2026-10-23T15:14:43.538Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -62037,7 +62117,7 @@ paths:
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nevaluation = client.evals.invoke(\n    id=\"01KT1FCSA8N3YD1K8YBPVTAV9E\",\n    context={\n        \"input\": {\n            \"user_query\": \"What is the capital of France?\",\n            \"expected_output\": \"Paris\",\n            \"retrievals\": [\"The capital of France is Paris.\"],\n        },\n        \"output\": {\"response\": \"The capital of France is Paris.\"},\n        \"variables\": {\"tone\": \"formal\"},\n    },\n)\n\n# `passed` is the guardrail's decision when the evaluator has one, and the\n# grader's own judgement otherwise. `value` carries the verdict itself,\n# whose type follows the evaluator: a boolean, a score, a label.\nprint(evaluation.passed, evaluation.value)\n"
         - lang: "typescript"
           label: "Node.js - Run an evaluator"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\n\nconst evaluation = await orq.evals.invoke({\n  id: '01KT1FCSA8N3YD1K8YBPVTAV9E',\n  invokeEvaluatorRequest: {\n    context: {\n      input: {\n        user_query: 'What is the capital of France?',\n        expected_output: 'Paris',\n        retrievals: ['The capital of France is Paris.'],\n      },\n      output: { response: 'The capital of France is Paris.' },\n      variables: { tone: 'formal' },\n    },\n  },\n});\n\nconsole.log(evaluation.passed, evaluation.value);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\n\nconst evaluation = await orq.evals.invoke({\n  id: '01KT1FCSA8N3YD1K8YBPVTAV9E',\n  invokeEvaluatorRequest: {\n    timeout: { call_timeout: 45000 },\n    retry: { count: 2, on_codes: [429, 500, 502, 503, 504] },\n    context: {\n      input: {\n        user_query: 'What is the capital of France?',\n        expected_output: 'Paris',\n        retrievals: ['The capital of France is Paris.'],\n      },\n      output: { response: 'The capital of France is Paris.' },\n      variables: { tone: 'formal' },\n    },\n  },\n});\n\nconsole.log(evaluation.passed, evaluation.value);\n"
         - lang: "curl"
           label: "Core - Grade a conversation instead of a single turn"
           source: "curl 'https://my.orq.ai/v3/evaluators/01KT1FCSA8N3YD1K8YBPVTAV9E/invoke' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{\n    \"context\": {\n      \"messages\": [\n        {\"role\": \"user\", \"content\": \"What is the capital of France?\"},\n        {\"role\": \"assistant\", \"content\": \"The capital of France is Paris.\"}\n      ],\n      \"input\": {\n        \"expected_output\": \"Paris\"\n      }\n    }\n  }'\n"
@@ -64833,8 +64913,10 @@ paths:
                 auth_mode:
                   type: "string"
                 autorouter_id:
+                  description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
                   type: "string"
                 autorouter_version:
+                  description: "Version of the Smart Router catalog entry, set with autorouter_id."
                   type: "string"
                 benchmark_model:
                   type: "string"
@@ -65106,8 +65188,10 @@ paths:
                 assume_role_external_id:
                   type: "string"
                 autorouter_id:
+                  description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
                   type: "string"
                 autorouter_version:
+                  description: "Version of the Smart Router catalog entry, set with autorouter_id."
                   type: "string"
                 benchmark_model:
                   type: "string"
@@ -70223,7 +70307,7 @@ paths:
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_ids come from McpTool.id. A tool renamed upstream gets a new id\n# on the next sync, which drops it from this allowlist.\nresult = client.mcp_gateways.update(\n    id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\n                \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n                \"tool_ids\": [\n                    \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n                    \"01JQ0KB5P9WF2G7H4J6K8L1NQD\",\n                ],\n            },\n        },\n    ],\n)\n\nprint(result.mcp_gateway.exposed_tools_count)\n"
         - lang: "typescript"
           label: "Node.js - Narrow the tools a gateway exposes"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolIds come from McpTool.id. A tool renamed upstream gets a new id\n// on the next sync, which drops it from this allowlist.\nconst result = await client.mcpGateways.update({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  serverLinks: [\n    {\n      mcpServerId: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n      alias: 'github',\n      enabled: true,\n      toolExposure: {\n        mode: 'MCP_TOOL_EXPOSURE_MODE_SELECTED',\n        toolIds: [\n          '01JQ0KA2M7VD9E4R6T8Y1U3XSB',\n          '01JQ0KB5P9WF2G7H4J6K8L1NQD',\n        ],\n      },\n    },\n  ],\n});\n\nconsole.log(result.mcpGateway.exposedToolsCount);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolIds come from McpTool.id. A tool renamed upstream gets a new id\n// on the next sync, which drops it from this allowlist.\nconst result = await client.mcpGateways.update({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  updateMcpGatewayRequest: {\n    serverLinks: [\n      {\n        mcpServerId: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n        alias: 'github',\n        enabled: true,\n        toolExposure: {\n          mode: 'MCP_TOOL_EXPOSURE_MODE_SELECTED',\n          toolIds: [\n            '01JQ0KA2M7VD9E4R6T8Y1U3XSB',\n            '01JQ0KB5P9WF2G7H4J6K8L1NQD',\n          ],\n        },\n      },\n    ],\n  },\n});\n\nconsole.log(result.mcpGateway.exposedToolsCount);\n"
       security:
         - ApiKey: []
   /v2/mcp-servers:
