@@ -395,13 +395,13 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "autorouter_id",
 							FlagName:    "autorouter-id",
 							Type:        "string",
-							Description: "",
+							Description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools.",
 						},
 						{
 							Name:        "autorouter_version",
 							FlagName:    "autorouter-version",
 							Type:        "string",
-							Description: "",
+							Description: "Version of the Smart Router catalog entry, set with autorouter_id.",
 						},
 						{
 							Name:        "benchmark_model",
@@ -599,13 +599,13 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "autorouter_id",
 					FlagName:    "autorouter-id",
 					Type:        "string",
-					Description: "",
+					Description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools.",
 				},
 				{
 					Name:        "autorouter_version",
 					FlagName:    "autorouter-version",
 					Type:        "string",
-					Description: "",
+					Description: "Version of the Smart Router catalog entry, set with autorouter_id.",
 				},
 				{
 					Name:        "benchmark_model",
@@ -1723,13 +1723,13 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "autorouter_id",
 							FlagName:    "autorouter-id",
 							Type:        "string",
-							Description: "",
+							Description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools.",
 						},
 						{
 							Name:        "autorouter_version",
 							FlagName:    "autorouter-version",
 							Type:        "string",
-							Description: "",
+							Description: "Version of the Smart Router catalog entry, set with autorouter_id.",
 						},
 						{
 							Name:        "benchmark_model",
@@ -1909,13 +1909,13 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "autorouter_id",
 					FlagName:    "autorouter-id",
 					Type:        "string",
-					Description: "",
+					Description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools.",
 				},
 				{
 					Name:        "autorouter_version",
 					FlagName:    "autorouter-version",
 					Type:        "string",
-					Description: "",
+					Description: "Version of the Smart Router catalog entry, set with autorouter_id.",
 				},
 				{
 					Name:        "benchmark_model",
