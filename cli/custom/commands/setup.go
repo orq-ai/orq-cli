@@ -873,7 +873,7 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 // host. An env or profile host already applies on every run that has it.
 func persistSetupServer(rep *reporter, complete bool) error {
 	host := auth.Server()
-	if !complete || auth.ServerSource() != "flag" || host == "" {
+	if !complete || auth.ServerSource() != auth.SourceFlag || host == "" {
 		return nil
 	}
 	profileName := ""

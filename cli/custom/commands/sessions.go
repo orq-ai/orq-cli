@@ -98,14 +98,14 @@ func printSessionList(rows []auth.SessionListEntry, binary string) {
 // source above it in resolveServer's order goes on outranking what it wrote.
 // Naming it unconditionally sends anyone on ORQ_SERVER or a profile to a
 // command that changes nothing.
-func switchHint(binary, target, source string) string {
+func switchHint(binary, target string, source auth.Source) string {
 	perCall := fmt.Sprintf("`--server %s` uses it for one call.", target)
 	switch source {
-	case "env":
+	case auth.SourceEnv:
 		return fmt.Sprintf("Another login lives at %s, but ORQ_SERVER picks the host — unset it to leave this one. %s", target, perCall)
-	case "profile":
+	case auth.SourceProfile:
 		return fmt.Sprintf("Another login lives at %s, but the profile in force binds this host — leave that profile to reach it. %s", target, perCall)
-	case "flag":
+	case auth.SourceFlag:
 		return fmt.Sprintf("Another login lives at %s. %s", target, perCall)
 	default:
 		return fmt.Sprintf("Use another login with `%s server set %s`, or one call at a time: %s", binary, target, perCall)
