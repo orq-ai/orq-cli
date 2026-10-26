@@ -29,7 +29,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create",
-			Short:   "Create",
+			Short:   "Submit feedback",
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string)\n- `product` (string)\n- `property` (string, required)\n- `trace_id` (string, required)\n- `value` (anyOf, required)\n\nRequired fields: `property`, `trace_id`, `value`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -187,7 +187,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete",
-			Short:   "Delete",
+			Short:   "Remove feedback",
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `product` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `product`, `trace_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),

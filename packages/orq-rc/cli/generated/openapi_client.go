@@ -3684,7 +3684,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 	return resp, decoded, nil
 }
 
-// OpenapiPostV2Feedback Create
+// OpenapiPostV2Feedback Submit feedback
 func OpenapiPostV2Feedback(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "feedback create"
 	server := bartolocli.ResolveServer()
@@ -3726,7 +3726,7 @@ func OpenapiPostV2Feedback(params *viper.Viper, body string) (*gentleman.Respons
 	return resp, decoded, nil
 }
 
-// OpenapiPostV2FeedbackRemove Delete
+// OpenapiPostV2FeedbackRemove Remove feedback
 func OpenapiPostV2FeedbackRemove(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "feedback delete"
 	server := bartolocli.ResolveServer()

@@ -57,7 +57,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
-							Description: "The unique key of the memory store. The key is unique and inmmutable and cannot be repeated within the same workspace.",
+							Description: "The unique key of the memory store. The key is unique and immutable and cannot be repeated within the same workspace.",
 						},
 						{
 							Name:        "path",
@@ -111,7 +111,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
-					Description: "The unique key of the memory store. The key is unique and inmmutable and cannot be repeated within the same workspace.",
+					Description: "The unique key of the memory store. The key is unique and immutable and cannot be repeated within the same workspace.",
 				},
 				{
 					Name:        "path",
