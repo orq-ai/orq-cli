@@ -806,6 +806,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	widenServerUse(root)
+	commands.HumanizeServerAndProfile(root)
 	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
