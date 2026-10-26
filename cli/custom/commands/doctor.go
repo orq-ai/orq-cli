@@ -273,7 +273,7 @@ func NewDoctorCommand() *cobra.Command {
 					"profile":          bartolocli.ActiveProfileName(),
 					"session_file":     auth.SessionFilePath(),
 					"session_host":     auth.SessionHost(client.URLs.APIBaseURL),
-					"api_base_url":     resolvedValue{Value: client.URLs.APIBaseURL, Source: apiBaseSource},
+					"api_base_url":     resolvedValue{Value: client.URLs.APIBaseURL, Source: string(apiBaseSource)},
 					"v1_base_url":      resolvedValue{Value: client.URLs.V1BaseURL, Source: v1Source},
 					"auth_base_url":    resolvedValue{Value: client.URLs.AuthBaseURL, Source: "derived"},
 					"profile_base_url": resolvedValue{Value: client.URLs.ProfileBaseURL, Source: profileSource},

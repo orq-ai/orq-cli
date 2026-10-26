@@ -92,7 +92,7 @@ func TestSwitchHintNamesWhatOutranksTheCurrentHost(t *testing.T) {
 		{"flag", "--server " + target, "server set"},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
-			got := switchHint("orq", target, tc.source)
+			got := switchHint("orq", target, auth.Source(tc.source))
 			if !strings.Contains(got, tc.want) {
 				t.Errorf("source %q: %q does not mention %q", tc.source, got, tc.want)
 			}

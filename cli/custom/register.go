@@ -314,29 +314,29 @@ func resolveServer(cmd *cobra.Command) {
 	case cmd.Root().PersistentFlags().Changed("server"):
 		// Read the flag, not viper's key: an explicitly typed --server has to
 		// win over anything else that lands on the same key.
-		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), "flag")
+		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), auth.SourceFlag)
 	case cmd.Flags().Changed("api-base-url"):
 		// The pre-4.15 flag on the six auth/workspace/doctor commands, kept for
 		// one release (commands.DeprecatedAPIBaseFlag).
 		// Lookup, not GetString: the latter returns an error this branch would
 		// have to swallow, and swallowing it would drop a host the user typed.
 		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
-		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
+		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), auth.SourceFlag)
 	case commands.ProfileServer() != "":
 		// A profile binds a key and server as one credential. Letting an ambient
 		// ORQ_SERVER replace only its host can send that key to another backend.
-		auth.SetServer(commands.ProfileServer(), "profile")
+		auth.SetServer(commands.ProfileServer(), auth.SourceProfile)
 	case envServer != "":
 		if envVar == auth.DeprecatedServerEnvVar {
 			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
 		}
-		auth.SetServer(envServer, "env")
+		auth.SetServer(envServer, auth.SourceEnv)
 	case persistedServer() != "":
-		auth.SetServer(persistedServer(), "config") // persisted `orq server set`
+		auth.SetServer(persistedServer(), auth.SourceConfig) // persisted `orq server set`
 	default:
 		// Assign in every branch: the resolver decides the host, it does not
 		// leave behind whatever a previous call happened to store.
-		auth.SetServer("", "default")
+		auth.SetServer("", auth.SourceDefault)
 	}
 	mirrorServerToViper()
 }
@@ -806,7 +806,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	widenServerUse(root)
-	commands.HumanizeServerAndProfile(root)
+	commands.HumanizeBuiltins(root)
 	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())

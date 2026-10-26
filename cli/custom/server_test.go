@@ -350,7 +350,7 @@ func TestResolveServerPrecedence(t *testing.T) {
 			if got := auth.Server(); got != tc.wantServer {
 				t.Errorf("server: got %q, want %q", got, tc.wantServer)
 			}
-			if got := auth.ServerSource(); got != tc.wantSource {
+			if got := auth.ServerSource(); string(got) != tc.wantSource {
 				t.Errorf("source: got %q, want %q", got, tc.wantSource)
 			}
 			// The generated commands read viper directly; they must land on
@@ -495,15 +495,15 @@ func TestServerUseAcceptsAHostOutsideTheGeneratedList(t *testing.T) {
 	}
 }
 
-// HumanizeServerAndProfile skips a command it cannot find, so a bartolo rename
+// HumanizeBuiltins skips a command it cannot find, so a bartolo rename
 // would turn the readable output off with no error. Pin the real targets.
 func TestHumanizedCommandsExistInTheRealTree(t *testing.T) {
 	root := buildRoot(t)
-	for _, path := range [][]string{{"server", "list"}, {"server", "current"}, {"server", "set"}, {"server", "clear"}, {"auth", "profile", "clear"}} {
+	for _, path := range [][]string{{"server", "list"}, {"server", "current"}, {"server", "set"}, {"server", "clear"}, {"auth", "profile", "clear"}, {"auth", "profile", "list"}, {"auth", "profile", "current"}, {"auth", "profile", "use"}} {
 		cmd := root
 		for _, name := range path {
 			if cmd = childCommand(cmd, name); cmd == nil {
-				t.Fatalf("`orq %s` is missing; commands.HumanizeServerAndProfile would silently skip it", strings.Join(path, " "))
+				t.Fatalf("`orq %s` is missing; commands.HumanizeBuiltins would silently skip it", strings.Join(path, " "))
 			}
 		}
 	}
