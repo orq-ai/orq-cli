@@ -3,11 +3,13 @@ package commands
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // HumanizeServerAndProfile replaces bartolo's machine-shaped records for
@@ -19,10 +21,10 @@ func HumanizeServerAndProfile(root *cobra.Command) {
 		wrapView(subcommand(server, "list"), printServerList)
 		wrapView(subcommand(server, "current"), printServerCurrent)
 		wrapWrite(subcommand(server, "set"), func() {
-			fmt.Fprintf(bartolocli.Stdout, "Now talking to %s.\n", bartolocli.ResolveServer())
+			fmt.Fprintf(bartolocli.Stdout, "Saved %s as the default server.%s\n", persistedHost(), overrideNote())
 		})
 		wrapWrite(subcommand(server, "clear"), func() {
-			fmt.Fprintf(bartolocli.Stdout, "Cleared the server override. Now talking to %s.\n", bartolocli.ResolveServer())
+			fmt.Fprintf(bartolocli.Stdout, "Cleared the saved server.%s\n", overrideNote())
 		})
 	}
 	wrapWrite(subcommand(subcommand(root, "auth"), "profile", "clear"), func() {
@@ -35,6 +37,8 @@ func HumanizeServerAndProfile(root *cobra.Command) {
 }
 
 // subcommand walks names down from parent, returning nil at the first miss.
+// A miss skips the wrap silently; TestHumanizeTargetsExist keeps a bartolo
+// rename from turning the feature off unnoticed.
 func subcommand(parent *cobra.Command, names ...string) *cobra.Command {
 	for _, name := range names {
 		if parent == nil {
@@ -80,6 +84,7 @@ func wrapWrite(cmd *cobra.Command, say func()) {
 		}
 		restore := bartolocli.Stdout
 		bartolocli.Stdout = io.Discard
+		defer func() { bartolocli.Stdout = restore }()
 		err := orig(c, args)
 		bartolocli.Stdout = restore
 		if err != nil {
@@ -125,9 +130,22 @@ func serverSource() string {
 		return "ORQ_SERVER"
 	case "config":
 		return "saved with `orq server set`"
-	case "session":
-		return "your login session"
 	default:
 		return "built-in default"
 	}
+}
+
+// persistedHost is what `server set` just wrote, which differs from the host
+// in force whenever a flag, env var or profile outranks the saved default.
+func persistedHost() string {
+	return strings.TrimSpace(viper.GetString("server-default"))
+}
+
+// overrideNote tells a person when a higher layer still decides this call's host.
+func overrideNote() string {
+	switch auth.ServerSource() {
+	case "flag", "profile", "env":
+		return fmt.Sprintf(" %s still decides this call's host (%s).", serverSource(), auth.Server())
+	}
+	return ""
 }

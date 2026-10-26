@@ -494,3 +494,17 @@ func TestServerUseAcceptsAHostOutsideTheGeneratedList(t *testing.T) {
 		t.Error("server use 9 succeeded, want the out-of-range index error")
 	}
 }
+
+// HumanizeServerAndProfile skips a command it cannot find, so a bartolo rename
+// would turn the readable output off with no error. Pin the real targets.
+func TestHumanizedCommandsExistInTheRealTree(t *testing.T) {
+	root := buildRoot(t)
+	for _, path := range [][]string{{"server", "list"}, {"server", "current"}, {"server", "set"}, {"server", "clear"}, {"auth", "profile", "clear"}} {
+		cmd := root
+		for _, name := range path {
+			if cmd = childCommand(cmd, name); cmd == nil {
+				t.Fatalf("`orq %s` is missing; commands.HumanizeServerAndProfile would silently skip it", strings.Join(path, " "))
+			}
+		}
+	}
+}
