@@ -34,6 +34,12 @@ func TestExplainAPIError(t *testing.T) {
 			absent: []string{"limited to other projects"},
 		},
 		{
+			name:   "a not-authorized 403 names the credential, where it is set and next steps",
+			apiKey: true,
+			in:     "error calling operation: HTTP 403:\n" + `{"message":"You are not authorized to access this resource."}`,
+			want:   []string{"You are not authorized to access this resource.", "Credential sent: ORQ_API_KEY", "Reaches:", "Next steps:", "orq doctor"},
+		},
+		{
 			name: "validation details are kept whole",
 			in:   "error calling operation: HTTP 400:\n" + `{"message":"Invalid body","details":{"issues":[{"path":["name"],"message":"Required"}]}}`,
 			want: []string{"HTTP 400 Bad Request: Invalid body", "name: Required"},
@@ -101,6 +107,7 @@ func TestExplainAPIError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ORQ_API_KEY", "sk-orq-01ARZ3NDEKTSV4RRFFQ69G5FAV-secret")
 			prev := explicitAPIKey
 			explicitAPIKey = tc.apiKey
 			t.Cleanup(func() { explicitAPIKey = prev })
