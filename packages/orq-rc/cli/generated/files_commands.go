@@ -309,7 +309,7 @@ func registerfilesCommands(root *cobra.Command) {
 							Name:        "purpose",
 							FlagName:    "purpose",
 							Type:        "enum-string",
-							Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
+							Description: "Intended usage category for the uploaded file. Defaults to retrieval when omitted. Accepts either the alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`) or the prefixed value. A JSON upload returns the prefixed form in the response, and a multipart upload returns the lowercase alias.",
 							Enum: []string{
 								"FILE_PURPOSE_RETRIEVAL",
 								"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
@@ -369,7 +369,7 @@ func registerfilesCommands(root *cobra.Command) {
 					Name:        "purpose",
 					FlagName:    "purpose",
 					Type:        "enum-string",
-					Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
+					Description: "Intended usage category for the uploaded file. Defaults to retrieval when omitted. Accepts either the alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`) or the prefixed value. A JSON upload returns the prefixed form in the response, and a multipart upload returns the lowercase alias.",
 					Enum: []string{
 						"FILE_PURPOSE_RETRIEVAL",
 						"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
