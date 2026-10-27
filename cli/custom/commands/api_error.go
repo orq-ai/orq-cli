@@ -94,16 +94,75 @@ func splitAPIErrorBody(raw string) (body, suffix string) {
 // NotFoundScopeHint, which knows the project the read was scoped to.
 func apiErrorFix(status int, body string) string {
 	switch {
+	case status == http.StatusUnauthorized && strings.Contains(strings.ToLower(body), "not authorized"):
+		return forbiddenGuidance()
 	case status == http.StatusUnauthorized:
 		return "The credential was rejected. `orq doctor` shows which one is in use; run `orq auth login` or replace the key."
 	case status == http.StatusForbidden && explicitAPIKey && strings.Contains(strings.ToLower(body), "out of scope"):
 		return "The API key is limited to other projects. Use a key that covers this one; `orq doctor` shows the key in use."
 	case status == http.StatusForbidden:
-		return "The credential in use has no access to this. `orq doctor` shows which one it is."
+		return forbiddenGuidance()
 	case status == http.StatusTooManyRequests:
 		return "Rate limited. Wait a moment and retry."
 	case status >= 500:
 		return "The orq.ai API failed on its side. Retry; if it keeps failing, run `orq doctor` and report the output."
 	}
 	return ""
+}
+
+// forbiddenGuidance explains a 403 the API gave no usable detail for. The API
+// says only that the caller "is not authorized"; what the CLI can add is which
+// credential it sent, where that credential is configured, and the scope it
+// carries, all read locally with no extra request.
+func forbiddenGuidance() string {
+	var b strings.Builder
+	b.WriteString("The credential in use has no access to this resource.\n")
+	session, _ := auth.ReadSession()
+	cred := describeCredential(session)
+	if cred == nil {
+		b.WriteString("No credential was found to compare against; run `orq auth login`.")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "\nCredential sent: %s\n", credentialOrigin(cred.Source))
+	fmt.Fprintf(&b, "Reaches:         %s\n", credentialReach(cred))
+	b.WriteString("\nThe API accepted the credential but refused this request. Usual causes:\n")
+	b.WriteString("  - the resource lives in a different workspace or project than the credential\n")
+	b.WriteString("  - the key is scoped to specific projects, or lacks the role this action needs\n")
+	b.WriteString("  - the member behind the login lost access (role change or removal)\n")
+	b.WriteString("\nNext steps:\n")
+	b.WriteString("  1. `orq doctor` shows the credential, workspace and project in force.\n")
+	if cred.Source == "session" {
+		b.WriteString("  2. `orq workspace use` / `orq projects use <key>` switch to the one that owns the resource.\n")
+		b.WriteString("  3. `orq auth login` signs in again if your access changed.")
+	} else {
+		b.WriteString("  2. Use a key for the workspace and project that owns the resource, or unset it to fall back to your login.\n")
+		b.WriteString("  3. Ask a workspace admin to check the key's role and project scope.")
+	}
+	return b.String()
+}
+
+// credentialOrigin says where a credential source is configured.
+func credentialOrigin(source string) string {
+	switch {
+	case source == "session":
+		return "your `orq auth login` session (stored under ~/.orq)"
+	case strings.HasPrefix(source, "profile "):
+		return source + " (the profile's api_key in the orq config file)"
+	default:
+		return source + " (environment variable; check your shell, ~/.orq/env or a .env file)"
+	}
+}
+
+func credentialReach(c *IdentityCredential) string {
+	workspace := "workspace unknown"
+	if c.WorkspaceID != "" {
+		workspace = "workspace " + c.WorkspaceID
+	}
+	switch c.Scope {
+	case scopeProject:
+		return workspace + ", project " + c.ProjectID + " only"
+	case scopeAllProjects:
+		return workspace + ", all projects"
+	}
+	return workspace + ", project scope not readable from the key"
 }
