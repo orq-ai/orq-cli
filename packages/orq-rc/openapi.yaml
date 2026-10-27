@@ -1211,6 +1211,13 @@ components:
             - "medium"
             - "high"
           description: "The level of reasoning the model should use. This setting is supported only by `gemini-3` models. If budget_tokens is specified and `thinking_level` is available, `budget_tokens` will be ignored."
+        display:
+          type: "string"
+          enum:
+            - "summarized"
+            - "omitted"
+            - "updates"
+          description: "Controls how Anthropic thinking content appears in the response. Use updates for progress summaries on supported models."
       required:
         - "type"
         - "budget_tokens"
@@ -1224,10 +1231,38 @@ components:
           enum:
             - "adaptive"
           description: "Lets the model dynamically determine when and how much to use extended thinking based on the complexity of each request. Supported on Claude Opus 4.6 and Sonnet 4.6."
+        display:
+          type: "string"
+          enum:
+            - "summarized"
+            - "omitted"
+            - "updates"
+          description: "Controls how Anthropic thinking content appears in the response. Use updates for progress summaries on supported models."
       required:
         - "type"
       title: "Thinking config adaptive"
       description: "Enables adaptive thinking mode where the model dynamically determines thinking depth"
+    ThinkingConfigBetweenToolsSchema:
+      type: "object"
+      properties:
+        type:
+          type: "string"
+          enum:
+            - "between_tools"
+          description: "Returns Sonnet 5.5 progress updates between tool calls without extended thinking."
+        budget_tokens:
+          type: "number"
+        display:
+          type: "string"
+          enum:
+            - "summarized"
+            - "omitted"
+            - "updates"
+          description: "Controls how Anthropic thinking content appears in the response. Use updates for progress summaries on supported models."
+      required:
+        - "type"
+      title: "Thinking config between tools"
+      description: "Enables progress updates between tool calls on Sonnet 5.5."
     PIIRedactionPlugin:
       type: "object"
       properties:
@@ -2556,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m5vrfsn891ncytmy7x3hx50y"
+              default: "reasoning_01m5y34ekwp6dmtq9r6h89fdft"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -9147,7 +9182,7 @@ components:
       properties:
         object:
           type: "string"
-          description: "Object discriminator; always \"query\". Mirrors QueryTracesResponse."
+          description: "Object discriminator; always \"query\"."
         search:
           $ref: "#/components/schemas/SearchLogsResponse"
     SearchLogsRequest:
@@ -10411,11 +10446,13 @@ components:
           type: "boolean"
         trace_framework:
           type: "string"
-          description: "Row badge inputs, so the tree does not need a detail fetch per span:\n trace_framework is set on the trace root, leading_span_type where the\n ingest marked one, guardrail_enabled on evaluator spans run as guardrails."
+          description: "Framework that produced the trace, recorded on the root span."
         leading_span_type:
           type: "string"
+          description: "Span type assigned at ingest when the trace has one."
         guardrail_enabled:
           type: "boolean"
+          description: "Whether the span is an evaluator span running as a guardrail."
         finish_reasons:
           type: "array"
           items:
@@ -11774,6 +11811,9 @@ components:
         cost_per_image:
           format: "double"
           type: "number"
+        default_max_output_tokens:
+          format: "int64"
+          type: "integer"
         default_speech_response_format:
           type: "string"
         deprecation_date:
@@ -14160,7 +14200,7 @@ components:
           format: "double"
         tokens:
           type: "number"
-          description: "Carried as a double (not int64) so it serializes as a JSON number\n rather than a quoted string, matching limits.token_limit."
+          description: "Tokens accumulated in the current period."
           format: "double"
         requests:
           type: "integer"
@@ -14193,7 +14233,7 @@ components:
       properties:
         provider:
           type: "string"
-      description: "Per-provider cap. The value is the provider enum string (e.g.\n \"openai\", \"anthropic\") drawn from ModelIntegrationIdentifier."
+      description: "Per-provider cap. The value is the provider identifier, for example\n \"openai\" or \"anthropic\"."
     ModelBudgetScope:
       required:
         - "model_id"
@@ -19278,6 +19318,21 @@ components:
         - "noul"
       title: "ClassifyNoulAnswer"
       type: "object"
+    ClassifyPromptCacheOptions:
+      additionalProperties: false
+      properties:
+        mode:
+          description: "Implicit uses the shared input boundary by default; explicit uses only marked input boundaries."
+          enum:
+            - "implicit"
+            - "explicit"
+          type: "string"
+        ttl:
+          description: "Minimum cache lifetime. Only 30m is supported by native OpenAI Decisions."
+          enum:
+            - "30m"
+          type: "string"
+      type: "object"
     ClassifyRefusalAnswer:
       additionalProperties: false
       properties:
@@ -19364,7 +19419,7 @@ components:
           type: "integer"
         input_tokens_details:
           $ref: "#/components/schemas/ClassifyInputTokensDetails"
-          description: "Provider-reported cache token usage. OpenAI Decisions does not charge for cache reads or writes."
+          description: "Provider-reported cache token usage. OpenAI Decisions charges cache reads and writes at the model cache rates; these tokens are included in input_tokens."
         output_cost:
           description: "Cost (USD) of output tokens. 0 for native classify providers, including OpenAI Decisions. Present when billing was computed for this request."
           format: "double"
@@ -19431,6 +19486,13 @@ components:
         name:
           description: "The name to display on the trace. If not specified, the default system name will be used."
           type: "string"
+        prompt_cache_key:
+          description: "Native OpenAI only. Partitions reuse of shared input across requests."
+          maxLength: 64
+          type: "string"
+        prompt_cache_options:
+          $ref: "#/components/schemas/ClassifyPromptCacheOptions"
+          description: "Native OpenAI prompt caching controls. Separate from the gateway exact-match response cache."
         questions:
           additionalProperties:
             oneOf:
@@ -19472,7 +19534,7 @@ components:
                       - items: {}
                         title: "Array"
                         type: "array"
-                    description: "The evaluation prompt for this question. A string, an object or an array."
+                    description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                   type:
                     enum:
                       - "noul"
@@ -19511,7 +19573,7 @@ components:
                       - items: {}
                         title: "Array"
                         type: "array"
-                    description: "The evaluation prompt for this question. A string, an object or an array."
+                    description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                   type:
                     enum:
                       - "choice"
@@ -19539,7 +19601,7 @@ components:
                       - items: {}
                         title: "Array"
                         type: "array"
-                    description: "The evaluation prompt for this question. A string, an object or an array."
+                    description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                   type:
                     enum:
                       - "score"
@@ -19562,7 +19624,7 @@ components:
                       - items: {}
                         title: "Array"
                         type: "array"
-                    description: "The evaluation prompt for this question. A string, an object or an array."
+                    description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                   type:
                     enum:
                       - "box"
@@ -19572,7 +19634,7 @@ components:
                   - "instructions"
                 title: "BoxQuestion"
                 type: "object"
-          description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key."
+          description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key. Native OpenAI accepts 1 to 400 questions."
           minProperties: 1
           type: "object"
         retry:
@@ -19588,7 +19650,7 @@ components:
             - items: {}
               title: "Array"
               type: "array"
-          description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. For OpenAI GPT-6 Luna, strings are passed as text and objects or ordinary JSON arrays are serialized as text. User-message arrays accept string content or input_text/input_image parts. Images must be inline base64 data URLs, with at most 128 images across the request. Remote image URLs, file IDs, audio, non-user roles, bare content parts and tool items are rejected."
+          description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
         timeout:
           $ref: "#/components/schemas/ClassifyTimeoutConfig"
           description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
@@ -26559,7 +26621,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M5VRFSM0DWBYJ4KAXGZY1ZDX"
+                                default: "01M5Y34EK9KQ02RN3N4F39EJDB"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -28224,12 +28286,14 @@ paths:
                                 - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               discriminator:
                                 propertyName: "type"
                                 mapping:
                                   disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             temperature:
                               type:
                                 - "number"
@@ -28581,12 +28645,14 @@ paths:
                                   - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 discriminator:
                                   propertyName: "type"
                                   mapping:
                                     disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               temperature:
                                 type:
                                   - "number"
@@ -29406,12 +29472,14 @@ paths:
                               - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                              - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             discriminator:
                               propertyName: "type"
                               mapping:
                                 disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                           temperature:
                             type:
                               - "number"
@@ -29760,12 +29828,14 @@ paths:
                                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                       discriminator:
                                         propertyName: "type"
                                         mapping:
                                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                     temperature:
                                       type:
                                         - "number"
@@ -30490,12 +30560,14 @@ paths:
                                     - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                   discriminator:
                                     propertyName: "type"
                                     mapping:
                                       disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                       enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                       adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                      between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 temperature:
                                   type:
                                     - "number"
@@ -30844,12 +30916,14 @@ paths:
                                               - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                               - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                               - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                              - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                             discriminator:
                                               propertyName: "type"
                                               mapping:
                                                 disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                                 enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                                 adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                                between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                           temperature:
                                             type:
                                               - "number"
@@ -31688,12 +31762,14 @@ paths:
                               - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                              - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             discriminator:
                               propertyName: "type"
                               mapping:
                                 disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                           temperature:
                             type:
                               - "number"
@@ -32042,12 +32118,14 @@ paths:
                                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                       discriminator:
                                         propertyName: "type"
                                         mapping:
                                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                     temperature:
                                       type:
                                         - "number"
@@ -32473,12 +32551,14 @@ paths:
                                 - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               discriminator:
                                 propertyName: "type"
                                 mapping:
                                   disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             temperature:
                               type:
                                 - "number"
@@ -32830,12 +32910,14 @@ paths:
                                   - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 discriminator:
                                   propertyName: "type"
                                   mapping:
                                     disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               temperature:
                                 type:
                                   - "number"
@@ -33657,12 +33739,14 @@ paths:
                               - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                              - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             discriminator:
                               propertyName: "type"
                               mapping:
                                 disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                           temperature:
                             type:
                               - "number"
@@ -34011,12 +34095,14 @@ paths:
                                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                       discriminator:
                                         propertyName: "type"
                                         mapping:
                                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                     temperature:
                                       type:
                                         - "number"
@@ -34749,12 +34835,14 @@ paths:
                                 - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               discriminator:
                                 propertyName: "type"
                                 mapping:
                                   disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             temperature:
                               type:
                                 - "number"
@@ -35106,12 +35194,14 @@ paths:
                                   - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 discriminator:
                                   propertyName: "type"
                                   mapping:
                                     disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               temperature:
                                 type:
                                   - "number"
@@ -35946,7 +36036,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5VRFSPWMDGXKRKTK271SQ3K"
+                                          default: "01M5Y34EMPSP3SQSXN7XHSH8YB"
                                         name:
                                           type: "string"
                                         description:
@@ -36371,12 +36461,14 @@ paths:
                                 - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               discriminator:
                                 propertyName: "type"
                                 mapping:
                                   disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             temperature:
                               type:
                                 - "number"
@@ -36728,12 +36820,14 @@ paths:
                                   - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 discriminator:
                                   propertyName: "type"
                                   mapping:
                                     disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               temperature:
                                 type:
                                   - "number"
@@ -37568,7 +37662,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M5VRFSQCBC1H0G5QT53SH3B6"
+                                          default: "01M5Y34EMYB5RJ7TT03ZEQDF2V"
                                         name:
                                           type: "string"
                                         description:
@@ -38746,12 +38840,14 @@ paths:
                                 - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                               discriminator:
                                 propertyName: "type"
                                 mapping:
                                   disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                   enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                   adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                  between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             temperature:
                               type:
                                 - "number"
@@ -39748,12 +39844,14 @@ paths:
                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       discriminator:
                         propertyName: "type"
                         mapping:
                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                     temperature:
                       type:
                         - "number"
@@ -40610,12 +40708,14 @@ paths:
                           - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                         discriminator:
                           propertyName: "type"
                           mapping:
                             disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                             enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                             adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                            between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       temperature:
                         type:
                           - "number"
@@ -41766,12 +41866,14 @@ paths:
                           - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                         discriminator:
                           propertyName: "type"
                           mapping:
                             disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                             enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                             adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                            between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       temperature:
                         type:
                           - "number"
@@ -42752,12 +42854,14 @@ paths:
                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       discriminator:
                         propertyName: "type"
                         mapping:
                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                     temperature:
                       type:
                         - "number"
@@ -43652,12 +43756,14 @@ paths:
                           - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                           - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                         discriminator:
                           propertyName: "type"
                           mapping:
                             disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                             enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                             adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                            between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       temperature:
                         type:
                           - "number"
@@ -44862,12 +44968,14 @@ paths:
                                     - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                                     - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                                     - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                    - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                   discriminator:
                                     propertyName: "type"
                                     mapping:
                                       disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                       enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                       adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                      between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                                 temperature:
                                   type:
                                     - "number"
@@ -46019,12 +46127,14 @@ paths:
                               - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                               - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                              - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                             discriminator:
                               propertyName: "type"
                               mapping:
                                 disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                                 enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                                 adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                                between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                           temperature:
                             type:
                               - "number"
@@ -46603,7 +46713,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5VRFSRTRQ6E5HC2N7Y63XQX"
+                              default: "tool_01M5Y34ENKFSDJMYBJYRT158FN"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46704,7 +46814,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5VRFSRVST90H1PWH80V6H1X"
+                              default: "tool_01M5Y34ENKSG6X7FTC53F72NB8"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46807,7 +46917,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5VRFSRVDG2BB1ZKWJAJ06JN"
+                              default: "tool_01M5Y34ENKH3K2D2AXWKVPWA36"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -46951,7 +47061,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M5VRFSRWNJ2ZDT2904SYT9BA"
+                              default: "tool_01M5Y34ENMTT3DDY273B5B65CF"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47438,7 +47548,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS2YMR11DXW5QQP8M1S"
+                        default: "tool_01M5Y34ENQYMK3J436JXWJRYTA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47539,7 +47649,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS26YC3WX23QR4KDWXG"
+                        default: "tool_01M5Y34ENQ58FS1TRJ0XABM4JA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47642,7 +47752,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS22VV9V7N8BF6F3SDS"
+                        default: "tool_01M5Y34ENQVTK5JEBJ85BY01WH"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47786,7 +47896,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS31TWEXZNJC5GEMY82"
+                        default: "tool_01M5Y34ENQ4SYNHHTSWADAHXHB"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48290,7 +48400,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS4RSSVDAQVTEQGVHEC"
+                        default: "tool_01M5Y34ENRPYNK7XYK056GMRTS"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48391,7 +48501,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS5JA9895B9BYSY86R5"
+                        default: "tool_01M5Y34ENR9RJKZ6HMBBCN2WH0"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48494,7 +48604,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS58G43HPD26BVW0HZP"
+                        default: "tool_01M5Y34ENSDJW728D3TBW7JVNM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48638,7 +48748,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS64T5C7JBFJMN3FSXM"
+                        default: "tool_01M5Y34ENSPA9S69D30WEAWA7K"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48805,7 +48915,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS9C0F45BQC7SR3EM6H"
+                        default: "tool_01M5Y34ENVDVRMTANAG4DVTWBQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48906,7 +49016,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSS9YSQE910XHQJK8J3P"
+                        default: "tool_01M5Y34ENWJ2QNRSPF4276VHZK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49009,7 +49119,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSSAGFEA36Y5CSYFR8Z1"
+                        default: "tool_01M5Y34ENWTZPZPMZF5NPCPDYH"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49153,7 +49263,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M5VRFSSACXH0GHDS2GQ5MC12"
+                        default: "tool_01M5Y34ENWFWMXBQQQEEMXQMDR"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49894,12 +50004,14 @@ paths:
                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                       discriminator:
                         propertyName: "type"
                         mapping:
                           disabled: "#/components/schemas/ThinkingConfigDisabledSchema"
                           enabled: "#/components/schemas/ThinkingConfigEnabledSchema"
                           adaptive: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                          between_tools: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                     temperature:
                       type:
                         - "number"
@@ -52631,6 +52743,7 @@ paths:
                         - $ref: "#/components/schemas/ThinkingConfigDisabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigEnabledSchema"
                         - $ref: "#/components/schemas/ThinkingConfigAdaptiveSchema"
+                        - $ref: "#/components/schemas/ThinkingConfigBetweenToolsSchema"
                         - type: "null"
                       description: "Configuration for the thinking mode capability. Set type to `adaptive` for models that support adaptive thinking (e.g. Claude Opus 4.6, Sonnet 4.6), or `enabled` with `budget_tokens` for manual control."
                     plugins:
@@ -55689,7 +55802,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-26T09:25:48.816Z"
+                          default: "2026-10-27T07:10:24.114Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55697,7 +55810,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-26T09:25:48.817Z"
+                              default: "2026-10-27T07:10:24.115Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55767,7 +55880,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-10-26T09:25:48.816Z"
+                          default: "2026-10-27T07:10:24.114Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55775,7 +55888,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-10-26T09:25:48.817Z"
+                              default: "2026-10-27T07:10:24.115Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55960,7 +56073,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55968,7 +56081,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56038,7 +56151,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56046,7 +56159,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56149,7 +56262,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56157,7 +56270,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56227,7 +56340,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56235,7 +56348,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56434,7 +56547,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56442,7 +56555,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56512,7 +56625,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-10-26T09:25:48.816Z"
+                        default: "2026-10-27T07:10:24.114Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56520,7 +56633,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-10-26T09:25:48.817Z"
+                            default: "2026-10-27T07:10:24.115Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -68499,7 +68612,7 @@ paths:
       x-code-samples:
         - lang: "typescript"
           label: "Node.js"
-          source: "await orq.budgets.create({ scope: { kind: \"workspace\" }, limits: { period: \"MONTHLY\", amount: 1000 } });\n"
+          source: "await orq.budgets.create({ scope: { workspace: {} }, limits: { period: \"BUDGET_PERIOD_MONTHLY\", amount: 1000 } });\n"
       security:
         - ApiKey: []
   /v2/budgets/{budget_id}:
@@ -75555,6 +75668,13 @@ paths:
                 name:
                   description: "The name to display on the trace. If not specified, the default system name will be used."
                   type: "string"
+                prompt_cache_key:
+                  description: "Native OpenAI only. Partitions reuse of shared input across requests."
+                  maxLength: 64
+                  type: "string"
+                prompt_cache_options:
+                  $ref: "#/components/schemas/ClassifyPromptCacheOptions"
+                  description: "Native OpenAI prompt caching controls. Separate from the gateway exact-match response cache."
                 questions:
                   additionalProperties:
                     oneOf:
@@ -75596,7 +75716,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "noul"
@@ -75635,7 +75755,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "choice"
@@ -75663,7 +75783,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "score"
@@ -75686,7 +75806,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "box"
@@ -75696,7 +75816,7 @@ paths:
                           - "instructions"
                         title: "BoxQuestion"
                         type: "object"
-                  description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key."
+                  description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key. Native OpenAI accepts 1 to 400 questions."
                   minProperties: 1
                   type: "object"
                 retry:
@@ -75712,7 +75832,7 @@ paths:
                     - items: {}
                       title: "Array"
                       type: "array"
-                  description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. For OpenAI GPT-6 Luna, strings are passed as text and objects or ordinary JSON arrays are serialized as text. User-message arrays accept string content or input_text/input_image parts. Images must be inline base64 data URLs, with at most 128 images across the request. Remote image URLs, file IDs, audio, non-user roles, bare content parts and tool items are rejected."
+                  description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
                 timeout:
                   $ref: "#/components/schemas/ClassifyTimeoutConfig"
                   description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
@@ -76139,6 +76259,13 @@ paths:
                 name:
                   description: "The name to display on the trace. If not specified, the default system name will be used."
                   type: "string"
+                prompt_cache_key:
+                  description: "Native OpenAI only. Partitions reuse of shared input across requests."
+                  maxLength: 64
+                  type: "string"
+                prompt_cache_options:
+                  $ref: "#/components/schemas/ClassifyPromptCacheOptions"
+                  description: "Native OpenAI prompt caching controls. Separate from the gateway exact-match response cache."
                 questions:
                   additionalProperties:
                     oneOf:
@@ -76180,7 +76307,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "noul"
@@ -76219,7 +76346,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "choice"
@@ -76247,7 +76374,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "score"
@@ -76270,7 +76397,7 @@ paths:
                               - items: {}
                                 title: "Array"
                                 type: "array"
-                            description: "The evaluation prompt for this question. A string, an object or an array."
+                            description: "The evaluation prompt for this question. A string, an object or an array. Native OpenAI also accepts arrays of input_text, input_image and input_json parts. Question parts cannot contain prompt cache breakpoints."
                           type:
                             enum:
                               - "box"
@@ -76280,7 +76407,7 @@ paths:
                           - "instructions"
                         title: "BoxQuestion"
                         type: "object"
-                  description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key."
+                  description: "Typed questions keyed by an identifier of your choice. Each answer is returned under the same key. Native OpenAI accepts 1 to 400 questions."
                   minProperties: 1
                   type: "object"
                 retry:
@@ -76296,7 +76423,7 @@ paths:
                     - items: {}
                       title: "Array"
                       type: "array"
-                  description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. For OpenAI GPT-6 Luna, strings are passed as text and objects or ordinary JSON arrays are serialized as text. User-message arrays accept string content or input_text/input_image parts. Images must be inline base64 data URLs, with at most 128 images across the request. Remote image URLs, file IDs, audio, non-user roles, bare content parts and tool items are rejected."
+                  description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
                 timeout:
                   $ref: "#/components/schemas/ClassifyTimeoutConfig"
                   description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
