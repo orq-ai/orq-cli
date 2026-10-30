@@ -152,7 +152,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List all files",
-			Long:    bartolocli.Markdown("Returns a list of the files that your account has access to. orq.ai sorts and returns the files by their creation dates, placing the most recently created files at the top."),
+			Long:    bartolocli.Markdown("Returns a list of the files that your account has access to, sorted by creation date. Set `order` to `desc` to return the most recently created files first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -179,6 +179,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("project-id", "", "")
 		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`) or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files of every purpose.")
+		cmd.Flags().String("order", "", "Sort order by creation. Defaults to ascending (oldest first).")
 
 		bartolocli.SetCustomFlags(cmd)
 
