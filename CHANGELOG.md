@@ -120,6 +120,10 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `TOQAN_API_KEY` authenticates API commands and coding-agent launches.
+Existing Orq key variables and selected credentials profiles keep their precedence.
+
+
 ## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
 
 **Added:** `orq auth token` prints the access token of your browser login for

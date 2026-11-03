@@ -510,18 +510,18 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	// Under $ORQ_DOTENV=1 bartolo imports ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
-	if envKey := UserEnvAPIKey(); envKey != "" && session == nil {
-		if file := dotEnvOrigin("ORQ_API_KEY"); file != "" {
+	if envKey, source := userEnvironmentAPIKey(); envKey != "" && session == nil {
+		if file := dotEnvOrigin(source); file != "" {
 			// Naming the file is the action: unsetting the shell variable will not help.
 			rep.ok("using the API key from ./%s", file)
 		} else {
-			rep.ok("using the API key from ORQ_API_KEY")
+			rep.ok("using the API key from %s", source)
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
 
 	if session != nil {
-		envKey := UserEnvAPIKey()
+		envKey, _ := userEnvironmentAPIKey()
 		savedKey, savedWS := savedAPIKey()
 		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
 			// Which one won is the fact; why lives in 'orq doctor'.
@@ -1040,7 +1040,7 @@ func wiredWorkspace(state *authState) string {
 	if saved, savedWS := savedAPIKey(); saved != "" && state.bearer == saved {
 		return savedWS
 	}
-	if envKey := UserEnvAPIKey(); envKey != "" && state.bearer == envKey {
+	if envKey, _ := userEnvironmentAPIKey(); envKey != "" && state.bearer == envKey {
 		return ""
 	}
 	return activeWorkspaceKey(state.session)
@@ -1229,10 +1229,8 @@ func warnLingeringAPIKeys() {
 	}
 }
 
-// APIKeyEnvVars are the variables bartolo's apikey handler reads, in the order
-// it reads them. One list: every place that has to answer "is a key set" or
-// "keep the key away from here" gets the same answer.
-var APIKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
+// APIKeyEnvVars shares credential precedence and sanitization with launch.
+var APIKeyEnvVars = auth.APIKeyEnvVars
 
 // envAPIKeySet reports only that a key is set, never which value.
 func envAPIKeySet() bool {

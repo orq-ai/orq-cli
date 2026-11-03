@@ -107,7 +107,7 @@ func dump() ([]byte, error) {
 	bartolocli.Init(&bartolocli.Config{
 		AppName:             "orq",
 		EnvPrefix:           "ORQ",
-		APIKeyEnvVar:        "ORQ_API_KEY",
+		APIKeyEnvVar:        "TOQAN_API_KEY",
 		SerializationFormat: "toon",
 		Version:             "surface", // fixed: the manifest must not churn per release
 	})

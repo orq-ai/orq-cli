@@ -572,6 +572,12 @@ so and stops.
 
 ## Environment variables
 
+`TOQAN_API_KEY` is accepted as an API-key alias for Toqan Router. Existing
+`ORQ_API_KEY`, `ORQ_TOKEN`, and `ORQ_AUTHORIZATION` values take precedence,
+and a selected credentials profile continues to override all environment keys.
+Set `ORQ_SERVER` to the full regional base URL, including `/eu` or `/br`.
+With `ORQ_DOTENV=1`, the alias is also loaded from `.env` files.
+
 | Variable | Purpose |
 |---|---|
 | `ORQ_API_KEY` | API key for headless/CI auth. Any active profile outranks it because the profile is the selected credential |

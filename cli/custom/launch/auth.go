@@ -156,10 +156,11 @@ func APIBaseFor(getenv func(string) string) string {
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly
 // (not relying on the session PreRun env side effect): the API-key profile in
-// force wins (the session is not read at all), then ORQ_API_KEY env, then the
-// gateway key `orq setup` minted for the session's workspace, else the active
-// workspace token from the login session. API base: the server the root PreRun resolved (--server,
-// ORQ_SERVER, the deprecated ORQ_API_BASE_URL) → session APIBaseURL → default.
+// force wins (the session is not read at all), then the API-key environment
+// variables, then the gateway key `orq setup` minted for the session's workspace,
+// else the active workspace token from the login session. API base: the server
+// the root PreRun resolved (--server, ORQ_SERVER, the deprecated ORQ_API_BASE_URL)
+// → session APIBaseURL → default.
 func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// auth.Server() is empty when the PreRun did not run — the launch tests,
 	// which drive this with an injected getenv. The env fallback goes through
@@ -183,7 +184,7 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	var supersededWorkspace string
 	var injectedToken string
 	var session *auth.Session
-	if key := getenv("ORQ_API_KEY"); key != "" {
+	if key, _ := auth.EnvironmentAPIKey(getenv); key != "" {
 		// Error ignored here on purpose: an unreadable session must not block a
 		// valid exported key from winning below.
 		session, _ = auth.ReadSession()

@@ -232,9 +232,11 @@ func refreshStaleToken(req *http.Request, bearer string) (string, error) {
 			fmt.Fprintf(bartolocli.Stderr, "warning: could not cache the refreshed workspace token (%v); it will be re-exchanged next invocation\n", err)
 		}
 	}
-	if os.Getenv("ORQ_API_KEY") == bearer {
-		if err := os.Setenv("ORQ_API_KEY", fresh); err != nil {
-			fmt.Fprintf(bartolocli.Stderr, "warning: could not update ORQ_API_KEY with the refreshed token (%v)\n", err)
+	for _, name := range APIKeyEnvVars {
+		if os.Getenv(name) == bearer {
+			if err := os.Setenv(name, fresh); err != nil {
+				fmt.Fprintf(bartolocli.Stderr, "warning: could not update %s with the refreshed token (%v)\n", name, err)
+			}
 		}
 	}
 	return fresh, nil

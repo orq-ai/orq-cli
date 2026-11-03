@@ -341,5 +341,11 @@ func runOrqi(cmd *cobra.Command, argv []string) (int, error) {
 	if server := auth.Server(); server != "" {
 		env["ORQ_SERVER"] = server
 	}
+	if os.Getenv("TOQAN_API_KEY") != "" && os.Getenv("ORQ_API_KEY") == "" {
+		if key, _ := auth.EnvironmentAPIKey(os.Getenv); key != "" {
+			env["ORQ_API_KEY"] = key
+			env["TOQAN_API_KEY"] = key
+		}
+	}
 	return runOrqiChild(path, passthrough, env)
 }

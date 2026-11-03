@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"os"
 	"strings"
 
 	"orq/cli/custom/auth"
@@ -156,16 +155,7 @@ func ConfiguredCredential() (key, source string) {
 		// request is going to use.
 		return "", ""
 	}
-	for _, envVar := range APIKeyEnvVars {
-		v := strings.TrimSpace(os.Getenv(envVar))
-		if envVar == APIKeyEnvVars[0] {
-			v = UserEnvAPIKey()
-		}
-		if v != "" {
-			return v, envVar
-		}
-	}
-	return "", ""
+	return userEnvironmentAPIKey()
 }
 
 func profileAPIKey() string {

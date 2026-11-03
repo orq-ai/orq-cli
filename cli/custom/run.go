@@ -40,7 +40,7 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	bartolocli.Init(&bartolocli.Config{
 		AppName:             "orq",
 		EnvPrefix:           "ORQ",
-		APIKeyEnvVar:        "ORQ_API_KEY",
+		APIKeyEnvVar:        "TOQAN_API_KEY",
 		SerializationFormat: "toon",
 		Version:             version,
 	})

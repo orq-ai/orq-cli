@@ -79,6 +79,19 @@ func UserEnvAPIKey() string {
 	return strings.TrimSpace(os.Getenv("ORQ_API_KEY"))
 }
 
+func userEnvironmentAPIKey() (string, string) {
+	for _, name := range APIKeyEnvVars {
+		key := strings.TrimSpace(os.Getenv(name))
+		if name == "ORQ_API_KEY" {
+			key = UserEnvAPIKey()
+		}
+		if key != "" {
+			return key, name
+		}
+	}
+	return "", ""
+}
+
 func selectWorkspace(workspaces []map[string]any, message string) (string, error) {
 	if len(workspaces) == 0 {
 		return "", errors.New("no workspaces available")

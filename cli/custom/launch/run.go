@@ -58,6 +58,9 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
+	if key, ok := plan.Env["ORQ_API_KEY"]; ok && os.Getenv("TOQAN_API_KEY") != "" {
+		plan.Env["TOQAN_API_KEY"] = key
+	}
 	reportCredentialNotices(def, creds, flags.Trace)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)

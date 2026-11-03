@@ -17,6 +17,7 @@ import (
 	"orq/cli/custom/skills"
 
 	colorable "github.com/mattn/go-colorable"
+	"github.com/orq-ai/bartolo/apikey"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -136,6 +137,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	// On error, print the error and point at --help instead of dumping the
 	// full usage block after every runtime failure.
 	root.SilenceUsage = true
+	addAPIKeyAliases()
 	registerGlobalFlags()
 	installSessionPreRun()
 	installHumanFormatter()
@@ -150,6 +152,18 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	improveArgErrors(root)
 	configureSubcommandSuggestions(root)
 	explainAPIErrors(root)
+}
+
+// Keep the Toqan dotenv alias after existing Orq credential spellings.
+func addAPIKeyAliases() {
+	for _, handler := range bartolocli.AuthHandlers {
+		if apiKey, ok := handler.(*apikey.Handler); ok && apiKey.Name == "Authorization" {
+			apiKey.EnvVars = slices.DeleteFunc(apiKey.EnvVars, func(name string) bool {
+				return name == "TOQAN_API_KEY"
+			})
+			apiKey.EnvVars = append(apiKey.EnvVars, "TOQAN_API_KEY")
+		}
+	}
 }
 
 func registerGlobalFlags() {
@@ -227,10 +241,14 @@ func installSessionPreRun() {
 		// An agent `orq launch` started with a session token keeps that token
 		// in ORQ_API_KEY after the session replaced it as stale; send the
 		// replacement instead of paying a 401 on every invocation.
-		if key := os.Getenv("ORQ_API_KEY"); key != "" {
-			if current := auth.CurrentToken(key); current != key {
-				os.Setenv("ORQ_API_KEY", current)
-				commands.SetUserEnvAPIKey(current)
+		for _, name := range apiKeyEnvVars {
+			if key := os.Getenv(name); key != "" {
+				if current := auth.CurrentToken(key); current != key {
+					os.Setenv(name, current)
+					if name == "ORQ_API_KEY" {
+						commands.SetUserEnvAPIKey(current)
+					}
+				}
 			}
 		}
 		if err := rejectUnknownProfile(cmd); err != nil {

@@ -567,7 +567,8 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			// when something in this run actually needs a credential:
 			// warning a skills-only run about a key it will never ask for
 			// is the same false network dependency, stated in advance.
-			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
+			envKey, _ := userEnvironmentAPIKey()
+			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
 			agents, err = promptForAgents(rep, caps)
@@ -1027,7 +1028,7 @@ var errLoginDeclined = errors.New("login declined")
 // already made is never wasted. Non-interactive runs never create credentials.
 func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (*authState, *auth.Client, error) {
 	saved, savedWS := savedAPIKey()
-	envKey := UserEnvAPIKey()
+	envKey, _ := userEnvironmentAPIKey()
 	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
 		if opts.noInput || opts.yes {
 			return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
