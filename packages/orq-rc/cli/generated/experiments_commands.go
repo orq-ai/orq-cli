@@ -1471,7 +1471,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 						{
 							Name:        "value",
 							FlagName:    "value",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "",
 						},
 					},
@@ -1501,7 +1501,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 				{
 					Name:        "value",
 					FlagName:    "value",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "",
 				},
 			},
@@ -1541,7 +1541,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 						{
 							Name:        "value",
 							FlagName:    "value",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "",
 						},
 					},
@@ -1571,7 +1571,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 				{
 					Name:        "value",
 					FlagName:    "value",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "",
 				},
 			},
@@ -1623,7 +1623,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 						{
 							Name:        "value",
 							FlagName:    "value",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "",
 						},
 					},
@@ -1665,7 +1665,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 				{
 					Name:        "value",
 					FlagName:    "value",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "",
 				},
 			},
@@ -2117,7 +2117,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 						{
 							Name:        "value",
 							FlagName:    "value",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "",
 						},
 					},
@@ -2147,7 +2147,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 				{
 					Name:        "value",
 					FlagName:    "value",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "",
 				},
 			},
