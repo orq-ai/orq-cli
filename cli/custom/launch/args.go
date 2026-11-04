@@ -16,10 +16,12 @@ type PromptMapping struct {
 
 // ParseArgvOptions controls per-agent parsing behavior.
 type ParseArgvOptions struct {
-	Prompt            *PromptMapping
-	AllowModels       bool
-	AllowTrace        bool // --otel/--no-otel and Claude's gateway flags
-	AllowSubscription bool
+	Prompt              *PromptMapping
+	AllowModels         bool
+	AllowTrace          bool // --otel/--no-otel and Claude's gateway flags
+	AllowSubscription   bool
+	AllowMCPAuth        bool // --mcp-auth env
+	AllowRequestHeaders bool // --thread-id and --metadata
 }
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
@@ -42,6 +44,12 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if def.SubscriptionAuth {
 		flags = append(flags, "--subscription")
 	}
+	if def.MCPEnvAuth {
+		flags = append(flags, "--mcp-auth")
+	}
+	if def.RequestHeaders {
+		flags = append(flags, "--thread-id", "--metadata")
+	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
 	}
@@ -55,11 +63,12 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 }
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
-// cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
-// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h (and
-// --gateway/--no-gateway/--otel/--no-otel for traceable agents) — are recognized
-// only at the FRONT of argv: the first arg the launcher doesn't own ends
-// launcher parsing and everything from there on belongs to the agent verbatim.
+// cobra DisableFlagParsing). Launcher-owned flags (--model/--models/
+// --base-url/--no-fetch-models/--mcp/--no-mcp/--mcp-auth/--thread-id/--metadata/
+// --no-skills/--dry-run/-h, plus --gateway/--no-gateway/--otel/--no-otel for
+// traceable agents) are recognized only at the FRONT of argv: the first arg the
+// launcher doesn't own ends launcher parsing and everything from there on belongs
+// to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
 // `orq launch codex exec -p work` passes both to codex. A
 // leading `--` ends launcher parsing explicitly; a later `--` is the agent's.
@@ -91,10 +100,33 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 		return v, true, nil
 	}
 
+	setters := map[string]func(string) error{
+		"--mcp-auth":  func(v string) error { return setMCPAuth(&flags, v) },
+		"--thread-id": func(v string) error { return setThreadID(&flags, v) },
+		"--metadata":  func(v string) error { return addMetadata(&flags, v) },
+	}
+
 	i := 0
 scan:
 	for ; i < len(argv); i++ {
 		arg := argv[i]
+
+		name, value, hasValue := strings.Cut(arg, "=")
+		if set, ok := setters[name]; ok {
+			var err error
+			if !hasValue {
+				value, err = takeValue(arg, &i)
+			} else if value == "" {
+				err = fmt.Errorf("flag %s expects a value", name)
+			}
+			if err == nil {
+				err = set(value)
+			}
+			if err != nil {
+				return flags, nil, err
+			}
+			continue
+		}
 
 		if v, ok, err := eqValue(arg, "--model="); ok {
 			if err != nil {
@@ -172,6 +204,13 @@ scan:
 			prompt = opts.Prompt.ToArgs(v)
 		default:
 			break scan // first agent-owned arg; stop consuming
+		}
+	}
+
+	// Help wins over a conflict between flags; a bad flag value has already failed above.
+	if !flags.Help {
+		if err := checkSessionFlags(flags, opts); err != nil {
+			return flags, nil, err
 		}
 	}
 

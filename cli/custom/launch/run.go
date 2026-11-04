@@ -12,12 +12,7 @@ import (
 
 // Run resolves and launches an agent, returning the child exit code.
 func Run(def *AgentDef, argv []string) (int, error) {
-	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
-		Prompt:            def.Prompt,
-		AllowModels:       def.AllowModels,
-		AllowTrace:        def.Traceable,
-		AllowSubscription: def.SubscriptionAuth,
-	})
+	flags, passthrough, err := ParseArgv(argv, def.ParseOptions())
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
 		// 130 / 143 for orq's own failures, and a bad flag is just a failure.
@@ -58,7 +53,10 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	reportCredentialNotices(def, creds, flags.Trace)
+	reportCredentialNotices(def, creds, flags)
+	if flags.MCPEnvAuth {
+		plan.Warnings = append(plan.Warnings, mcpEnvAuthWarnings(creds, os.Getenv)...)
+	}
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -129,7 +127,32 @@ Flags:
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
   --no-mcp              Do not make the orq MCP server available for this session
-  --no-skills           Do not make the orq skills available for this session.
+`)
+	if def.MCPEnvAuth {
+		fmt.Print(`  --mcp-auth <mode>     How the orq MCP server authenticates. oauth (default) is the
+                        agent's own browser login. env is for runs with no browser:
+                        the session's entry names ORQ_API_KEY, which holds the
+                        credential this launch resolved. Tools then need a workspace
+                        API key with their permissions; a key from 'orq setup' holds
+                        only gateway access and model read. Tool approval stays with
+                        the agent, so a headless run may also have to approve each tool
+`)
+	}
+	if def.RequestHeaders {
+		fmt.Print(`  --thread-id <id>      Group this session's model calls under one thread id
+  --metadata <k=v>      Tag this session's model calls; repeatable, up to 20 keys
+`)
+		if def.Traceable {
+			fmt.Print(`                        Both reach gateway calls only: the session trace from --otel
+                        keeps Claude Code's own session id
+`)
+		}
+		if def.Name == "gemini" {
+			fmt.Print(`                        With no thread id, launch generates one and prints it
+`)
+		}
+	}
+	fmt.Print(`  --no-skills           Do not make the orq skills available for this session.
                         Every agent gets them: they are linked into the skills
                         directory the agent reads when it starts and removed
                         again when it exits, leaving nothing behind. Not gated
@@ -149,6 +172,8 @@ Flags:
                         model catalogue the agent needs.
   -h, --help            Show this help
 
+Launcher flags go first: the first argument launch does not own, and everything
+after it, goes to the agent.
 Everything after -- is passed to the agent untouched.
 `)
 }
@@ -164,6 +189,9 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	sort.Strings(keys)
 	for _, k := range keys {
 		v := plan.Env[k]
+		if delim, ok := headerListEnvs[k]; ok {
+			v = redactHeaderList(v, delim)
+		}
 		if apiKey != "" {
 			v = strings.ReplaceAll(v, apiKey, "<redacted>")
 		}
@@ -177,14 +205,24 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	}
 }
 
+// headerListEnvs are the env values --dry-run prints through redactHeaderList.
+var headerListEnvs = map[string]rune{claudeHeadersEnv: '\n', geminiHeadersEnv: ','}
+
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-func reportCredentialNotices(def *AgentDef, creds *Credentials, traced bool) {
+func reportCredentialNotices(def *AgentDef, creds *Credentials, flags GatewayFlags) {
 	if creds.Kind == CredentialSessionToken {
 		expiry := "the agent gets a login token that expires in about an hour"
-		if traced {
+		if flags.Trace {
 			expiry += ", and the trace export stops with it, leaving a trace that ends mid-session"
 		}
-		fmt.Fprintf(os.Stderr, "Note: no durable API key for this workspace; %s. Run 'orq setup' to mint a 90-day key.\n", expiry)
+		remedy := "Run 'orq setup' to mint a 90-day key."
+		if flags.MCPEnvAuth {
+			// Not 'orq setup': the key it mints holds gateway access and model
+			// read, which most orq tools refuse.
+			expiry += ", and the orq tools stop with it"
+			remedy = "Export a workspace API key with the permissions those tools need."
+		}
+		fmt.Fprintf(os.Stderr, "Note: no durable API key for this workspace; %s. %s\n", expiry, remedy)
 	}
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")

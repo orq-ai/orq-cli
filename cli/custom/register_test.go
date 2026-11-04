@@ -970,7 +970,7 @@ func TestHelpInvocationSkipsSkillsRefresh(t *testing.T) {
 	if !skillsCommand(agent) {
 		t.Fatal("launch must still be a skills command")
 	}
-	for _, args := range [][]string{{"-h"}, {"--help"}, {"--dry-run", "--help"}} {
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"--dry-run", "--help"}, {"--subscription", "--help"}, {"--thread-id", "x", "--help"}} {
 		if !helpInvocation(agent, args) {
 			t.Errorf("%v should be a help invocation", args)
 		}

@@ -120,6 +120,28 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Added:** `orq launch` can authenticate the orq MCP server in a run with no
+browser. `--mcp-auth env` (claude, codex, opencode, kilo, gemini) makes the
+session's entry name `ORQ_API_KEY`; the key itself is still never written. The
+default stays `oauth`. This reverses two earlier decisions, both only under this
+flag: "launch writes no credential" now means no credential value, and a session
+entry takes precedence over a persisted one, which may never have finished its
+browser login. Tools need a workspace API key with their permissions, since the
+key `orq setup` saves holds only gateway access and model read. Tool approval
+stays with the agent, so a headless codex or gemini run also approves each tool.
+
+**Added:** `orq launch --thread-id <id>` and `--metadata <key=value>` (same
+agents) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on the agent's model
+calls, so a caller can find or tag one run. Values and keys the gateway would
+drop, truncate or read for itself are refused at parse time. `--mcp-auth`,
+`--thread-id` and `--metadata` are now launcher flags on every agent, so an agent's
+own flag of that name goes after `--`.
+
+**Changed:** a gemini launch with no thread id now sends a generated
+`X-ORQ-THREAD-ID` and prints it on stderr, because gemini-cli sends no session id
+and each of its model calls was otherwise a separate trace. An id you export in
+`GEMINI_CLI_CUSTOM_HEADERS` or pass with `--thread-id` is used instead.
+
 ## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
 
 **Added:** `orq auth token` prints the access token of your browser login for

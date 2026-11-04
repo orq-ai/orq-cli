@@ -3,11 +3,13 @@ package launch
 import (
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 )
 
@@ -22,6 +24,10 @@ const MCPServerName = "orq-workspace"
 // DefaultMCPURL is orq's hosted MCP server; agents get it wired automatically
 // so orq tools are available without manual per-harness setup.
 const DefaultMCPURL = DefaultGatewayAPIBaseURL + "/v2/mcp"
+
+// mcpKeyEnv is the variable --mcp-auth env points an entry at. Every agent's
+// plan exports it, holding the credential this launch resolved.
+const mcpKeyEnv = "ORQ_API_KEY"
 
 // HTTPMCPEntry is the type/url-only server value shared by session launch
 // configuration and persistent agent configuration.
@@ -159,8 +165,10 @@ func MCPURLFor(apiBase string) string {
 }
 
 // mcpURL returns the orq MCP endpoint for this launch, or "" with --no-mcp.
-// No credential is written anywhere: the URL is the whole entry, and every
-// harness authenticates this remote through its own OAuth flow.
+// No credential is written anywhere: by default the URL is the whole entry and
+// every harness authenticates this remote through its own OAuth flow. Under
+// --mcp-auth env the entry also names ORQ_API_KEY, the variable and never its
+// value, because OAuth needs a browser that a headless run does not have.
 func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
 		return ""
@@ -185,7 +193,8 @@ var PersistedMCPHook func(agent string) bool
 // persistedMCPConfigured is the launch-side question: a persisted OAuth entry is
 // authoritative, so adding a second entry under the same name would only shadow
 // it. Unset hook means "cannot tell", which has to answer false — writing the
-// session entry is the recoverable mistake, suppressing it is not.
+// session entry is the recoverable mistake, suppressing it is not. --mcp-auth env
+// shadows it on purpose; see sessionMCPURL.
 //
 // kimi never asks: launch points its config home at a fresh temp dir, so the
 // persisted file is never on the search path. omp never needs to: its
@@ -197,6 +206,57 @@ func persistedMCPConfigured(agent string) bool {
 		return false
 	}
 	return PersistedMCPHook(agent)
+}
+
+// sessionMCPURL is the endpoint to write a session entry for, or "" for none.
+// --mcp-auth env writes one over a persisted entry on purpose: that entry may
+// never have finished its browser login, and it would otherwise win and leave
+// the flag doing nothing.
+func sessionMCPURL(ctx *AgentContext, agent string) string {
+	url := mcpURL(ctx)
+	if url == "" || (!ctx.Flags.MCPEnvAuth && persistedMCPConfigured(agent)) {
+		return ""
+	}
+	return url
+}
+
+// mcpEnvAuthWarnings names what --mcp-auth env cannot fix for the caller. Only
+// the first can fire without local state, so --help also says which key the
+// flag needs. The login-token case is in reportCredentialNotices, next to the
+// note it would otherwise contradict.
+func mcpEnvAuthWarnings(creds *Credentials, getenv func(string) string) []string {
+	var warnings []string
+	if override := strings.TrimSpace(getenv("ORQ_MCP_URL")); override != "" && !sameAPIOrigin(override, creds.APIBaseURL) {
+		warnings = append(warnings, fmt.Sprintf(
+			"ORQ_MCP_URL points at %s, so --mcp-auth env sends this launch's credential there", override))
+	}
+	// A profile's key is whatever the user gave it, so only the key `orq setup`
+	// minted is known to be narrow. SavedAgentKey returns the profile's otherwise.
+	if _, _, profile := profileKey(); !profile && creds.Kind == CredentialAPIKey {
+		if saved, _ := auth.SavedAgentKey(); saved != "" && saved == creds.APIKey {
+			warnings = append(warnings,
+				"--mcp-auth env is using the key 'orq setup' saved, which normally holds only gateway access and model read, so most orq tools will refuse it; export a workspace API key with the permissions they need")
+		}
+	}
+	return warnings
+}
+
+// sameAPIOrigin reports whether an MCP URL is on the API base's origin. The
+// hosted service has two interchangeable names, and a pre-4.15 session stores
+// the older one, so those two count as one origin.
+func sameAPIOrigin(target, apiBase string) bool {
+	parsed, err := neturl.Parse(target)
+	if err != nil {
+		return false
+	}
+	base, err := neturl.Parse(apiBase)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme == base.Scheme && parsed.Host == base.Host {
+		return true
+	}
+	return auth.IsHostedAPIBase(parsed.Scheme+"://"+parsed.Host) && auth.IsHostedAPIBase(apiBase)
 }
 
 // httpMCPConfigJSON is the mcpServers payload used by claude and copilot.
@@ -211,13 +271,28 @@ func httpMCPConfigJSON(url string) string {
 	return string(encoded)
 }
 
-func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
+// httpMCPConfigJSONEnvAuth is httpMCPConfigJSON for --mcp-auth env. Claude
+// expands ${VAR} in its --mcp-config file when it reads it.
+func httpMCPConfigJSONEnvAuth(url string) string {
+	entry := HTTPMCPEntry(url)
+	entry["headers"] = map[string]any{"Authorization": "Bearer ${" + mcpKeyEnv + "}"}
+	encoded, _ := json.Marshal(map[string]any{
+		"mcpServers": map[string]any{MCPServerName: entry},
+	})
+	return string(encoded)
+}
+
+func writeClaudeMCPConfig(url string, envAuth bool) (path string, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "orq-claude-mcp-")
 	if err != nil {
 		return "", nil, err
 	}
+	config := httpMCPConfigJSON(url)
+	if envAuth {
+		config = httpMCPConfigJSONEnvAuth(url)
+	}
 	path = filepath.Join(dir, "mcp.json")
-	if err := os.WriteFile(path, []byte(httpMCPConfigJSON(url)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		os.RemoveAll(dir)
 		return "", nil, err
 	}
@@ -232,10 +307,28 @@ func codexMCPArgs(url string) []string {
 	}
 }
 
+// codexMCPEnvAuthArgs adds --mcp-auth env to codexMCPArgs: codex reads the
+// bearer token from the named variable itself.
+func codexMCPEnvAuthArgs() []string {
+	return []string{
+		"-c", tomlOverride("mcp_servers."+MCPServerName+".bearer_token_env_var", mcpKeyEnv),
+	}
+}
+
 // openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config.
 // OAuth is owned by the agent, not by this CLI.
 func openCodeMCPBlock(url string) map[string]any {
 	return map[string]any{MCPServerName: RemoteMCPEntry(url)}
+}
+
+// openCodeMCPEnvAuthBlock is openCodeMCPBlock for --mcp-auth env. oauth false
+// stops opencode from starting its own flow beside the header; false is the one
+// non-object value its schema takes there (see RemoteMCPEntry).
+func openCodeMCPEnvAuthBlock(url string) map[string]any {
+	entry := RemoteMCPEntry(url)
+	entry["oauth"] = false
+	entry["headers"] = map[string]any{"Authorization": "Bearer {env:" + mcpKeyEnv + "}"}
+	return map[string]any{MCPServerName: entry}
 }
 
 // RemoteMCPEntry is the opencode/kilo mcp value, shared by the session config

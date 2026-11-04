@@ -1164,7 +1164,7 @@ func helpInvocation(cmd *cobra.Command, args []string) bool {
 	if def == nil {
 		return false
 	}
-	flags, _, err := launch.ParseArgv(args, launch.ParseArgvOptions{Prompt: def.Prompt, AllowModels: def.AllowModels, AllowTrace: def.Traceable})
+	flags, _, err := launch.ParseArgv(args, def.ParseOptions())
 	return err == nil && flags.Help
 }
 
