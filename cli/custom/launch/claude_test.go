@@ -201,7 +201,7 @@ func TestClaudeTiersHonourTheEnvironment(t *testing.T) {
 // Gateway routing turns tool search back on: the gateway is not a first-party
 // host, so Claude Code would otherwise disable it and send every tool up front.
 // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS must never be set, since it forces
-// search back off (RES-1758).
+// search back off.
 func TestClaudeEnablesToolSearchWithGateway(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(nil, routerFlags(GatewayFlags{})))
 	if err != nil {

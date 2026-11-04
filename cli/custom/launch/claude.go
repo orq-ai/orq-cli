@@ -14,7 +14,7 @@ const (
 	// Claude Code resolves /model opus|sonnet|haiku through these three. Left
 	// unset it sends the bare alias, which is not a model id the gateway can
 	// resolve, so a session could not switch tiers at all. The ids are the bare,
-	// current ones a first-party session sends (RES-1758): the router accepts
+	// current ones a first-party session sends: the router accepts
 	// them and model, max_tokens, effort and the per-turn-control beta then match
 	// first party. Bump these when Anthropic ships a newer tier; a stale pin is
 	// what sent Opus 5 with the wrong max_tokens and effort before.
