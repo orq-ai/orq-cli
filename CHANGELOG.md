@@ -130,6 +130,64 @@ controls on surface changes, whichever side they originate from.
   `ENABLE_TOOL_SEARCH` or any `ANTHROPIC_DEFAULT_*_MODEL` still wins, and
   `--dry-run` shows them.
 
+## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
+
+**Added:** `orq auth token` prints the access token of your browser login for
+the active workspace and project (or the ones `--workspace` / `--project`
+name), exchanging a fresh one first when the cached token is expired or about
+to expire. `--refresh` exchanges a new one regardless, for a caller the API
+answered with `authz_stale`. The bare output is the token alone, for
+`$(orq auth token)`, whatever `ORQ_OUTPUT_FORMAT` says; a typed `-o json`
+returns `{token, expires_at, workspace, project_id, server}`. It gives tools
+that reuse an `orq auth login` (orqi among them) a supported way to get the
+token without reading `~/.orq/sessions/<host>.json`, whose secrets are now
+kept in the OS credential store. API keys are never printed.
+
+**Changed:** the tokens of an `orq auth login` (refresh, bootstrap and
+workspace access tokens, and the gateway key) are kept in the macOS Keychain or
+the Linux Secret Service (`secret-tool`) instead of
+`~/.orq/sessions/<host>.json` (RES-1682). The file keeps the non-secret state,
+its token fields are empty, and a new `secretStore` field names the store. An
+existing login moves on the first command, with a one-line notice on stderr.
+The file is not an interface: a tool that read tokens out of it should run
+`orq auth token`. Windows, and Linux without a reachable Secret Service, keep
+the tokens in the file as before.
+
+**Added:** `ORQ_CREDENTIAL_STORE=file` keeps the tokens in the session file on
+any platform (CI, containers). A login whose tokens are already in a store
+needs one `orq auth login` in that mode; orq says so rather than reporting a
+missing token. `orq doctor` has a `credential_store` row naming where the
+tokens are, in every session state, and warns about any session or
+`.deprecated` file still holding them in plaintext. `orq auth sessions` lists a
+login whose store this process cannot reach as `unreadable`.
+
+## [12.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.3.0) — 2026-10-22
+
+**Changed:** the updated TOON renderer prints empty arrays as `[]` and leaves
+alphanumeric IDs such as `01ABC234DEF567GH` unquoted. JSON output is unchanged.
+
+**Added:** `orq auth sessions --check` (RES-1692) refreshes saved logins whose
+bootstrap token has expired. Each row reports `ok`, `needs-refresh`, `signed-out`,
+`invalid`, or `unreadable`. Unexpired logins use local state; an inconclusive
+refresh leaves an expired login as `needs-refresh` rather than marking it dead.
+
+**Fixed:** server-rejected refreshes are recorded as `signed-out` (RES-1692),
+including revoked refresh tokens and deactivated accounts. A fresh login clears
+the mark. `orq doctor` exits non-zero for any non-transient failing check,
+including a dead login or invalid credential. Timeouts, refused connections, and
+HTTP 5xx still appear as failing rows but do not fail the command; configuration
+errors such as DNS or TLS failures do. Server validation rejects a saved gateway
+key only on HTTP 401; a project-scoped key's HTTP 403 does not prove it invalid. Launch
+validates saved keys even when PreRun has injected a session token. Delayed
+health responses preserve a newer login, logout, and concurrent session settings
+instead of restoring an old session snapshot.
+
+## [12.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.1) — 2026-10-20
+
+- **Changed:** API validation errors now print the field and reason the server
+  returns (for example `owner: owner.type must be service_account`) instead of
+  only the generic summary.
+
 ## [12.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.1.0) — 2026-10-19
 
 **Added:** `orq traces get-batch [trace-id ...]` fetches many traces, or their

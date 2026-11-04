@@ -1,9 +1,9 @@
-empty[0]:
+empty: []
 object:
   count: 42
   empty: ""
   enabled: true
-  id: "01ABC234DEF567GH"
+  id: 01ABC234DEF567GH
   key: my-deployment
   missing: null
   note: "has spaces, a comma, and a: colon"

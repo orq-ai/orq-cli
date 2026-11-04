@@ -32,7 +32,7 @@ func registerclassifyCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Classify",
-			Long:    bartolocli.Markdown("**Deprecated.** Use `POST /v3/router/decisions` and `orq.router.decisions.create()` for new integrations. This endpoint remains available for backward compatibility with the same request and response contract.\n\n**Beta.** Evaluate content against named questions and receive structured answers, probabilities, and usage costs. Send the content as `state` and define each entry in `questions` as:\n\n- `noul`: estimate the probability that a statement is true.\n- `choice`: select an option from a set.\n- `score`: rate the content on an ordered scale.\n- `box`: locate one target in an image and return its bounding box. Beta, TypeSafe `jev-preview` only.\n\nInstructions and criteria accept strings or structured JSON. TypeSafe models also accept inline images through `assets` (beta).\n\nUse a native decision model or a supported chat model. Configure ordered `fallbacks`, optional `retry`, `timeout.call_timeout` in milliseconds, and an exact-match `cache`. Each retry and fallback gets a fresh timeout; omit `retry` to move directly to the next fallback on timeout. The response identifies the model that answered.\n\nRequires the `classify` API-key permission. PII plugins and guardrails are not applied. See the [Decisions guide](/ai-gateway/features/decisions) for supported models, probability interpretation, and refusals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assets` (object)\n- `cache` (object)\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- `questions` (object, required)\n- ... and 3 more fields\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("**Deprecated.** Use `POST /v3/router/decisions` and `orq.router.decisions.create()` for new integrations. This endpoint remains available for backward compatibility with the same request and response contract.\n\n**Beta.** Evaluate content against named questions and receive structured answers, probabilities, and usage costs. Send the content as `state` and define each entry in `questions` as:\n\n- `noul`: estimate the probability that a statement is true.\n- `choice`: select an option from a set.\n- `score`: rate the content on an ordered scale.\n- `box`: locate one target in an image and return its bounding box. Beta, TypeSafe `jev-preview` only.\n\nInstructions and criteria accept strings or structured JSON. TypeSafe models also accept inline images through `assets` (beta).\n\nUse a native decision model or a supported chat model. Configure ordered `fallbacks`, optional `retry`, `timeout.call_timeout` in milliseconds, and an exact-match `cache`. Each retry and fallback gets a fresh timeout; omit `retry` to move directly to the next fallback on timeout. The response identifies the model that answered.\n\nRequires the `classify` API-key permission. PII plugins and guardrails are not applied. See the [Decisions guide](/ai-gateway/features/decisions) for supported models, probability interpretation, and refusals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assets` (object)\n- `cache` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- ... and 4 more fields\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -55,6 +55,12 @@ func registerclassifyCommands(root *cobra.Command) {
 							FlagName:    "cache",
 							Type:        "json",
 							Description: "Exact-match response cache for this request. An identical request body from the same workspace and project is served from the stored response, with the X-Cache header reporting HIT or MISS.",
+						},
+						{
+							Name:        "fallback_on_codes",
+							FlagName:    "fallback-on-codes",
+							Type:        "int64-slice",
+							Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 						},
 						{
 							Name:        "fallbacks",
@@ -145,6 +151,12 @@ func registerclassifyCommands(root *cobra.Command) {
 					FlagName:    "cache",
 					Type:        "json",
 					Description: "Exact-match response cache for this request. An identical request body from the same workspace and project is served from the stored response, with the X-Cache header reporting HIT or MISS.",
+				},
+				{
+					Name:        "fallback_on_codes",
+					FlagName:    "fallback-on-codes",
+					Type:        "int64-slice",
+					Description: "HTTP status codes that trigger fallback. Defaults to [408,429,500,502,503,504,529]. Each code must be unique and between 400 and 599.",
 				},
 				{
 					Name:        "fallbacks",

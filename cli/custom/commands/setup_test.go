@@ -4149,3 +4149,89 @@ func TestForbiddenWorkspaceProbeIsSilentForARecordedKey(t *testing.T) {
 		})
 	}
 }
+
+// A refresh token the server refuses means the stored login is dead. Setup
+// signs in again instead of printing "run orq auth login" and stopping.
+func TestResolveAuthRelogsInWhenTheRefreshTokenIsRejected(t *testing.T) {
+	const token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig"
+	var starts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cli/device/start"):
+			starts.Add(1)
+			fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://login.example",`+
+				`"verification_uri_complete":"https://login.example/device","expires_in":60,"interval":0}`)
+		case strings.HasSuffix(r.URL.Path, "/cli/device/token"):
+			fmt.Fprintf(w, `{"access_token":%q,"refresh_token":"fresh","expires_in":3600}`, token)
+		case r.URL.Path == auth.ProfileRPCPath:
+			fmt.Fprint(w, `{"profile":{"id":"user","email":"agent@example.com","display_name":"Agent",`+
+				`"workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/access-token"):
+			body, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(body), "stale") {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
+				return
+			}
+			fmt.Fprintf(w, `{"access_token":%q}`, token)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	previousOpen := openBrowserFn
+	openBrowserFn = func(string) bool { return true }
+	t.Cleanup(func() { openBrowserFn = previousOpen })
+
+	urls := auth.ResolveURLs(srv.URL)
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL, AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		RefreshToken: "stale", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{},
+		User:            &auth.SessionUser{ID: "user", Email: "agent@example.com"},
+		Workspaces:      []map[string]any{{"key": "acme", "name": "Acme"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	state, err := resolveAuth(context.Background(), &reporter{w: &out}, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatalf("resolveAuth: %v\n%s", err, out.String())
+	}
+	if starts.Load() != 1 || state.bearer != token {
+		t.Fatalf("device login starts = %d, state = %+v\n%s", starts.Load(), state, out.String())
+	}
+	if !strings.Contains(out.String(), "signing in again") {
+		t.Errorf("relogin was not announced:\n%s", out.String())
+	}
+}
+
+func TestLoginStepErrorNamesTheFailedStep(t *testing.T) {
+	denied := &auth.APIError{Status: http.StatusForbidden, Msg: "You are not authorized to access this resource."}
+	got := loginStepError("reading your profile", denied)
+	for _, want := range []string{"browser approval succeeded", "reading your profile", "HTTP 403", "not a workspace-membership problem", "this is not a workspace-membership problem"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	if !errors.Is(got, denied) {
+		t.Error("wrapped error must keep the APIError")
+	}
+	other := errors.New("dial tcp: timeout")
+	if loginStepError("reading your profile", other) != other {
+		t.Error("non-auth errors pass through untouched")
+	}
+}

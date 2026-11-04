@@ -939,6 +939,7 @@ func registeragentsCommands(root *cobra.Command) {
 			Use:     "get-response agent-key task-id",
 			Short:   "Get response",
 			Long:    bartolocli.Markdown("Retrieve an agent response by task ID, including output, model info, token usage, and execution status.\n\n## Arguments\n\n- `agent-key` — The unique key identifier of the agent\n- `task-id` — The agent execution task ID returned from create response"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -981,6 +982,7 @@ func registeragentsCommands(root *cobra.Command) {
 			Use:     "invoke key",
 			Short:   "Execute an agent task",
 			Long:    bartolocli.Markdown("Invoke an agent to perform a task with input messages. Supports tool execution, knowledge retrieval, memory context, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key` — The key or ID of the agent to invoke"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1257,6 +1259,7 @@ func registeragentsCommands(root *cobra.Command) {
 			Use:     "run",
 			Short:   "Run an agent with configuration",
 			Long:    bartolocli.Markdown("Run an agent with inline configuration or existing agent reference. Supports A2A messages, memory context, tool execution, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1577,6 +1580,7 @@ func registeragentsCommands(root *cobra.Command) {
 			Use:     "stream key",
 			Short:   "Stream agent execution in real-time",
 			Long:    bartolocli.Markdown("Stream an existing agent execution in real-time via SSE, providing live message chunks, tool calls, and status updates until completion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key` — The key or ID of the agent to invoke"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1777,6 +1781,7 @@ func registeragentsCommands(root *cobra.Command) {
 			Use:     "stream-run",
 			Short:   "Run agent with streaming response",
 			Long:    bartolocli.Markdown("Run an agent with streaming via SSE, combining inline configuration with real-time updates including messages, tool executions, and status.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -13,9 +13,10 @@ import (
 // Run resolves and launches an agent, returning the child exit code.
 func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
-		Prompt:      def.Prompt,
-		AllowModels: def.AllowModels,
-		AllowTrace:  def.Traceable,
+		Prompt:            def.Prompt,
+		AllowModels:       def.AllowModels,
+		AllowTrace:        def.Traceable,
+		AllowSubscription: def.SubscriptionAuth,
 	})
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
@@ -134,6 +135,12 @@ Flags:
                         again when it exits, leaving nothing behind. Not gated
                         on --mcp. For a permanent install, orq connect skills
 `)
+	if def.SubscriptionAuth {
+		fmt.Print(`  --subscription        Bill model calls to your own subscription: the agent keeps
+                        its own login and orq traces the calls. Only the models
+                        that subscription serves (codex: openai/, claude: anthropic/)
+`)
+	}
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}

@@ -232,9 +232,10 @@ func assertCompletionFlagsParse(t *testing.T, def *AgentDef) {
 			argv = append(argv, "value")
 		}
 		flags, rest, err := ParseArgv(argv, ParseArgvOptions{
-			AllowModels: def.AllowModels,
-			AllowTrace:  def.Traceable,
-			Prompt:      def.Prompt,
+			AllowModels:       def.AllowModels,
+			AllowTrace:        def.Traceable,
+			AllowSubscription: def.SubscriptionAuth,
+			Prompt:            def.Prompt,
 		})
 		if err != nil {
 			t.Fatalf("%s: %v", flag, err)

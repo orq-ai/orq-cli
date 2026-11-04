@@ -14,7 +14,7 @@ func registerreportingCommands(root *cobra.Command) {
 	reportingCmd := &cobra.Command{
 		Use:   "reporting",
 		Short: "Reporting",
-		Long:  bartolocli.Markdown("GenAI reporting API over canonical analytics rollups. Accepts a metric name, time range, grain, group-by, and filters; returns a typed time series and optional totals."),
+		Long:  bartolocli.Markdown("Reporting"),
 	}
 	root.AddCommand(reportingCmd)
 

@@ -30,7 +30,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an MCP server",
-			Long:    bartolocli.Markdown("Creates a new upstream MCP server connection in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf, required)\n- `connection` (allOf, required)\n- `default_tool_exposure` (allOf, required)\n- `description` (string)\n- `display_name` (string, required)\n- `key` (string, required)\n- `sharing` (allOf)\n\nRequired fields: `auth`, `connection`, `default_tool_exposure`, `display_name`, `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new upstream MCP server connection in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf, required)\n- `connection` (allOf, required)\n- `default_tool_exposure` (allOf, required)\n- `description` (string)\n- `display_name` (string, required)\n- `key` (string, required)\n- `openapi` (allOf)\n- `sharing` (allOf)\n\nRequired fields: `auth`, `connection`, `default_tool_exposure`, `display_name`, `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -76,6 +76,12 @@ func registermcpServersCommands(root *cobra.Command) {
 							FlagName:    "key",
 							Type:        "string",
 							Description: "Lowercase slug of letters, digits, hyphens and underscores, max 64 characters, unique per workspace; prefixes this server's tool names in gateways.",
+						},
+						{
+							Name:        "openapi",
+							FlagName:    "openapi",
+							Type:        "json",
+							Description: "Required when `connection.type` is `MCP_CONNECTION_TYPE_OPENAPI`; set `document` or `document_url`.",
 						},
 						{
 							Name:        "sharing",
@@ -142,6 +148,12 @@ func registermcpServersCommands(root *cobra.Command) {
 					FlagName:    "key",
 					Type:        "string",
 					Description: "Lowercase slug of letters, digits, hyphens and underscores, max 64 characters, unique per workspace; prefixes this server's tool names in gateways.",
+				},
+				{
+					Name:        "openapi",
+					FlagName:    "openapi",
+					Type:        "json",
+					Description: "Required when `connection.type` is `MCP_CONNECTION_TYPE_OPENAPI`; set `document` or `document_url`.",
 				},
 				{
 					Name:        "sharing",
@@ -465,13 +477,13 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP server",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP server. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf)\n- `connection` (allOf)\n- `default_tool_exposure` (allOf)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `sharing` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP server. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf)\n- `connection` (allOf)\n- `default_tool_exposure` (allOf)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `openapi` (allOf)\n- `sharing` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_NONE\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n    \"url\": \"url\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth\": {\n    \"type\": \"MCP_AUTH_TYPE_NONE\"\n  },\n  \"connection\": {\n    \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n    \"url\": \"url\"\n  },\n  \"default_tool_exposure\": {\n    \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"openapi\": {\n    \"document\": \"document\",\n    \"document_url\": \"document_url\",\n    \"operations\": [\n      \"operations\"\n    ],\n    \"title\": \"title\",\n    \"version\": \"version\"\n  },\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -511,6 +523,12 @@ func registermcpServersCommands(root *cobra.Command) {
 							FlagName:    "key",
 							Type:        "string",
 							Description: "Rejected with INVALID_ARGUMENT: the key prefixes this server's tools in\n every gateway that exposes it, so it is immutable after creation. Retained\n so callers get an error rather than a silently ignored field.",
+						},
+						{
+							Name:        "openapi",
+							FlagName:    "openapi",
+							Type:        "json",
+							Description: "Recompiles the tools of an OpenAPI server; without `document` the stored `document_url` is fetched again.",
 						},
 						{
 							Name:        "sharing",
@@ -577,6 +595,12 @@ func registermcpServersCommands(root *cobra.Command) {
 					FlagName:    "key",
 					Type:        "string",
 					Description: "Rejected with INVALID_ARGUMENT: the key prefixes this server's tools in\n every gateway that exposes it, so it is immutable after creation. Retained\n so callers get an error rather than a silently ignored field.",
+				},
+				{
+					Name:        "openapi",
+					FlagName:    "openapi",
+					Type:        "json",
+					Description: "Recompiles the tools of an OpenAPI server; without `document` the stored `document_url` is fetched again.",
 				},
 				{
 					Name:        "sharing",

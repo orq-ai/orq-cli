@@ -53,13 +53,47 @@ func trimTrailingSlash(s string) string {
 // the session, because those values are usually identical.
 var (
 	server       string
-	serverSource = "default"
+	serverSource = SourceDefault
 )
 
-// SetServer records the resolved host and its origin ("flag", "env", "config",
-// "session"). Called by the root PreRun before any command runs: once for the
-// explicit sources, again for the session host when none of them applied.
-func SetServer(url, source string) {
+// Source is the layer that decided the server, in the order custom.resolveServer
+// ranks them. A typed value so the places that word it for a person switch on
+// constants and a new layer cannot fall through to a wrong default.
+type Source string
+
+const (
+	SourceFlag    Source = "flag"
+	SourceProfile Source = "profile"
+	SourceEnv     Source = "env"
+	SourceConfig  Source = "config" // persisted by `orq server set`
+	SourceDefault Source = "default"
+)
+
+// Describe names the layer for a person.
+func (s Source) Describe() string {
+	switch s {
+	case SourceFlag:
+		return "--server flag"
+	case SourceProfile:
+		return "active profile"
+	case SourceEnv:
+		return "ORQ_SERVER"
+	case SourceConfig:
+		return "saved with `orq server set`"
+	default:
+		return "built-in default"
+	}
+}
+
+// Overrides reports whether the layer outranks a saved default, i.e. whether
+// `orq server set` / `clear` leaves this call's host unchanged.
+func (s Source) Overrides() bool {
+	return s == SourceFlag || s == SourceProfile || s == SourceEnv
+}
+
+// SetServer records the resolved host and its origin. Called by the root
+// PreRun before any command runs.
+func SetServer(url string, source Source) {
 	server = NormalizeServer(url)
 	serverSource = source
 }
@@ -84,7 +118,7 @@ func NormalizeServer(raw string) string {
 func Server() string { return server }
 
 // ServerSource names where Server() came from, for `orq doctor`.
-func ServerSource() string { return serverSource }
+func ServerSource() Source { return serverSource }
 
 // ServerFromEnv reports the host the environment names and which spelling
 // named it, or "" for both when neither is set. It is the one env ladder in

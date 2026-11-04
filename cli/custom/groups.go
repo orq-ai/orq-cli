@@ -77,6 +77,7 @@ var commandGroup = map[string]string{
 	"sessions":   groupObservability,
 	"telemetry":  groupObservability,
 	"views":      groupObservability,
+	"monitors":   groupObservability,
 
 	"agents":           groupAgents,
 	"agents-responses": groupAgents,
@@ -85,6 +86,7 @@ var commandGroup = map[string]string{
 	"tools":            groupAgents,
 	"memory-stores":    groupAgents,
 	"knowledge-bases":  groupAgents,
+	"wikis":            groupAgents,
 	"schedules":        groupAgents,
 	"prompts":          groupAgents,
 
@@ -95,20 +97,23 @@ var commandGroup = map[string]string{
 
 	"file-systems": groupFactory,
 
-	"workspace":          groupAdmin,
-	"workspace-settings": groupAdmin,
-	"workspace-security": groupAdmin,
-	"projects":           groupAdmin,
-	"people":             groupAdmin,
-	"api-keys":           groupAdmin,
-	"management-keys":    groupAdmin,
-	"policies":           groupAdmin,
-	"model-sharing":      groupAdmin,
-	"webhooks":           groupAdmin,
-	"files":              groupAdmin,
-	"reporting":          groupAdmin,
-	"feature-previews":   groupAdmin,
-	"workspaces":         groupAdmin,
+	"workspace":              groupAdmin,
+	"workspace-settings":     groupAdmin,
+	"workspace-security":     groupAdmin,
+	"projects":               groupAdmin,
+	"people":                 groupAdmin,
+	"api-keys":               groupAdmin,
+	"management-keys":        groupAdmin,
+	"policies":               groupAdmin,
+	"model-sharing":          groupAdmin,
+	"webhooks":               groupAdmin,
+	"files":                  groupAdmin,
+	"reporting":              groupAdmin,
+	"feature-previews":       groupAdmin,
+	"workspaces":             groupAdmin,
+	"environments":           groupAdmin,
+	"users":                  groupAdmin,
+	"audit-log-destinations": groupAdmin,
 }
 
 // deliberateUtilities are the commands that belong in Utilities on purpose:

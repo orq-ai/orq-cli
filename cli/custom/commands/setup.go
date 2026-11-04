@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,7 +51,9 @@ type setupOptions struct {
 	agents        []string
 	caps          []string
 	noGateway     bool
-	noInput       bool
+	// subscription is --subscription: wire codex to keep its own ChatGPT login so model calls run on the user's subscription.
+	subscription bool
+	noInput      bool
 	// unattended is an explicit --no-input/ORQ_NO_INPUT, as opposed to the
 	// noInput a missing TTY forces. A pipe means "cannot prompt" and is how
 	// every coding agent runs; the flag means "nobody is watching". Only the
@@ -252,6 +255,7 @@ left exported in your shell because setup writes persistent configuration.`),
 	// non-interactive run — install.sh, CI — names a scope at all.
 	addScopeFlags(f, &opts)
 	f.BoolVar(&opts.noProject, "no-project", false, "Skip the project step and leave the session unscoped")
+	f.BoolVar(&opts.subscription, "subscription", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only); claude uses it via orq launch")
 	return cmd
 }
 
@@ -537,26 +541,36 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		}
 
 	}
-	signedInAs := "current user"
-	if session.User != nil && session.User.Email != "" {
-		signedInAs = session.User.Email
-	}
+	// A refresh token the server refuses means the stored login is dead. Sign in
+	// again here, once, rather than telling the person to run another command.
+	for relogin := false; ; relogin = true {
+		signedInAs := "current user"
+		if session.User != nil && session.User.Email != "" {
+			signedInAs = session.User.Email
+		}
 
-	// The resolved server outranks the host the session was authenticated
-	// against, so `orq setup --server <url>` diverts this run instead of
-	// silently writing the session's host into every agent config.
-	apiBase := sessionAPIBase(session)
-	client := auth.NewClient(apiBase)
-	session, err = resolveWorkspace(rep, client, session, opts, signedInAs)
-	if err != nil {
-		return nil, err
+		// The resolved server outranks the host the session was authenticated
+		// against, so `orq setup --server <url>` diverts this run instead of
+		// silently writing the session's host into every agent config.
+		apiBase := sessionAPIBase(session)
+		client := auth.NewClient(apiBase)
+		resolved, err := resolveWorkspace(rep, client, session, opts, signedInAs)
+		var active *auth.ActiveAccessToken
+		if err == nil {
+			session = resolved
+			active, err = client.GetActiveWorkspaceAccessToken()
+		}
+		if err == nil {
+			return &authState{apiBase: apiBase, session: session, bearer: active.AccessToken}, nil
+		}
+		if relogin || opts.unattended || !auth.RefreshRejected(err) {
+			return nil, err
+		}
+		rep.info("Your login has expired or was revoked; signing in again.")
+		if session, err = deviceLogin(ctx, rep, opts); err != nil {
+			return nil, err
+		}
 	}
-
-	active, err := client.GetActiveWorkspaceAccessToken()
-	if err != nil {
-		return nil, err
-	}
-	return &authState{apiBase: apiBase, session: session, bearer: active.AccessToken}, nil
 }
 
 // apiBaseFromEnv is the no-session fallback. It goes through ResolveURLs rather
@@ -620,7 +634,7 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}
 	profile, err := client.FetchProfile(approved.AccessToken)
 	if err != nil {
-		return nil, err
+		return nil, loginStepError(loginStepProfile, err)
 	}
 	if workspace == "" && len(profile.Workspaces) > 1 && hasInteractiveTTY() {
 		workspace, err = selectWorkspace(profile.Workspaces, "Choose an active workspace")
@@ -630,7 +644,7 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}
 	session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspace)
 	if err != nil {
-		return nil, err
+		return nil, loginStepError("getting an access token for the workspace", err)
 	}
 	return &deviceLoginResult{
 		Session:         session,
@@ -639,6 +653,28 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 		BrowserOpened:   browserOpened,
 	}, nil
 }
+
+// loginStepError says which request failed after the browser approval went
+// through. The API answers a refused token with a bare "not authorized", which
+// reads as if the approval itself had failed. The profile read comes before any
+// workspace is chosen, so a refusal there is about the token, not membership.
+func loginStepError(step string, err error) error {
+	var apiErr *auth.APIError
+	if !errors.As(err, &apiErr) || (apiErr.Status != http.StatusUnauthorized && apiErr.Status != http.StatusForbidden) {
+		return err
+	}
+	var hint string
+	if step == loginStepProfile {
+		hint = "The API rejected the token the browser login just issued, before any workspace was chosen, so this is not a workspace-membership problem. " +
+			"Run `orq auth login` once more; if it repeats, `orq server current` shows the server the token was requested from, and the request_id below (if any) lets support find it."
+	} else {
+		hint = "The token was accepted, but the workspace refused it: the account may have lost access to it, or it belongs to another server. " +
+			"Try `orq auth login --workspace <key>` for a workspace you belong to, or ask a workspace admin to confirm your membership."
+	}
+	return fmt.Errorf("browser approval succeeded, but %s was refused (HTTP %d).\n%s\n\nAPI response: %w", step, apiErr.Status, hint, err)
+}
+
+const loginStepProfile = "reading your profile"
 
 func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions, signedInAs string) (*auth.Session, error) {
 	key := opts.workspace
@@ -870,7 +906,7 @@ func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptio
 // host. An env or profile host already applies on every run that has it.
 func persistSetupServer(rep *reporter, complete bool) error {
 	host := auth.Server()
-	if !complete || auth.ServerSource() != "flag" || host == "" {
+	if !complete || auth.ServerSource() != auth.SourceFlag || host == "" {
 		return nil
 	}
 	profileName := ""
@@ -1693,7 +1729,15 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 				defaultModel = best.Ref()
 			}
 			// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
-			written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
+			writeProvider := spec.writeProvider
+			if opts.subscription {
+				if spec.writeChatGPTProvider != nil {
+					writeProvider = spec.writeChatGPTProvider
+				} else {
+					rep.warn("%-8s provider  --subscription is not supported for this agent yet; its usage bills to the workspace", id)
+				}
+			}
+			written, werr := writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 			if werr != nil {
 				// A consented wire that failed must reach the exit code and the JSON.
 				rep.fail("%-8s provider  %v", id, werr)

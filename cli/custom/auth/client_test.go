@@ -403,7 +403,7 @@ func TestAwaitDeviceApprovalAppliesPollIntervalAfterPendingResponse(t *testing.T
 func TestExchangeAccessTokenAddsRemedyToRejectedRefreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, `{"message":"Invalid refresh token!"}`)
 	}))
 	defer srv.Close()
@@ -412,8 +412,8 @@ func TestExchangeAccessTokenAddsRemedyToRejectedRefreshToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("ExchangeAccessToken succeeded, want the server's rejection")
 	}
-	if !Unauthorized(err) {
-		t.Errorf("Unauthorized(err) = false, want the 401 to survive the wrapping")
+	if !RefreshRejected(err) {
+		t.Errorf("RefreshRejected(err) = false, want the 400 rejection to survive the wrapping")
 	}
 	if !strings.Contains(err.Error(), "run 'orq auth login'") {
 		t.Errorf("error = %q, want it to name the fix", err)

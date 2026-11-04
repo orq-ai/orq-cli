@@ -230,9 +230,9 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd.Flags().String("search", "", "Case-insensitive search text matched against identity profile fields.")
 		cmd.Flags().String("filter-by-tags", "", "Return only identities that have all of these tags.")
 		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on each returned identity.")
-		cmd.Flags().String("sort-by", "", "Field used to order the list. (one of: IDENTITY_SORT_FIELD_UNSPECIFIED, IDENTITY_SORT_FIELD_DISPLAY_NAME, IDENTITY_SORT_FIELD_UPDATED)")
+		cmd.Flags().String("sort-by", "", "Field used to order the list. (one of: IDENTITY_SORT_FIELD_DISPLAY_NAME, IDENTITY_SORT_FIELD_UPDATED)")
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"}, cobra.ShellCompDirectiveNoFileComp
+			return []string{"IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"}, cobra.ShellCompDirectiveNoFileComp
 		})
 		cmd.Flags().Bool("include-budget", false, "When true, embed each identity's identity-scoped budget (config and limits only, no live usage) on the returned records. Adds one budget lookup for the page; omit to skip it.")
 
@@ -326,7 +326,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 							Name:        "email",
 							FlagName:    "email",
 							Type:        "string",
-							Description: "New email address. Omit to keep the current email.",
+							Description: "New email address. Omit to keep the current email, or send an empty string to clear it.",
 						},
 						{
 							Name:        "metadata",
@@ -380,7 +380,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 					Name:        "email",
 					FlagName:    "email",
 					Type:        "string",
-					Description: "New email address. Omit to keep the current email.",
+					Description: "New email address. Omit to keep the current email, or send an empty string to clear it.",
 				},
 				{
 					Name:        "metadata",

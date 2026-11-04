@@ -14,7 +14,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 	webhooksCmd := &cobra.Command{
 		Use:   "webhooks",
 		Short: "Webhooks",
-		Long:  bartolocli.Markdown("Create and manage webhooks that deliver workspace events to external HTTPS endpoints."),
+		Long:  bartolocli.Markdown("Webhooks"),
 	}
 	root.AddCommand(webhooksCmd)
 

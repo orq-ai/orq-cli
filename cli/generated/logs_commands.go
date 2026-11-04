@@ -14,7 +14,7 @@ func registerlogsCommands(root *cobra.Command) {
 	logsCmd := &cobra.Command{
 		Use:   "logs",
 		Short: "Logs",
-		Long:  bartolocli.Markdown("OpenTelemetry log query API. Search, filter, aggregate, and facet log records ingested via OTLP."),
+		Long:  bartolocli.Markdown("Logs"),
 	}
 	root.AddCommand(logsCmd)
 

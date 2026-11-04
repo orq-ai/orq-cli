@@ -254,6 +254,7 @@ func installSessionPreRun() {
 		// its session; every user-supplied env key remains authoritative.
 		explicitKey := profileInForce() || storedLoginActive || (apiKeyConfigured() && !ownExportedKey() && !auth.IsSessionMinted(configuredAPIKey()))
 		commands.SetExplicitAPIKey(explicitKey)
+		commands.SetSessionScope("", "")
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -282,6 +283,7 @@ func installSessionPreRun() {
 			return err
 		}
 		if override != "" {
+			commands.SetSessionScope(override, projectID)
 			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context()).WithProject(projectID)
 			token, err := client.WorkspaceToken(session, override)
 			if err != nil {
@@ -289,6 +291,9 @@ func installSessionPreRun() {
 			}
 			os.Setenv("ORQ_API_KEY", token)
 			return nil
+		}
+		if session.ActiveWorkspaceKey != nil && *session.ActiveWorkspaceKey != "" {
+			commands.SetSessionScope(*session.ActiveWorkspaceKey, projectID)
 		}
 		if token := activeWorkspaceToken(cmd.Context(), projectID); token != "" {
 			os.Setenv("ORQ_API_KEY", token)
@@ -309,29 +314,29 @@ func resolveServer(cmd *cobra.Command) {
 	case cmd.Root().PersistentFlags().Changed("server"):
 		// Read the flag, not viper's key: an explicitly typed --server has to
 		// win over anything else that lands on the same key.
-		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), "flag")
+		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), auth.SourceFlag)
 	case cmd.Flags().Changed("api-base-url"):
 		// The pre-4.15 flag on the six auth/workspace/doctor commands, kept for
 		// one release (commands.DeprecatedAPIBaseFlag).
 		// Lookup, not GetString: the latter returns an error this branch would
 		// have to swallow, and swallowing it would drop a host the user typed.
 		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
-		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
+		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), auth.SourceFlag)
 	case commands.ProfileServer() != "":
 		// A profile binds a key and server as one credential. Letting an ambient
 		// ORQ_SERVER replace only its host can send that key to another backend.
-		auth.SetServer(commands.ProfileServer(), "profile")
+		auth.SetServer(commands.ProfileServer(), auth.SourceProfile)
 	case envServer != "":
 		if envVar == auth.DeprecatedServerEnvVar {
 			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
 		}
-		auth.SetServer(envServer, "env")
+		auth.SetServer(envServer, auth.SourceEnv)
 	case persistedServer() != "":
-		auth.SetServer(persistedServer(), "config") // persisted `orq server set`
+		auth.SetServer(persistedServer(), auth.SourceConfig) // persisted `orq server set`
 	default:
 		// Assign in every branch: the resolver decides the host, it does not
 		// leave behind whatever a previous call happened to store.
-		auth.SetServer("", "default")
+		auth.SetServer("", auth.SourceDefault)
 	}
 	mirrorServerToViper()
 }
@@ -801,6 +806,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	widenServerUse(root)
+	commands.HumanizeBuiltins(root)
 	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
@@ -1081,6 +1087,7 @@ func attachAuthSubcommands(root *cobra.Command) {
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
+	authParent.AddCommand(commands.NewTokenCommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 

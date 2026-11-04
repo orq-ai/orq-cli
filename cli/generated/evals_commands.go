@@ -566,13 +566,13 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke id",
 			Short:   "Invoke a Custom Evaluator",
-			Long:    bartolocli.Markdown("Runs an evaluator that already exists in the workspace. Accepts either a conversation or the structured input and output fields; when both are present the conversation wins.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `context` (object)\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n- `variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Accepts a bare id, `id@version`, or `id@environment`."),
+			Long:    bartolocli.Markdown("Runs an evaluator that already exists in the workspace. Accepts either a conversation or the structured input and output fields; when both are present the conversation wins.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `context` (object)\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n- `retry` (allOf)\n- ... and 2 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Accepts a bare id, `id@version`, or `id@environment`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"context\": {\n    \"input\": {\n      \"expected_output\": \"expected_output\",\n      \"retrievals\": [\n        \"retrievals\"\n      ],\n      \"system_instructions\": \"system_instructions\",\n      \"user_query\": \"user_query\"\n    },\n    \"messages\": [\n      {}\n    ],\n    \"output\": {\n      \"response\": \"response\",\n      \"tools_called\": [\n        {\n          \"arguments\": \"arguments\",\n          \"name\": \"name\",\n          \"output\": \"output\"\n        }\n      ]\n    },\n    \"variables\": {}\n  },\n  \"messages\": [\n    {}\n  ],\n  \"model\": \"model\",\n  \"output\": \"output\",\n  \"query\": \"query\",\n  \"reference\": \"reference\",\n  \"retrievals\": [\n    \"retrievals\"\n  ],\n  \"variables\": {}\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"context\": {\n    \"input\": {\n      \"expected_output\": \"expected_output\",\n      \"retrievals\": [\n        \"retrievals\"\n      ],\n      \"system_instructions\": \"system_instructions\",\n      \"user_query\": \"user_query\"\n    },\n    \"messages\": [\n      {}\n    ],\n    \"output\": {\n      \"response\": \"response\",\n      \"tools_called\": [\n        {\n          \"arguments\": \"arguments\",\n          \"name\": \"name\",\n          \"output\": \"output\"\n        }\n      ]\n    },\n    \"variables\": {}\n  },\n  \"messages\": [\n    {}\n  ],\n  \"model\": \"model\",\n  \"output\": \"output\",\n  \"query\": \"query\",\n  \"reference\": \"reference\",\n  \"retrievals\": [\n    \"retrievals\"\n  ],\n  \"retry\": {\n    \"count\": 0,\n    \"on_codes\": [\n      0\n    ]\n  },\n  \"timeout\": {\n    \"call_timeout\": 0\n  },\n  \"variables\": {}\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -618,6 +618,18 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "retrievals",
 							Type:        "string-slice",
 							Description: "Knowledge base retrievals. Folds into `context.input.retrievals`.",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Overrides llm_eval provider retries for this invocation, including every jury judge.",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "",
 						},
 						{
 							Name:        "variables",
@@ -690,6 +702,18 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "retrievals",
 					Type:        "string-slice",
 					Description: "Knowledge base retrievals. Folds into `context.input.retrievals`.",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Overrides llm_eval provider retries for this invocation, including every jury judge.",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "",
 				},
 				{
 					Name:        "variables",

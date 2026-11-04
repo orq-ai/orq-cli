@@ -219,7 +219,7 @@ func refreshStaleToken(req *http.Request, bearer string) (string, error) {
 		return "", errNotSessionToken
 	}
 	fresh := ""
-	if cur, ok := session.WorkspaceTokens[key]; ok && cur.Token != bearer && !isExpired(cur.ExpiresAt, 60) {
+	if cur, ok := session.WorkspaceTokens[key]; ok && cur.Token != "" && cur.Token != bearer && !isExpired(cur.ExpiresAt, 60) {
 		fresh = cur.Token
 	} else {
 		workspaceKey, projectID := ParseTokenCacheKey(key)
@@ -278,7 +278,7 @@ func recordRefresh(key, old string, tok StoredAccessToken) error {
 		current.StaleTokens = map[string]StaleToken{}
 	}
 	current.StaleTokens[tokenHash(old)] = StaleToken{Key: key, ExpiresAt: expires}
-	return SaveSession(current)
+	return writeSessionTo(SessionFilePath(), current)
 }
 
 // pruneStaleTokens drops records whose old token has expired: nobody can

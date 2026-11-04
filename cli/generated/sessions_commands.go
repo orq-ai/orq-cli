@@ -36,7 +36,7 @@ func registersessionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"billing\": {\n    \"input_cost\": 0,\n    \"output_cost\": 0,\n    \"total_cost\": 0\n  },\n  \"contact_ids\": [\n    \"contact_ids\"\n  ],\n  \"duration\": 0,\n  \"external_id\": \"external_id\",\n  \"kind\": \"THREAD_KIND_UNSPECIFIED\",\n  \"tags\": [\n    \"tags\"\n  ],\n  \"traces_count\": 0,\n  \"usage\": {\n    \"completion_tokens\": 0,\n    \"prompt_tokens\": 0,\n    \"total_tokens\": 0\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"billing\": {\n    \"input_cost\": 0,\n    \"output_cost\": 0,\n    \"total_cost\": 0\n  },\n  \"contact_ids\": [\n    \"contact_ids\"\n  ],\n  \"duration\": 0,\n  \"external_id\": \"external_id\",\n  \"kind\": \"THREAD_KIND_CONVERSATION\",\n  \"tags\": [\n    \"tags\"\n  ],\n  \"traces_count\": 0,\n  \"usage\": {\n    \"completion_tokens\": 0,\n    \"prompt_tokens\": 0,\n    \"total_tokens\": 0\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -77,7 +77,6 @@ func registersessionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"THREAD_KIND_UNSPECIFIED",
 								"THREAD_KIND_CONVERSATION",
 								"THREAD_KIND_CODING_AGENT",
 							},
@@ -190,7 +189,6 @@ func registersessionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"THREAD_KIND_UNSPECIFIED",
 						"THREAD_KIND_CONVERSATION",
 						"THREAD_KIND_CODING_AGENT",
 					},
@@ -356,7 +354,7 @@ func registersessionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": {\n    \"interval\": \"SESSION_INTERVAL_UNSPECIFIED\",\n    \"kind\": \"THREAD_KIND_UNSPECIFIED\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": {\n    \"interval\": \"SESSION_INTERVAL_ALL_TIME\",\n    \"kind\": \"THREAD_KIND_CONVERSATION\"\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -450,7 +448,7 @@ func registersessionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": {\n    \"interval\": \"SESSION_INTERVAL_UNSPECIFIED\",\n    \"kind\": \"THREAD_KIND_UNSPECIFIED\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": {\n    \"interval\": \"SESSION_INTERVAL_ALL_TIME\",\n    \"kind\": \"THREAD_KIND_CONVERSATION\"\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -584,7 +582,7 @@ func registersessionsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"kind\": \"THREAD_KIND_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"kind\": \"THREAD_KIND_CONVERSATION\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -637,7 +635,6 @@ func registersessionsCommands(root *cobra.Command) {
 							Type:        "enum-string",
 							Description: "",
 							Enum: []string{
-								"THREAD_KIND_UNSPECIFIED",
 								"THREAD_KIND_CONVERSATION",
 								"THREAD_KIND_CODING_AGENT",
 							},
@@ -762,7 +759,6 @@ func registersessionsCommands(root *cobra.Command) {
 					Type:        "enum-string",
 					Description: "",
 					Enum: []string{
-						"THREAD_KIND_UNSPECIFIED",
 						"THREAD_KIND_CONVERSATION",
 						"THREAD_KIND_CODING_AGENT",
 					},
