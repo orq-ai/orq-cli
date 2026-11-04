@@ -1542,7 +1542,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "value",
 							FlagName:    "value",
 							Type:        "string-map",
-							Description: "",
+							Description: "Human review value. type is required: range uses {type: range, value: number}; single- and multi-select use {type: categorical, value: string} or {type: categorical, values: [{value: string, sentiment: string}]}; text and correction use {type: free_form_text, text: string}.",
 						},
 					},
 				)
@@ -1572,7 +1572,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "value",
 					FlagName:    "value",
 					Type:        "string-map",
-					Description: "",
+					Description: "Human review value. type is required: range uses {type: range, value: number}; single- and multi-select use {type: categorical, value: string} or {type: categorical, values: [{value: string, sentiment: string}]}; text and correction use {type: free_form_text, text: string}.",
 				},
 			},
 		)
