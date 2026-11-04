@@ -929,6 +929,8 @@ func persistSetupServer(rep *reporter, complete bool) error {
 	return nil
 }
 
+var errNoLoginForGatewayKey = errors.New("no login session to record the gateway key on")
+
 // saveGatewayKeyProfile records the minted key on the login it was minted
 // from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
 // that cannot authenticate the platform API is exactly what bartolo refuses to
@@ -939,7 +941,7 @@ func saveGatewayKeyProfile(login *auth.Session, key, keyID string, expiresAt tim
 		return errors.New("cannot record a gateway key while an API-key profile is in force")
 	}
 	if login == nil {
-		return errors.New("no login session to record the gateway key on")
+		return errNoLoginForGatewayKey
 	}
 	return auth.UpdateSession(login, func(current *auth.Session) {
 		current.GatewayKey = key
@@ -1338,11 +1340,16 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return "", false, err
 	}
-	// An --api-key run has no state.session, yet the key still lands on any login on disk.
+	// `orq connect` builds a state with no session, yet the key still lands on the
+	// login on disk. With none, stop here: a minted key has nowhere to be saved, and
+	// would stay live on the platform with nothing pointing at it.
 	login := state.session
 	if login == nil {
 		if login, err = auth.ReadSession(); err != nil {
 			return "", false, err
+		}
+		if login == nil {
+			return "", false, errNoLoginForGatewayKey
 		}
 	}
 	minted, keyID, scopedToProject, err := client.CreateAPIKey(state.bearer, req)

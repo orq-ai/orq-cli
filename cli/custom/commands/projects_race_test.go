@@ -248,3 +248,31 @@ func TestMintFailsWhenTheLoginChangesDuringTheRequest(t *testing.T) {
 		t.Errorf("new login received key %q", session.GatewayKey)
 	}
 }
+
+// A key with no login to land on would stay live on the platform with nothing
+// pointing at it, so setup must not mint one.
+func TestNoLoginMeansNoMint(t *testing.T) {
+	credsHarness(t)
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	var mints atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":"DOMAIN_GROUP_GATEWAY","writable":true}]}`)
+			return
+		}
+		mints.Add(1)
+		fmt.Fprint(w, `{"token":"sk-orq-KEYID1-secret","api_key":{"id":"KEYID1"}}`)
+	}))
+	defer srv.Close()
+
+	state := &authState{apiBase: srv.URL, bearer: "t"}
+	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	if !errors.Is(err, errNoLoginForGatewayKey) {
+		t.Fatalf("error = %v, want errNoLoginForGatewayKey", err)
+	}
+	if got := mints.Load(); got != 0 {
+		t.Errorf("minted %d keys with no login to save them on", got)
+	}
+}
