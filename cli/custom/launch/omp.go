@@ -41,43 +41,39 @@ func ompAgent() AgentDef {
 // If linking is unavailable, the partial overlay is discarded and the session
 // runs with only orq's generated config.
 func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
-	resolved, err := ResolveGatewayConfig(ResolveInput{
-		AuthToken:         ctx.Creds.APIKey,
-		APIBaseURL:        ctx.Creds.APIBaseURL,
-		Getenv:            ctx.Getenv,
-		Flags:             ctx.Flags,
-		Fetch:             ctx.Fetch,
-		Normalize:         noopNormalize,
-		DefaultModel:      DefaultOmpModel,
-		BaseURLEnvKey:     "ORQ_OMP_BASE_URL",
-		ModelEnvKey:       "", // omp reads no model env vars
-		ModelsEnvKey:      "",
-		CollectModelInfos: true,
+	return resolvePiLike(ctx, piLikeSpec{
+		agent:         "omp",
+		tempPrefix:    "orq-omp-",
+		configFile:    "models.yml",
+		defaultModel:  DefaultOmpModel,
+		baseURLEnvKey: "ORQ_OMP_BASE_URL",
+		// omp reads no model env vars, so modelEnvKey and modelsEnvKey stay empty.
+		apiKeyRef: OmpAPIKeyRef,
+		extendPlan: func(plan *LaunchPlan, dir, generated string) error {
+			return extendOmpPlan(ctx, plan, dir, generated)
+		},
 	})
-	if err != nil {
-		return nil, err
-	}
+}
 
-	config, err := BuildPiModelsJSON(resolved.BaseURL, OmpAPIKeyRef, resolved.GatewayModels, resolved.Infos)
-	if err != nil {
-		return nil, err
-	}
+// extendOmpPlan merges orq into a session copy of the user's models.yml, adds
+// the session MCP entry, seeds persistent state in the user's dir, overlays
+// that dir or falls back to an isolated config, and clears the profile
+// variables.
+func extendOmpPlan(ctx *AgentContext, plan *LaunchPlan, dir, generated string) error {
 	userDir, err := ompUserAgentDir(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	userModels := ""
-
 	if userDir != "" {
 		userModels = filepath.Join(userDir, "models.yml")
 	}
-	models, err := OmpMergeProvider(userModels, config)
+	models, err := OmpMergeProvider(userModels, generated)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	dir, cleanup, err := writeOmpConfigDir(string(models))
-	if err != nil {
-		return nil, err
+	if err := os.WriteFile(filepath.Join(dir, "models.yml"), models, 0o600); err != nil {
+		return err
 	}
 	owned := map[string]bool{"models.yml": true}
 
@@ -93,49 +89,26 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 			err = os.WriteFile(filepath.Join(dir, ".mcp.json"), data, 0o600)
 		}
 		if err != nil {
-			cleanup()
-			return nil, err
+			return err
 		}
 		owned[".mcp.json"] = true
 	}
 	if userDir != "" {
 		if err := prepareOmpState(userDir); err != nil {
-			cleanup()
-			return nil, err
+			return err
 		}
 	}
 	symlink := ctx.Symlink
 	if symlink == nil {
 		symlink = os.Symlink
 	}
-	linkErr := linkOmpAgentDir(userDir, dir, owned, symlink)
-	isolatedFallback := false
-	if linkErr != nil {
-		if errors.Is(linkErr, errOmpSymlink) {
-			if resetErr := rebuildIsolatedOmpConfig(dir, string(config), mcpURL(ctx)); resetErr != nil {
-				cleanup()
-				return nil, fmt.Errorf("symlink omp user config: %w (isolated fallback: %v)", linkErr, resetErr)
-			}
-			isolatedFallback = true
-		} else {
-			cleanup()
-			return nil, linkErr
+	if linkErr := linkOmpAgentDir(userDir, dir, owned, symlink); linkErr != nil {
+		if !errors.Is(linkErr, errOmpSymlink) {
+			return linkErr
 		}
-	}
-
-	// Skills do not go in the temp dir: omp is a sharedReader reading
-	// .agents/skills, and PI_CODING_AGENT_DIR only redirects its config dir.
-	plan := &LaunchPlan{
-		Env: map[string]string{
-			"ORQ_API_KEY":         ctx.Creds.APIKey,
-			"ORQ_SERVER":          ctx.Creds.APIBaseURL,
-			"PI_CODING_AGENT_DIR": dir,
-		},
-		PreArgs:  []string{"--provider", OmpProvider, "--model", resolved.GatewayModel},
-		TempDirs: []TempDir{{HostPath: dir}},
-		Cleanup:  cleanup,
-	}
-	if isolatedFallback {
+		if resetErr := rebuildIsolatedOmpConfig(dir, generated, mcpURL(ctx)); resetErr != nil {
+			return fmt.Errorf("symlink omp user config: %w (isolated fallback: %v)", linkErr, resetErr)
+		}
 		plan.Warnings = append(plan.Warnings, "Symlinks are unavailable; omp is using an isolated session config. User omp config, login state, and sessions are not carried over for this launch.")
 	}
 	if strings.TrimSpace(ctx.Getenv("OMP_PROFILE")) != "" || strings.TrimSpace(ctx.Getenv("PI_PROFILE")) != "" {
@@ -143,23 +116,7 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 		plan.Env["PI_PROFILE"] = ""
 		plan.Warnings = append(plan.Warnings, "OMP_PROFILE/PI_PROFILE is set; orq launch omp uses the default profile for this session. For more flexible persistent wiring, use orq connect omp, then start omp normally (named profiles need their own directory wired).")
 	}
-	maybeInstallSessionSkills(ctx, plan, "omp")
-	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
-	appendCapWarning(plan, resolved)
-	return plan, nil
-}
-
-func writeOmpConfigDir(models string) (dir string, cleanup func(), err error) {
-	dir, err = os.MkdirTemp("", "orq-omp-")
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup = func() { os.RemoveAll(dir) }
-	if err := os.WriteFile(filepath.Join(dir, "models.yml"), []byte(models), 0o600); err != nil {
-		cleanup()
-		return "", nil, err
-	}
-	return dir, cleanup, nil
+	return nil
 }
 
 // ompUserAgentDir applies the pi ownership guard to the shared agent directory.
