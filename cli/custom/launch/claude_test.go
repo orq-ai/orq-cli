@@ -170,18 +170,14 @@ func TestClaudeWiresEveryModelTier(t *testing.T) {
 		defer plan.Cleanup()
 	}
 	for _, tc := range []struct{ env, want string }{
-		{"ANTHROPIC_DEFAULT_OPUS_MODEL", DefaultClaudeOpusModel},
-		{"ANTHROPIC_DEFAULT_SONNET_MODEL", DefaultClaudeSonnetModel},
-		{"ANTHROPIC_DEFAULT_HAIKU_MODEL", DefaultClaudeHaikuModel},
+		// Literals, not the constants: comparing a constant with itself cannot catch
+		// a stale pin, which is the regression this guards.
+		{"ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-5-5"},
+		{"ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-5-5"},
+		{"ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-5-5"},
 	} {
-		got := plan.Env[tc.env]
-		if got != tc.want {
+		if got := plan.Env[tc.env]; got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.env, got, tc.want)
-		}
-		// A concrete model id the router resolves, not the bare alias (opus) that
-		// Claude Code would otherwise send and the gateway cannot resolve.
-		if !strings.HasPrefix(got, "claude-") {
-			t.Errorf("%s = %q is not a concrete model id for a tier alias", tc.env, got)
 		}
 	}
 }
