@@ -502,28 +502,39 @@ const (
 // by saves and logout. A response for an old login cannot replace a new login
 // or recreate one that was removed while the request was in flight.
 func updateSessionForLogin(path, refreshToken string, update func(*Session)) error {
+	_, err := applyToLogin(path, refreshToken, update)
+	return err
+}
+
+// applyToLogin reports whether update ran and was written. False with no error
+// means the login was removed or replaced, which is not a failure for a cache
+// write but is one for a command about to report success.
+func applyToLogin(path, refreshToken string, update func(*Session)) (bool, error) {
 	unlock, err := lockSessionUpdatesAt(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer unlock()
 	// Hydrated: a stored login's file has no refresh token to compare, and
 	// writing it back unhydrated would replace the stored secrets with nothing.
 	current, err := readSessionFile(path)
 	if err != nil || current == nil {
-		return err
+		return false, err
 	}
 	if err := hydrateSecrets(current, path); err != nil {
-		return err
+		return false, err
 	}
 	if current.RefreshToken != refreshToken {
-		return nil
+		return false, nil
 	}
 	if err := validateSession(current); err != nil {
-		return err
+		return false, err
 	}
 	update(current)
-	return writeSessionTo(path, current)
+	if err := writeSessionTo(path, current); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ErrSessionChanged means the login a command started from was replaced or
@@ -533,20 +544,21 @@ var ErrSessionChanged = errors.New("the login changed while this command ran, so
 // UpdateSession applies update to the login on disk rather than to the caller's
 // copy, so a snapshot held across a network call cannot overwrite what another
 // command saved in the meantime. session is the login the change was decided
-// for, and on success it is refreshed to what was written.
+// for, and on success it is refreshed to the session after update, before the
+// write prunes expired tokens from its own copy.
 func UpdateSession(session *Session, update func(*Session)) error {
-	var written *Session
-	err := updateSessionForLogin(SessionFilePath(), session.RefreshToken, func(current *Session) {
+	var updated *Session
+	applied, err := applyToLogin(SessionFilePath(), session.RefreshToken, func(current *Session) {
 		update(current)
-		written = current
+		updated = current
 	})
 	if err != nil {
 		return err
 	}
-	if written == nil {
+	if !applied {
 		return ErrSessionChanged
 	}
-	*session = *written
+	*session = *updated
 	return nil
 }
 

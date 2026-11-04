@@ -932,19 +932,16 @@ func persistSetupServer(rep *reporter, complete bool) error {
 // saveGatewayKeyProfile records the minted key on the login it was minted
 // from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
 // that cannot authenticate the platform API is exactly what bartolo refuses to
-// fall back from.
-func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, projectID string) error {
+// fall back from. login must be read before the mint: a login replaced during
+// the mint then fails here instead of receiving the previous login's key.
+func saveGatewayKeyProfile(login *auth.Session, key, keyID string, expiresAt time.Time, workspace, projectID string) error {
 	if profileInForce() {
 		return errors.New("cannot record a gateway key while an API-key profile is in force")
 	}
-	session, err := auth.ReadSession()
-	if err != nil {
-		return err
-	}
-	if session == nil {
+	if login == nil {
 		return errors.New("no login session to record the gateway key on")
 	}
-	return auth.UpdateSession(session, func(current *auth.Session) {
+	return auth.UpdateSession(login, func(current *auth.Session) {
 		current.GatewayKey = key
 		current.GatewayKeyID = keyID
 		current.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
@@ -1341,12 +1338,19 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return "", false, err
 	}
+	// An --api-key run has no state.session, yet the key still lands on any login on disk.
+	login := state.session
+	if login == nil {
+		if login, err = auth.ReadSession(); err != nil {
+			return "", false, err
+		}
+	}
 	minted, keyID, scopedToProject, err := client.CreateAPIKey(state.bearer, req)
 	if err != nil {
 		return "", false, err
 	}
 	// The API returns the raw token and its id once: persist before anything else can fail.
-	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active, state.projectID); err != nil {
+	if err := saveGatewayKeyProfile(login, minted, keyID, expiresAt, active, state.projectID); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
 	if scopedToProject {

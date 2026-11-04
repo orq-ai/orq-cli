@@ -82,14 +82,17 @@ func NewProjectsUseCommand() *cobra.Command {
 	return cmd
 }
 
-// recordActiveProject writes the project together with the workspace session
-// has active. The project was chosen in that workspace, so merging it onto one
-// that another command just moved to would pair it with a workspace that does
-// not contain it.
+// recordActiveProject writes a chosen project together with the workspace
+// session has active. The project was chosen in that workspace, so merging it
+// onto one that another command just moved to would pair it with a workspace
+// that does not contain it. Clearing pairs nothing, so it leaves the workspace
+// alone: session may be older than a workspace another command has since saved.
 func recordActiveProject(session *auth.Session, projectID, projectName string) error {
 	workspace := session.ActiveWorkspaceKey
 	return auth.UpdateSession(session, func(current *auth.Session) {
-		current.ActiveWorkspaceKey = workspace
+		if projectID != "" {
+			current.ActiveWorkspaceKey = workspace
+		}
 		current.ActiveProjectID, current.ActiveProjectName = projectID, projectName
 	})
 }
