@@ -216,7 +216,7 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 	// session sends all built-in tools up front (about 43k first-turn tokens
 	// against 29k with search). The router forwards defer_loading and
 	// tool_reference blocks, so turning it back on is safe and cuts the first-turn
-	// prompt by about a third, more with MCP servers (RES-1758). Only on the
+	// prompt by about a third, more with MCP servers. Only on the
 	// gateway path: without routing Claude Code talks to Anthropic directly and
 	// enables search itself. A value the user exported wins, and
 	// CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS is never set here because it would
