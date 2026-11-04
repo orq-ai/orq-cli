@@ -516,12 +516,17 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 	if err != nil {
 		return nil, err
 	}
-	// Re-read immediately before the write. The login blocks on browser
-	// approval, and an `orq setup` landing in that window writes a gateway key
-	// this session was built before; saving the older copy would lose it, which
-	// is the class of loss this whole function exists to prevent.
-	// mergeWorkspaceToken guards the same hazard the same way. The general fix,
-	// one UpdateSession helper for all eight SaveSession callers, is RES-1532.
+	// Re-read under the lock. The login blocks on browser approval, and an
+	// `orq setup` landing in that window writes a gateway key this session was
+	// built before; saving the older copy would lose it, which is the class of
+	// loss this whole function exists to prevent. This is not UpdateSession
+	// because a login may have no session to update, and it replaces the
+	// refresh token that UpdateSession matches on.
+	unlock, err := lockSessionUpdates()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	if latest := c.previousSession(profile.ID, false); latest != nil {
 		previous = latest
 	}
@@ -556,7 +561,7 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 	}
 	session.ActiveWorkspaceKey = stringPtr(resolvedKey)
 	session.ProfileTransport = c.profileTransport
-	if err := SaveSession(session); err != nil {
+	if err := writeSessionTo(SessionFilePath(), session); err != nil {
 		return nil, err
 	}
 	return session, nil

@@ -62,9 +62,7 @@ func NewProjectsUseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			session.ActiveProjectID = chosen.ProjectID
-			session.ActiveProjectName = chosen.Name
-			if err := auth.SaveSession(session); err != nil {
+			if err := recordActiveProject(session, chosen.ProjectID, chosen.Name); err != nil {
 				return err
 			}
 			if wantsHumanView(cmd) {
@@ -84,6 +82,18 @@ func NewProjectsUseCommand() *cobra.Command {
 	return cmd
 }
 
+// recordActiveProject writes the project together with the workspace session
+// has active. The project was chosen in that workspace, so merging it onto one
+// that another command just moved to would pair it with a workspace that does
+// not contain it.
+func recordActiveProject(session *auth.Session, projectID, projectName string) error {
+	workspace := session.ActiveWorkspaceKey
+	return auth.UpdateSession(session, func(current *auth.Session) {
+		current.ActiveWorkspaceKey = workspace
+		current.ActiveProjectID, current.ActiveProjectName = projectID, projectName
+	})
+}
+
 // warnIfShadowed says so when an explicit API key means the switch changes
 // nothing: the key carries its own scope and outranks the session.
 func warnIfShadowed() {
@@ -97,9 +107,7 @@ func warnIfShadowed() {
 }
 
 func clearActiveProject(cmd *cobra.Command, session *auth.Session) error {
-	session.ActiveProjectID = ""
-	session.ActiveProjectName = ""
-	if err := auth.SaveSession(session); err != nil {
+	if err := recordActiveProject(session, "", ""); err != nil {
 		return err
 	}
 	if wantsHumanView(cmd) {

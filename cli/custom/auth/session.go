@@ -309,6 +309,9 @@ func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string
 // and two concurrent writers end with one intact winner (last writer wins on
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
+//
+// It replaces the whole file, so it is only for a session built from scratch.
+// To change a login that already exists, use UpdateSession.
 func SaveSession(s *Session) error {
 	return saveSessionTo(SessionFilePath(), s)
 }
@@ -521,6 +524,30 @@ func updateSessionForLogin(path, refreshToken string, update func(*Session)) err
 	}
 	update(current)
 	return writeSessionTo(path, current)
+}
+
+// ErrSessionChanged means the login a command started from was replaced or
+// removed before the command could record its change.
+var ErrSessionChanged = errors.New("the login changed while this command ran, so nothing was saved; run it again")
+
+// UpdateSession applies update to the login on disk rather than to the caller's
+// copy, so a snapshot held across a network call cannot overwrite what another
+// command saved in the meantime. session is the login the change was decided
+// for, and on success it is refreshed to what was written.
+func UpdateSession(session *Session, update func(*Session)) error {
+	var written *Session
+	err := updateSessionForLogin(SessionFilePath(), session.RefreshToken, func(current *Session) {
+		update(current)
+		written = current
+	})
+	if err != nil {
+		return err
+	}
+	if written == nil {
+		return ErrSessionChanged
+	}
+	*session = *written
+	return nil
 }
 
 func mergeBootstrapToken(path string, session *Session, token StoredAccessToken) error {

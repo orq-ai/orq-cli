@@ -944,12 +944,13 @@ func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, pr
 	if session == nil {
 		return errors.New("no login session to record the gateway key on")
 	}
-	session.GatewayKey = key
-	session.GatewayKeyID = keyID
-	session.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
-	session.GatewayWorkspace = workspace
-	session.GatewayProject = projectID
-	return auth.SaveSession(session)
+	return auth.UpdateSession(session, func(current *auth.Session) {
+		current.GatewayKey = key
+		current.GatewayKeyID = keyID
+		current.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
+		current.GatewayWorkspace = workspace
+		current.GatewayProject = projectID
+	})
 }
 
 // gatewaySession is the login the gateway key lives on, or nil when there is
@@ -2255,8 +2256,7 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	if session == nil {
 		return
 	}
-	session.GatewayWorkspace = keyWS
-	if err := auth.SaveSession(session); err != nil {
+	if err := auth.UpdateSession(session, func(current *auth.Session) { current.GatewayWorkspace = keyWS }); err != nil {
 		// Not fatal: the key itself is fine, this only re-arms the local guard.
 		rep.warn("could not record the key's workspace: %v", err)
 	}
