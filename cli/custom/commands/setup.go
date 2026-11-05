@@ -929,27 +929,27 @@ func persistSetupServer(rep *reporter, complete bool) error {
 	return nil
 }
 
+var errNoLoginForGatewayKey = errors.New("no login session to record the gateway key on")
+
 // saveGatewayKeyProfile records the minted key on the login it was minted
 // from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
 // that cannot authenticate the platform API is exactly what bartolo refuses to
-// fall back from.
-func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, projectID string) error {
+// fall back from. login must be read before the mint: a login replaced during
+// the mint then fails here instead of receiving the previous login's key.
+func saveGatewayKeyProfile(login *auth.Session, key, keyID string, expiresAt time.Time, workspace, projectID string) error {
 	if profileInForce() {
 		return errors.New("cannot record a gateway key while an API-key profile is in force")
 	}
-	session, err := auth.ReadSession()
-	if err != nil {
-		return err
+	if login == nil {
+		return errNoLoginForGatewayKey
 	}
-	if session == nil {
-		return errors.New("no login session to record the gateway key on")
-	}
-	session.GatewayKey = key
-	session.GatewayKeyID = keyID
-	session.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
-	session.GatewayWorkspace = workspace
-	session.GatewayProject = projectID
-	return auth.SaveSession(session)
+	return auth.UpdateSession(login, func(current *auth.Session) {
+		current.GatewayKey = key
+		current.GatewayKeyID = keyID
+		current.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
+		current.GatewayWorkspace = workspace
+		current.GatewayProject = projectID
+	})
 }
 
 // gatewaySession is the login the gateway key lives on, or nil when there is
@@ -1340,12 +1340,24 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return "", false, err
 	}
+	// `orq connect` builds a state with no session, yet the key still lands on the
+	// login on disk. With none, stop here: a minted key has nowhere to be saved, and
+	// would stay live on the platform with nothing pointing at it.
+	login := state.session
+	if login == nil {
+		if login, err = auth.ReadSession(); err != nil {
+			return "", false, err
+		}
+		if login == nil {
+			return "", false, errNoLoginForGatewayKey
+		}
+	}
 	minted, keyID, scopedToProject, err := client.CreateAPIKey(state.bearer, req)
 	if err != nil {
 		return "", false, err
 	}
 	// The API returns the raw token and its id once: persist before anything else can fail.
-	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active, state.projectID); err != nil {
+	if err := saveGatewayKeyProfile(login, minted, keyID, expiresAt, active, state.projectID); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
 	if scopedToProject {
@@ -2255,8 +2267,7 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	if session == nil {
 		return
 	}
-	session.GatewayWorkspace = keyWS
-	if err := auth.SaveSession(session); err != nil {
+	if err := auth.UpdateSession(session, func(current *auth.Session) { current.GatewayWorkspace = keyWS }); err != nil {
 		// Not fatal: the key itself is fine, this only re-arms the local guard.
 		rep.warn("could not record the key's workspace: %v", err)
 	}
