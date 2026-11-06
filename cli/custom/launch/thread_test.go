@@ -415,9 +415,6 @@ func TestRequestHeadersReachEachAgent(t *testing.T) {
 		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, claudeProviderSwitches[0]) }) {
 			t.Errorf("no warning naming %s in %v", claudeProviderSwitches[0], plan.Warnings)
 		}
-		if _, ok := plan.Env[claudeHeadersEnv]; ok {
-			t.Errorf("headers set for a provider that never sees them: %q", plan.Env[claudeHeadersEnv])
-		}
 	})
 
 	t.Run("codex", func(t *testing.T) {

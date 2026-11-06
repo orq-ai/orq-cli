@@ -98,7 +98,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		// ticket is about, so name it.
 		var inherited []string
 		for _, k := range loginOverrides {
-			if ctx.Getenv(k) != "" {
+			if claudeEnvOn(k, ctx.Getenv(k)) {
 				inherited = append(inherited, k)
 			}
 		}
@@ -161,18 +161,22 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_GATEWAY",
 }
 
-// claudeProviderSwitchesSet returns the switches claude would act on. The 2.1.281
-// bundle reads each through a check that takes 1, true, yes and on, in any case,
-// as on, except CLAUDE_CODE_USE_GATEWAY, which any non-empty value turns on, 0 too.
+// claudeEnvOn reports whether claude acts on variable k set to v. The 2.1.281
+// bundle reads its CLAUDE_CODE_USE_* switches through a check that takes 1, true,
+// yes and on, in any case, as on, except CLAUDE_CODE_USE_GATEWAY, which any
+// non-empty value turns on, 0 too. Every other variable counts once it is set.
+func claudeEnvOn(k, v string) bool {
+	if !strings.HasPrefix(k, "CLAUDE_CODE_USE_") || k == "CLAUDE_CODE_USE_GATEWAY" {
+		return v != ""
+	}
+	return slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(strings.TrimSpace(v)))
+}
+
+// claudeProviderSwitchesSet returns the switches claude would act on.
 func claudeProviderSwitchesSet(getenv func(string) string) []string {
 	var set []string
 	for _, k := range claudeProviderSwitches {
-		v := getenv(k)
-		on := v != ""
-		if k != "CLAUDE_CODE_USE_GATEWAY" {
-			on = slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(strings.TrimSpace(v)))
-		}
-		if on {
+		if claudeEnvOn(k, getenv(k)) {
 			set = append(set, k)
 		}
 	}
