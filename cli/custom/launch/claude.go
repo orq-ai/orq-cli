@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -160,10 +161,18 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_GATEWAY",
 }
 
+// claudeProviderSwitchesSet returns the switches claude would act on. The 2.1.281
+// bundle reads each through a check that takes 1, true, yes and on, in any case,
+// as on, except CLAUDE_CODE_USE_GATEWAY, which any non-empty value turns on, 0 too.
 func claudeProviderSwitchesSet(getenv func(string) string) []string {
 	var set []string
 	for _, k := range claudeProviderSwitches {
-		if getenv(k) != "" {
+		v := getenv(k)
+		on := v != ""
+		if k != "CLAUDE_CODE_USE_GATEWAY" {
+			on = slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(strings.TrimSpace(v)))
+		}
+		if on {
 			set = append(set, k)
 		}
 	}

@@ -411,7 +411,13 @@ func TestRequestHeadersReachEachAgent(t *testing.T) {
 			}
 		}
 		// Without the flags the switch is the user's own arrangement and only warns.
-		resolveSession(t, "claude", GatewayFlags{Router: true}, map[string]string{claudeProviderSwitches[0]: "1"})
+		plan := resolveSession(t, "claude", GatewayFlags{Router: true}, map[string]string{claudeProviderSwitches[0]: "1"})
+		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, claudeProviderSwitches[0]) }) {
+			t.Errorf("no warning naming %s in %v", claudeProviderSwitches[0], plan.Warnings)
+		}
+		if _, ok := plan.Env[claudeHeadersEnv]; ok {
+			t.Errorf("headers set for a provider that never sees them: %q", plan.Env[claudeHeadersEnv])
+		}
 	})
 
 	t.Run("codex", func(t *testing.T) {
@@ -495,6 +501,9 @@ func TestMetadataValueWithSpecialCharactersSurvives(t *testing.T) {
 		}
 		if err := json.Unmarshal([]byte(resolveSession(t, agent, flags, nil).Env[envVar]), &doc); err != nil {
 			t.Fatal(err)
+		}
+		if len(doc.Provider) == 0 {
+			t.Fatalf("%s: no providers", agent)
 		}
 		for provider, p := range doc.Provider {
 			if p.Options.Headers[name] != value {

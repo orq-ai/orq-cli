@@ -318,3 +318,17 @@ func TestClaudeSubscriptionKeepsOwnLogin(t *testing.T) {
 		t.Fatal("--subscription with --no-gateway should be rejected")
 	}
 }
+
+// claude itself reads 0 or false on these as off, so launch must too, or a shell
+// that turned Bedrock off would lose its thread flags to a refusal.
+func TestProviderSwitchesReadLikeClaude(t *testing.T) {
+	for v, want := range map[string]bool{"1": true, "TRUE": true, " yes ": true, "on": true, "0": false, "false": false, "no": false, "": false} {
+		got := len(claudeProviderSwitchesSet(env(map[string]string{"CLAUDE_CODE_USE_BEDROCK": v}))) > 0
+		if got != want {
+			t.Errorf("CLAUDE_CODE_USE_BEDROCK=%q: on = %v, want %v", v, got, want)
+		}
+	}
+	if len(claudeProviderSwitchesSet(env(map[string]string{"CLAUDE_CODE_USE_GATEWAY": "0"}))) == 0 {
+		t.Error("CLAUDE_CODE_USE_GATEWAY=0: claude reads any non-empty value as on")
+	}
+}

@@ -133,9 +133,10 @@ stays with the agent, so a headless codex or gemini run also approves each tool.
 **Added:** `orq launch --thread-id <id>` and `--metadata <key=value>` (same
 agents) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on the agent's model
 calls, so a caller can find or tag one run. Values and keys the gateway would
-drop, truncate or read for itself are refused at parse time, a thread id over
-256 characters too, and so is a claude launch with the flags while a provider
-switch such as `CLAUDE_CODE_USE_BEDROCK` is set. `--mcp-auth`,
+drop, truncate or read for itself are refused at parse time, and so is a thread
+id over 256 characters. A claude launch with these flags while a provider switch
+such as `CLAUDE_CODE_USE_BEDROCK` is on fails before claude starts, because that
+provider never sees the headers. `--mcp-auth`,
 `--thread-id` and `--metadata` are now launcher flags on every agent, so an agent's
 own flag of that name goes after `--`.
 
