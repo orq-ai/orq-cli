@@ -140,7 +140,9 @@ Flags:
 	}
 	if def.RequestHeaders {
 		fmt.Print(`  --thread-id <id>      Group this session's model calls under one thread id
-  --metadata <k=v>      Tag this session's model calls; repeatable, up to 20 keys
+  --metadata <k=v>      Tag this session's model calls; repeatable, up to 20 keys.
+                        Keys up to 64 letters, digits and inner hyphens; values and
+                        the thread id up to 256 printable ASCII characters, no , { }
 `)
 		if def.Traceable {
 			fmt.Print(`                        Both reach gateway calls only: the session trace from --otel

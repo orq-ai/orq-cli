@@ -100,8 +100,12 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 		return v, true, nil
 	}
 
+	mcpAuthGiven := false
 	setters := map[string]func(string) error{
-		"--mcp-auth":  func(v string) error { return setMCPAuth(&flags, v) },
+		"--mcp-auth": func(v string) error {
+			mcpAuthGiven = true
+			return setMCPAuth(&flags, v)
+		},
 		"--thread-id": func(v string) error { return setThreadID(&flags, v) },
 		"--metadata":  func(v string) error { return addMetadata(&flags, v) },
 	}
@@ -209,7 +213,7 @@ scan:
 
 	// Help wins over a conflict between flags; a bad flag value has already failed above.
 	if !flags.Help {
-		if err := checkSessionFlags(flags, opts); err != nil {
+		if err := checkSessionFlags(flags, mcpAuthGiven, opts); err != nil {
 			return flags, nil, err
 		}
 	}

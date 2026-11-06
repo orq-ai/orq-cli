@@ -72,6 +72,11 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 	routed := false
 	if ctx.Flags.Router {
+		if len(threadHeaders(ctx.Flags)) > 0 {
+			if switches := claudeProviderSwitchesSet(ctx.Getenv); len(switches) > 0 {
+				return nil, fmt.Errorf("%s set in your shell sends claude to that provider, so --thread-id and --metadata would never reach the gateway; unset it or drop those flags", strings.Join(switches, ", "))
+			}
+		}
 		routed = routeThroughGateway(ctx, plan)
 	} else {
 		if ctx.Flags.Model != "" {
@@ -155,6 +160,16 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_GATEWAY",
 }
 
+func claudeProviderSwitchesSet(getenv func(string) string) []string {
+	var set []string
+	for _, k := range claudeProviderSwitches {
+		if getenv(k) != "" {
+			set = append(set, k)
+		}
+	}
+	return set
+}
+
 // routeThroughGateway points claude at the anthropic-native gateway path. Only
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
 // claude's own default and any /model choice alone, and the tier variables
@@ -188,20 +203,11 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 	// Each of these picks a provider whose own base URL claude reads instead of
 	// ANTHROPIC_BASE_URL. One left in the shell is the user's own arrangement,
 	// so it stays in force, but gateway routing then routes nothing and says so.
-	var providerSwitches []string
-	for _, k := range claudeProviderSwitches {
-		if getenv(k) != "" {
-			providerSwitches = append(providerSwitches, k)
-		}
-	}
+	providerSwitches := claudeProviderSwitchesSet(getenv)
 	headers := threadHeaders(ctx.Flags)
 	if len(providerSwitches) > 0 {
-		warning := fmt.Sprintf(
-			"%s set in your shell sends claude to that provider, so gateway routing does nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", "))
-		if len(headers) > 0 {
-			warning += "; --thread-id and --metadata are not sent"
-		}
-		plan.Warnings = append(plan.Warnings, warning)
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"%s set in your shell sends claude to that provider, so gateway routing does nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
 	} else {
 		if len(headers) > 0 {
 			// Under --subscription this variable is launch's own, as it is without

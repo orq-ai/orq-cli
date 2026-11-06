@@ -55,6 +55,7 @@ func TestParseArgvRefusesBadSessionFlagValues(t *testing.T) {
 		"thread id spaces":    {"--thread-id= x"},
 		"thread id non-ascii": {"--thread-id=héllo"},
 		"thread id newline":   {"--thread-id=a\nb"},
+		"thread id length":    {"--thread-id=" + strings.Repeat("t", maxThreadIDLength+1)},
 		"metadata no equals":  {"--metadata", "suite"},
 		"metadata no key":     {"--metadata", "=v"},
 		"metadata no value":   {"--metadata", "k="},
@@ -85,6 +86,14 @@ func TestParseArgvAcceptsMetadataAtTheGatewayLimits(t *testing.T) {
 	}
 	if len(flags.Metadata) != maxMetadataKeys {
 		t.Fatalf("got %d keys", len(flags.Metadata))
+	}
+}
+
+func TestParseArgvAcceptsAThreadIDAtTheLimit(t *testing.T) {
+	id := strings.Repeat("t", maxThreadIDLength)
+	flags, _, err := ParseArgv([]string{"--thread-id", id}, FindAgent("claude").ParseOptions())
+	if err != nil || flags.ThreadID != id {
+		t.Fatalf("%q %v", flags.ThreadID, err)
 	}
 }
 
@@ -142,9 +151,11 @@ func TestParseArgvScopesSessionFlagsToAgentsThatHonourThem(t *testing.T) {
 			t.Errorf("%s: accepted a flag launch cannot honour there", def.Name)
 		}
 
-		// oauth is the default for everyone, so naming it is never wrong.
-		if _, _, err := ParseArgv([]string{"--mcp-auth", "oauth"}, opts); err != nil {
-			t.Errorf("%s: --mcp-auth oauth: %v", def.Name, err)
+		// Help lists --mcp-auth only where env is supported, so elsewhere even
+		// oauth is more likely the agent's own flag than launch's.
+		_, _, oauthErr := ParseArgv([]string{"--mcp-auth", "oauth"}, opts)
+		if supports := slices.Contains(supported, def.Name); supports != (oauthErr == nil) {
+			t.Errorf("%s: --mcp-auth oauth: %v", def.Name, oauthErr)
 		}
 		flags, _, err := ParseArgv([]string{"--mcp-auth", "env", "--thread-id", "x", "--help"}, opts)
 		if err != nil || !flags.Help {
@@ -382,14 +393,25 @@ func TestRequestHeadersReachEachAgent(t *testing.T) {
 		}
 	})
 
+	// The provider never sees the headers, so starting anyway would lose the
+	// tags with only a warning to say so; --no-gateway is refused for the same reason.
 	t.Run("claude provider switch", func(t *testing.T) {
-		plan := resolveSession(t, "claude", flags, map[string]string{claudeProviderSwitches[0]: "1"})
-		if _, ok := plan.Env[claudeHeadersEnv]; ok {
-			t.Errorf("headers set for a provider that never sees them: %q", plan.Env[claudeHeadersEnv])
+		for _, f := range []GatewayFlags{
+			{Router: true, ThreadID: "123"},
+			{Router: true, Metadata: metadata},
+		} {
+			f.NoSkills = true
+			_, err := FindAgent("claude").Resolve(&AgentContext{
+				Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+				Getenv: env(map[string]string{claudeProviderSwitches[0]: "1"}),
+				Flags:  f,
+			})
+			if err == nil || !strings.Contains(err.Error(), claudeProviderSwitches[0]) {
+				t.Errorf("%+v: err = %v", f, err)
+			}
 		}
-		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "--thread-id and --metadata are not sent") }) {
-			t.Errorf("no warning in %v", plan.Warnings)
-		}
+		// Without the flags the switch is the user's own arrangement and only warns.
+		resolveSession(t, "claude", GatewayFlags{Router: true}, map[string]string{claudeProviderSwitches[0]: "1"})
 	})
 
 	t.Run("codex", func(t *testing.T) {
@@ -436,6 +458,50 @@ func TestRequestHeadersReachEachAgent(t *testing.T) {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
+}
+
+// A value with a quote, a backslash or colons has to arrive unchanged in each
+// agent's own encoding: TOML for codex, JSON for opencode and kilo, a header line
+// for claude and gemini.
+func TestMetadataValueWithSpecialCharactersSurvives(t *testing.T) {
+	const value = `a"b\c:d:e`
+	parsed, _, err := ParseArgv([]string{"--metadata", "q=" + value}, FindAgent("claude").ParseOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := GatewayFlags{Router: true, Metadata: parsed.Metadata}
+	name := metadataHeaderPrefix + "q"
+
+	if got := resolveSession(t, "claude", flags, nil).Env[claudeHeadersEnv]; got != name+": "+value {
+		t.Errorf("claude: %q", got)
+	}
+	if got := resolveSession(t, "gemini", GatewayFlags{Router: true, ThreadID: "t", Metadata: parsed.Metadata}, nil).Env[geminiHeadersEnv]; !strings.HasSuffix(got, ","+name+": "+value) {
+		t.Errorf("gemini: %q", got)
+	}
+	codexArg := "model_providers.orq.http_headers." + name + "=" + TOMLString(value)
+	if want := `"a\"b\\c:d:e"`; TOMLString(value) != want {
+		t.Errorf("TOMLString = %s, want %s", TOMLString(value), want)
+	}
+	if plan := resolveSession(t, "codex", flags, nil); !slices.Contains(plan.PreArgs, codexArg) {
+		t.Errorf("codex: no %s in %v", codexArg, plan.PreArgs)
+	}
+	for agent, envVar := range map[string]string{"opencode": "OPENCODE_CONFIG_CONTENT", "kilo": "KILO_CONFIG_CONTENT"} {
+		var doc struct {
+			Provider map[string]struct {
+				Options struct {
+					Headers map[string]string `json:"headers"`
+				} `json:"options"`
+			} `json:"provider"`
+		}
+		if err := json.Unmarshal([]byte(resolveSession(t, agent, flags, nil).Env[envVar]), &doc); err != nil {
+			t.Fatal(err)
+		}
+		for provider, p := range doc.Provider {
+			if p.Options.Headers[name] != value {
+				t.Errorf("%s %s: %q", agent, provider, p.Options.Headers[name])
+			}
+		}
+	}
 }
 
 // gemini-cli sends no session id, so it is the one agent that gets a generated

@@ -27,6 +27,10 @@ const (
 	maxMetadataValueLength = 256
 )
 
+// The gateway sets no limit on a thread id, so this one is launch's own, at the
+// metadata value limit: an id longer than that is almost surely a pasted mistake.
+const maxThreadIDLength = 256
+
 // Letters, digits and single inner hyphens: the part of a header name every
 // proxy between the agent and the gateway passes through unchanged. Underscores
 // are left out because nginx drops headers containing them by default.
@@ -118,6 +122,9 @@ func setThreadID(flags *GatewayFlags, value string) error {
 	if strings.HasPrefix(value, "-") {
 		return fmt.Errorf("flag --thread-id: value must not start with '-'")
 	}
+	if len(value) > maxThreadIDLength {
+		return fmt.Errorf("flag --thread-id: value is longer than %d characters", maxThreadIDLength)
+	}
 	flags.ThreadID = value
 	return nil
 }
@@ -159,11 +166,13 @@ func addMetadata(flags *GatewayFlags, pair string) error {
 // is an error rather than passthrough: handed to the agent it may be ignored,
 // and the run fails much later with no orq tools or no tags. Someone who means
 // the agent's own flag of that name writes it after --.
-func checkSessionFlags(flags GatewayFlags, opts ParseArgvOptions) error {
+func checkSessionFlags(flags GatewayFlags, mcpAuthGiven bool, opts ParseArgvOptions) error {
+	// Any value, oauth too: a flag help does not list for this agent is more
+	// likely the agent's own flag of that name than a no-op.
+	if mcpAuthGiven && !opts.AllowMCPAuth {
+		return fmt.Errorf("--mcp-auth is not supported for this agent; the agent's own flag of that name goes after --")
+	}
 	if flags.MCPEnvAuth {
-		if !opts.AllowMCPAuth {
-			return fmt.Errorf("--mcp-auth env is not supported for this agent; the agent's own flag of that name goes after --")
-		}
 		if !flags.MCP {
 			return fmt.Errorf("--mcp-auth env needs the orq MCP server; drop --no-mcp")
 		}
