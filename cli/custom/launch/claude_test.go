@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -316,5 +317,41 @@ func TestClaudeSubscriptionKeepsOwnLogin(t *testing.T) {
 	}
 	if _, err := resolveClaude(claudeCtx(nil, GatewayFlags{Subscription: true})); err == nil {
 		t.Fatal("--subscription with --no-gateway should be rejected")
+	}
+}
+
+// claude itself reads 0 or false on these as off, so launch must too, or a shell
+// that turned Bedrock off would lose its thread flags to a refusal.
+func TestProviderSwitchesReadLikeClaude(t *testing.T) {
+	for _, k := range claudeProviderSwitches {
+		if k == "CLAUDE_CODE_USE_GATEWAY" {
+			continue
+		}
+		for v, want := range map[string]bool{"1": true, "TRUE": true, " yes ": true, "on": true, "0": false, "false": false, "no": false, "": false} {
+			if got := len(claudeProviderSwitchesSet(env(map[string]string{k: v}))) > 0; got != want {
+				t.Errorf("%s=%q: on = %v, want %v", k, v, got, want)
+			}
+		}
+	}
+	if len(claudeProviderSwitchesSet(env(map[string]string{"CLAUDE_CODE_USE_GATEWAY": "0"}))) == 0 {
+		t.Error("CLAUDE_CODE_USE_GATEWAY=0: claude reads any non-empty value as on")
+	}
+}
+
+// --no-gateway names what takes claude off the user's own login, with the same
+// reading of the switches.
+func TestNoGatewayIgnoresASwitchTurnedOff(t *testing.T) {
+	warns := func(shell map[string]string) bool {
+		plan, err := resolveClaude(claudeCtx(shell, GatewayFlags{DryRun: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") })
+	}
+	if warns(map[string]string{"CLAUDE_CODE_USE_BEDROCK": "0"}) {
+		t.Error("warned about a switch set to 0")
+	}
+	if !warns(map[string]string{"CLAUDE_CODE_USE_BEDROCK": "1"}) {
+		t.Error("no warning about a switch set to 1")
 	}
 }

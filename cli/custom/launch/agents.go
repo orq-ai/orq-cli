@@ -73,6 +73,10 @@ type AgentDef struct {
 	Traceable bool
 	// SubscriptionAuth agents accept --subscription: the agent keeps its own subscription login (ChatGPT, Claude) as the model credential and calls still go through the gateway.
 	SubscriptionAuth bool
+	// MCPEnvAuth agents accept --mcp-auth env: launch can write their session MCP entry with a reference to ORQ_API_KEY.
+	MCPEnvAuth bool
+	// RequestHeaders agents accept --thread-id and --metadata: launch can make them send those headers on their model calls.
+	RequestHeaders bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared
 	// OpenAI-compatible one (claude, gemini). Build HelpRoute with helpRoute
@@ -82,6 +86,19 @@ type AgentDef struct {
 	HelpModel string
 	Prompt    *PromptMapping
 	Resolve   func(*AgentContext) (*LaunchPlan, error)
+}
+
+// ParseOptions is the one mapping from an agent to its parser options, so the
+// launch itself, the help check and the completion test cannot disagree.
+func (def *AgentDef) ParseOptions() ParseArgvOptions {
+	return ParseArgvOptions{
+		Prompt:              def.Prompt,
+		AllowModels:         def.AllowModels,
+		AllowTrace:          def.Traceable,
+		AllowSubscription:   def.SubscriptionAuth,
+		AllowMCPAuth:        def.MCPEnvAuth,
+		AllowRequestHeaders: def.RequestHeaders,
+	}
 }
 
 // helpRoute names a native API surface on the orq.ai AI Router, deriving the

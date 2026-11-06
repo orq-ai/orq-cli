@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -29,6 +30,8 @@ func claudeAgent() AgentDef {
 		AllowModels:      false,
 		Traceable:        true,
 		SubscriptionAuth: true,
+		MCPEnvAuth:       true,
+		RequestHeaders:   true,
 		HelpRoute:        helpRoute("Anthropic", DefaultClaudeGatewayURL),
 		HelpModel:        "Model to start with (with gateway routing, a gateway ref: provider/model_id)",
 		Prompt:           nil, // claude's own -p passes through untouched
@@ -70,6 +73,11 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 	routed := false
 	if ctx.Flags.Router {
+		if len(threadHeaders(ctx.Flags)) > 0 {
+			if switches := claudeProviderSwitchesSet(ctx.Getenv); len(switches) > 0 {
+				return nil, fmt.Errorf("%s set in your shell sends claude to that provider, so --thread-id and --metadata would never reach the gateway; unset it or drop those flags", strings.Join(switches, ", "))
+			}
+		}
 		routed = routeThroughGateway(ctx, plan)
 	} else {
 		if ctx.Flags.Model != "" {
@@ -90,7 +98,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		// ticket is about, so name it.
 		var inherited []string
 		for _, k := range loginOverrides {
-			if ctx.Getenv(k) != "" {
+			if claudeEnvOn(k, ctx.Getenv(k)) {
 				inherited = append(inherited, k)
 			}
 		}
@@ -106,13 +114,17 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		if routed {
 			plan.Warnings = append(plan.Warnings,
 				"gateway routing records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
+			if len(threadHeaders(ctx.Flags)) > 0 {
+				plan.Warnings = append(plan.Warnings,
+					"--thread-id and --metadata tag the gateway calls only; the session trace keeps Claude Code's own session id, so a lookup by your id or tag does not find it")
+			}
 		}
 	} else {
 		declineTrace(ctx, plan)
 	}
 
-	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
-		path, cleanup, err := writeClaudeMCPConfig(url)
+	if url := sessionMCPURL(ctx, "claude"); url != "" {
+		path, cleanup, err := writeClaudeMCPConfig(url, ctx.Flags.MCPEnvAuth)
 		if err != nil {
 			return fail(err)
 		}
@@ -149,6 +161,28 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_GATEWAY",
 }
 
+// claudeEnvOn reports whether claude acts on variable k set to v. The 2.1.281
+// bundle reads its CLAUDE_CODE_USE_* switches through a check that takes 1, true,
+// yes and on, in any case, as on, except CLAUDE_CODE_USE_GATEWAY, which any
+// non-empty value turns on, 0 too. Every other variable counts once it is set.
+func claudeEnvOn(k, v string) bool {
+	if !strings.HasPrefix(k, "CLAUDE_CODE_USE_") || k == "CLAUDE_CODE_USE_GATEWAY" {
+		return v != ""
+	}
+	return slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(strings.TrimSpace(v)))
+}
+
+// claudeProviderSwitchesSet returns the switches claude would act on.
+func claudeProviderSwitchesSet(getenv func(string) string) []string {
+	var set []string
+	for _, k := range claudeProviderSwitches {
+		if claudeEnvOn(k, getenv(k)) {
+			set = append(set, k)
+		}
+	}
+	return set
+}
+
 // routeThroughGateway points claude at the anthropic-native gateway path. Only
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
 // claude's own default and any /model choice alone, and the tier variables
@@ -175,23 +209,26 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 		// Empty AUTH_TOKEN leaves claude on its own OAuth login, which it sends
 		// as the bearer; the orq key rides in a header instead.
 		plan.Env["ANTHROPIC_AUTH_TOKEN"] = ""
-		plan.Env["ANTHROPIC_CUSTOM_HEADERS"] = orqAPIKeyHeader + ": " + ctx.Creds.APIKey
+		plan.Env[claudeHeadersEnv] = orqAPIKeyHeader + ": " + ctx.Creds.APIKey
 	} else {
 		plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
 	}
 	// Each of these picks a provider whose own base URL claude reads instead of
 	// ANTHROPIC_BASE_URL. One left in the shell is the user's own arrangement,
 	// so it stays in force, but gateway routing then routes nothing and says so.
-	var providerSwitches []string
-	for _, k := range claudeProviderSwitches {
-		if getenv(k) != "" {
-			providerSwitches = append(providerSwitches, k)
-		}
-	}
+	providerSwitches := claudeProviderSwitchesSet(getenv)
+	headers := threadHeaders(ctx.Flags)
 	if len(providerSwitches) > 0 {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"%s set in your shell sends claude to that provider, so gateway routing does nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
 	} else {
+		if len(headers) > 0 {
+			// Under --subscription this variable is launch's own, as it is without
+			// these flags, so the base is the x-orq-api-key entry set above and the
+			// shell's value stays ignored. Otherwise the shell's entries are kept.
+			base := firstNonEmpty(plan.Env[claudeHeadersEnv], getenv(claudeHeadersEnv))
+			plan.Env[claudeHeadersEnv] = mergeHeaderEnv(base, '\n', headers)
+		}
 		if ctx.Flags.Subscription {
 			plan.Warnings = append(plan.Warnings,
 				"--subscription sends this session's model calls through the orq.ai AI Router on your own Claude login; usage bills to your Claude subscription, and orq traces the calls")

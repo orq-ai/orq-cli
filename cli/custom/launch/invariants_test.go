@@ -61,6 +61,11 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 					if k == "OTEL_EXPORTER_OTLP_HEADERS" && v == "Authorization=Bearer "+canaryKey {
 						continue
 					}
+					// Under --subscription the bearer is the user's own login, so the
+					// orq key rides in a header claude reads from this variable alone.
+					if k == claudeHeadersEnv && flags.Subscription && strings.HasPrefix(v, orqAPIKeyHeader+": "+canaryKey) && strings.Count(v, canaryKey) == 1 {
+						continue
+					}
 					if v != canaryKey && strings.Contains(v, canaryKey) {
 						t.Fatalf("key embedded in composed env %s=%q", k, v)
 					}
@@ -135,11 +140,14 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 }
 
 // flagStates are the states that change which writers run. MCP is opt-in, so
-// its config writers execute only under --mcp.
+// its config writers execute only under --mcp. Resolve is called directly, so
+// agents that refuse the session flags at parse time get them here too and must
+// simply ignore them.
 func flagStates() []struct {
 	GatewayFlags
 	label string
 } {
+	metadata := []RequestHeader{{Name: metadataHeaderPrefix + "suite", Value: "smoke"}}
 	return []struct {
 		GatewayFlags
 		label string
@@ -149,6 +157,9 @@ func flagStates() []struct {
 		{GatewayFlags{MCP: true, Router: true, Trace: true, DryRun: true}, "/--gateway--otel"},
 		{GatewayFlags{MCP: true, Trace: true}, "/--otel"},
 		{GatewayFlags{MCP: true, Router: true, Trace: true}, "/--gateway--otel-real"},
+		{GatewayFlags{MCP: true, Router: true, MCPEnvAuth: true}, "/--mcp-auth=env"},
+		{GatewayFlags{MCP: true, Router: true, ThreadID: "run-1", Metadata: metadata}, "/--thread-id"},
+		{GatewayFlags{MCP: true, Router: true, Subscription: true, MCPEnvAuth: true, ThreadID: "run-1", Metadata: metadata}, "/--subscription--thread-id"},
 	}
 }
 
@@ -217,9 +228,8 @@ func TestParseArgvLeadingOnly(t *testing.T) {
 // TestCompletionFlagsMatchParser enforces the claim that the completion list
 // mirrors ParseArgv: every advertised flag must be consumed when leading.
 func TestCompletionFlagsMatchParser(t *testing.T) {
-	for _, name := range []string{"opencode", "claude"} { // opencode: models + prompt; claude: trace
-		def := FindAgent(name)
-		assertCompletionFlagsParse(t, def)
+	for _, def := range Agents() {
+		assertCompletionFlagsParse(t, &def)
 	}
 }
 
@@ -228,15 +238,14 @@ func assertCompletionFlagsParse(t *testing.T, def *AgentDef) {
 	for _, flag := range CompletionFlags(def, "-") {
 		argv := []string{flag}
 		switch flag {
-		case "--model", "--models", "--base-url", "-p", "--prompt":
+		case "--model", "--models", "--base-url", "-p", "--prompt", "--thread-id":
 			argv = append(argv, "value")
+		case "--mcp-auth":
+			argv = append(argv, "env")
+		case "--metadata":
+			argv = append(argv, "key=value")
 		}
-		flags, rest, err := ParseArgv(argv, ParseArgvOptions{
-			AllowModels:       def.AllowModels,
-			AllowTrace:        def.Traceable,
-			AllowSubscription: def.SubscriptionAuth,
-			Prompt:            def.Prompt,
-		})
+		flags, rest, err := ParseArgv(argv, def.ParseOptions())
 		if err != nil {
 			t.Fatalf("%s: %v", flag, err)
 		}
