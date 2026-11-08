@@ -2210,6 +2210,14 @@
           "type": "string"
         },
         {
+          "name": "prompt-cache-key",
+          "type": "string"
+        },
+        {
+          "name": "prompt-cache-options",
+          "type": "string"
+        },
+        {
           "name": "questions",
           "type": "stringToString"
         },
@@ -2579,6 +2587,10 @@
           "type": "string"
         },
         {
+          "name": "path",
+          "type": "string"
+        },
+        {
           "name": "project-id",
           "type": "string"
         },
@@ -2664,6 +2676,14 @@
         },
         {
           "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "prompt-cache-key",
+          "type": "string"
+        },
+        {
+          "name": "prompt-cache-options",
           "type": "string"
         },
         {
@@ -3288,6 +3308,10 @@
           "type": "bool"
         },
         {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "type",
           "type": "string"
         }
@@ -3508,6 +3532,10 @@
           "type": "bool"
         },
         {
+          "name": "timeout",
+          "type": "string"
+        },
+        {
           "name": "type",
           "type": "string"
         },
@@ -3522,6 +3550,686 @@
         {
           "name": "version-increment",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments",
+      "use": "experiments"
+    },
+    {
+      "path": "orq experiments cancel-run",
+      "use": "cancel-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "row-ids",
+          "type": "stringSlice"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "dataset-id",
+          "type": "string"
+        },
+        {
+          "name": "dataset-version-id",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "source-run",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments create-eval",
+      "use": "create-eval experiment-id run-id",
+      "flags": [
+        {
+          "name": "evaluator-id",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "position",
+          "type": "int64"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments create-review",
+      "use": "create-review experiment-id run-id",
+      "flags": [
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "human-eval-id",
+          "type": "string"
+        },
+        {
+          "name": "human-eval-type",
+          "type": "string"
+        },
+        {
+          "name": "position",
+          "type": "int64"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments create-run",
+      "use": "create-run experiment-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments create-task",
+      "use": "create-task experiment-id run-id",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "harness",
+          "type": "string"
+        },
+        {
+          "name": "openresponse",
+          "type": "string"
+        },
+        {
+          "name": "position",
+          "type": "int64"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete",
+      "use": "delete experiment-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete-eval",
+      "use": "delete-eval experiment-id run-id eval-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete-review",
+      "use": "delete-review experiment-id run-id review-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete-rows",
+      "use": "delete-rows experiment-id run-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "row-ids",
+          "type": "stringSlice"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete-run",
+      "use": "delete-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments delete-task",
+      "use": "delete-task experiment-id run-id task-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments duplicate-row",
+      "use": "duplicate-row experiment-id run-id row-id",
+      "flags": [
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments execute-run",
+      "use": "execute-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "constraints",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "repeat-count",
+          "type": "int64"
+        },
+        {
+          "name": "scope",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "targets",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments export-run",
+      "use": "export-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "format",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments get",
+      "use": "get experiment-id"
+    },
+    {
+      "path": "orq experiments get-run",
+      "use": "get-run experiment-id run-id"
+    },
+    {
+      "path": "orq experiments get-run-metrics",
+      "use": "get-run-metrics experiment-id run-id",
+      "flags": [
+        {
+          "name": "baseline-run-id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments list-evals",
+      "use": "list-evals experiment-id run-id"
+    },
+    {
+      "path": "orq experiments list-reviews",
+      "use": "list-reviews experiment-id run-id"
+    },
+    {
+      "path": "orq experiments list-runs",
+      "use": "list-runs experiment-id",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "include-metrics",
+          "type": "bool"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments list-tasks",
+      "use": "list-tasks experiment-id run-id"
+    },
+    {
+      "path": "orq experiments patch-eval-cell",
+      "use": "patch-eval-cell experiment-id run-id eval-id datapoint-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "value",
+          "type": "stringToString"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments patch-review-cell",
+      "use": "patch-review-cell experiment-id run-id review-id datapoint-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "value",
+          "type": "stringToString"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments patch-task-cell",
+      "use": "patch-task-cell experiment-id run-id task-id datapoint-id",
+      "flags": [
+        {
+          "name": "artifacts",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "repeat-index",
+          "type": "int64"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "value",
+          "type": "stringToString"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments query-run",
+      "use": "query-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "body-columns",
+          "type": "stringSlice"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "exclude-static-cells",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "partial-rows",
+          "type": "bool"
+        },
+        {
+          "name": "repeat-index",
+          "type": "int64"
+        },
+        {
+          "name": "rows",
+          "type": "stringSlice"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "updated-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update",
+      "use": "update experiment-id",
+      "flags": [
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "project-id",
+          "type": "string"
+        },
+        {
+          "name": "row-height-level",
+          "type": "int64"
+        },
+        {
+          "name": "selected-run-id",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update-review",
+      "use": "update-review experiment-id run-id review-id",
+      "flags": [
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update-run",
+      "use": "update-run experiment-id run-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update-run-cell",
+      "use": "update-run-cell experiment-id run-id row-id cell-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "value",
+          "type": "stringToString"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update-run-column-layout",
+      "use": "update-run-column-layout experiment-id run-id",
+      "flags": [
+        {
+          "name": "body-columns",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq experiments update-task",
+      "use": "update-task experiment-id run-id task-id",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "harness",
+          "type": "string"
+        },
+        {
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
         }
       ]
     },
@@ -3884,6 +4592,10 @@
           "type": "int64"
         },
         {
+          "name": "order",
+          "type": "string"
+        },
+        {
           "name": "project-id",
           "type": "string"
         },
@@ -4144,131 +4856,6 @@
         {
           "name": "types",
           "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq human-review-sets",
-      "use": "human-review-sets"
-    },
-    {
-      "path": "orq human-review-sets create",
-      "use": "create",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "name": "display-name",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "filter-type",
-          "type": "string"
-        },
-        {
-          "name": "filter-value",
-          "type": "string"
-        },
-        {
-          "name": "filter-values",
-          "type": "stringSlice"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "human-eval-ids",
-          "type": "stringSlice"
-        },
-        {
-          "name": "project-id",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq human-review-sets delete",
-      "use": "delete id",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "force",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq human-review-sets get",
-      "use": "get id",
-      "hidden": true
-    },
-    {
-      "path": "orq human-review-sets list",
-      "use": "list",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "project-id",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq human-review-sets update",
-      "use": "update id",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "name": "display-name",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "filter-type",
-          "type": "string"
-        },
-        {
-          "name": "filter-value",
-          "type": "string"
-        },
-        {
-          "name": "filter-values",
-          "type": "stringSlice"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "human-eval-ids",
-          "type": "stringSlice"
-        },
-        {
-          "name": "project-id",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
         }
       ]
     },
@@ -5782,6 +6369,14 @@
           "type": "string"
         },
         {
+          "name": "guardrails",
+          "type": "string"
+        },
+        {
+          "name": "icons",
+          "type": "string"
+        },
+        {
           "name": "key",
           "type": "string"
         },
@@ -5811,6 +6406,10 @@
         },
         {
           "name": "tool-naming",
+          "type": "string"
+        },
+        {
+          "name": "website-url",
           "type": "string"
         }
       ]
@@ -5902,6 +6501,14 @@
           "type": "string"
         },
         {
+          "name": "guardrails",
+          "type": "string"
+        },
+        {
+          "name": "icons",
+          "type": "string"
+        },
+        {
           "name": "key",
           "type": "string"
         },
@@ -5912,6 +6519,10 @@
         {
           "name": "plugins",
           "type": "string"
+        },
+        {
+          "name": "replace-icons",
+          "type": "bool"
         },
         {
           "name": "server-links",
@@ -5931,6 +6542,10 @@
         },
         {
           "name": "tool-naming",
+          "type": "string"
+        },
+        {
+          "name": "website-url",
           "type": "string"
         }
       ]
@@ -5973,6 +6588,10 @@
         },
         {
           "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "openapi",
           "type": "string"
         },
         {
@@ -6107,6 +6726,10 @@
         },
         {
           "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "openapi",
           "type": "string"
         },
         {
@@ -11104,254 +11727,6 @@
       ]
     },
     {
-      "path": "orq wikis",
-      "use": "wikis"
-    },
-    {
-      "path": "orq wikis create",
-      "use": "create",
-      "flags": [
-        {
-          "name": "branch",
-          "type": "string"
-        },
-        {
-          "name": "display-name",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "factory-id",
-          "type": "string"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "import-existing",
-          "type": "bool"
-        },
-        {
-          "name": "repository",
-          "type": "string"
-        },
-        {
-          "name": "scm-connection-id",
-          "type": "string"
-        },
-        {
-          "name": "settings",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis delete",
-      "use": "delete wiki-id",
-      "flags": [
-        {
-          "name": "force",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis get",
-      "use": "get wiki-id"
-    },
-    {
-      "path": "orq wikis get-page",
-      "use": "get-page wiki-id",
-      "flags": [
-        {
-          "name": "path",
-          "type": "string"
-        },
-        {
-          "name": "run-id",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis get-tree",
-      "use": "get-tree wiki-id"
-    },
-    {
-      "path": "orq wikis inspect-repository",
-      "use": "inspect-repository",
-      "flags": [
-        {
-          "name": "branch",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "repository-url",
-          "type": "string"
-        },
-        {
-          "name": "scm-connection-id",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis list",
-      "use": "list",
-      "flags": [
-        {
-          "name": "branch",
-          "type": "string"
-        },
-        {
-          "name": "ending-before",
-          "type": "string"
-        },
-        {
-          "name": "factory-id",
-          "type": "string"
-        },
-        {
-          "name": "limit",
-          "type": "int64"
-        },
-        {
-          "name": "repository-key",
-          "type": "string"
-        },
-        {
-          "name": "starting-after",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis list-runs",
-      "use": "list-runs wiki-id",
-      "flags": [
-        {
-          "name": "limit",
-          "type": "int64"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis refresh",
-      "use": "refresh wiki-id",
-      "flags": [
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "full",
-          "type": "bool"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis search",
-      "use": "search wiki-id",
-      "flags": [
-        {
-          "name": "limit",
-          "type": "int64"
-        },
-        {
-          "name": "query",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis update",
-      "use": "update wiki-id",
-      "flags": [
-        {
-          "name": "display-name",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "scm-connection-id",
-          "type": "string"
-        },
-        {
-          "name": "settings",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq wikis update-page",
-      "use": "update-page wiki-id",
-      "flags": [
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "expected-content-hash",
-          "type": "string"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "markdown",
-          "type": "string"
-        },
-        {
-          "name": "path",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
       "path": "orq workspace",
       "use": "workspace"
     },
@@ -11580,6 +11955,10 @@
         {
           "name": "metadata",
           "type": "string"
+        },
+        {
+          "name": "retention-period",
+          "type": "int64"
         },
         {
           "name": "settings",

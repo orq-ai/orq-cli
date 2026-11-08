@@ -30,7 +30,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an MCP gateway",
-			Long:    bartolocli.Markdown("Creates a client-facing MCP gateway that links one or more synced upstream servers and exposes a unified MCP endpoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `key` (string, required)\n- `mode` (string)\n- `plugins` (array)\n- `server_links` (array)\n- `sharing` (allOf)\n- `skill_ids` (array)\n- ... and 1 more fields\n\nRequired fields: `display_name`, `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a client-facing MCP gateway that links one or more synced upstream servers and exposes a unified MCP endpoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string, required)\n- `mode` (string)\n- `plugins` (array)\n- `server_links` (array)\n- ... and 4 more fields\n\nRequired fields: `display_name`, `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -52,6 +52,18 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "Human readable name shown in the workspace.",
+						},
+						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
+							Description: "Guardrails run on the arguments and result of every tool call this gateway serves.",
+						},
+						{
+							Name:        "icons",
+							FlagName:    "icons",
+							Type:        "json",
+							Description: "Icons advertised to MCP clients; defaults to ORQ branding when empty.",
 						},
 						{
 							Name:        "key",
@@ -103,6 +115,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 								"MCP_TOOL_NAMING_PREFIX_ON_COLLISION",
 							},
 						},
+						{
+							Name:        "website_url",
+							FlagName:    "website-url",
+							Type:        "string",
+							Description: "Website advertised to MCP clients; defaults to ORQ documentation when empty.",
+						},
 					},
 				)
 				if err != nil {
@@ -138,6 +156,18 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "Human readable name shown in the workspace.",
+				},
+				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
+					Description: "Guardrails run on the arguments and result of every tool call this gateway serves.",
+				},
+				{
+					Name:        "icons",
+					FlagName:    "icons",
+					Type:        "json",
+					Description: "Icons advertised to MCP clients; defaults to ORQ branding when empty.",
 				},
 				{
 					Name:        "key",
@@ -188,6 +218,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 						"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
 						"MCP_TOOL_NAMING_PREFIX_ON_COLLISION",
 					},
+				},
+				{
+					Name:        "website_url",
+					FlagName:    "website-url",
+					Type:        "string",
+					Description: "Website advertised to MCP clients; defaults to ORQ documentation when empty.",
 				},
 			},
 		)
@@ -386,7 +422,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP gateway",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `mode` (string)\n- `plugins` (array)\n- `server_links` (array)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string)\n- `mode` (string)\n- ... and 7 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -422,6 +458,18 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Description: "Human readable name shown in the workspace.",
 						},
 						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
+							Description: "Guardrails run on the arguments and result of every tool call this gateway serves.",
+						},
+						{
+							Name:        "icons",
+							FlagName:    "icons",
+							Type:        "json",
+							Description: "Replaces the advertised icons when nonempty or when replace_icons is true.",
+						},
+						{
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
@@ -442,6 +490,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							FlagName:    "plugins",
 							Type:        "json",
 							Description: "Plugins run on every tool call this gateway serves.",
+						},
+						{
+							Name:        "replace_icons",
+							FlagName:    "replace-icons",
+							Type:        "bool",
+							Description: "Set true with an empty icons list to restore default ORQ branding.",
 						},
 						{
 							Name:        "server_links",
@@ -470,6 +524,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 								"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
 								"MCP_TOOL_NAMING_PREFIX_ON_COLLISION",
 							},
+						},
+						{
+							Name:        "website_url",
+							FlagName:    "website-url",
+							Type:        "string",
+							Description: "Empty restores the default ORQ documentation website.",
 						},
 					},
 				)
@@ -520,6 +580,18 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Description: "Human readable name shown in the workspace.",
 				},
 				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
+					Description: "Guardrails run on the arguments and result of every tool call this gateway serves.",
+				},
+				{
+					Name:        "icons",
+					FlagName:    "icons",
+					Type:        "json",
+					Description: "Replaces the advertised icons when nonempty or when replace_icons is true.",
+				},
+				{
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
@@ -540,6 +612,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					FlagName:    "plugins",
 					Type:        "json",
 					Description: "Plugins run on every tool call this gateway serves.",
+				},
+				{
+					Name:        "replace_icons",
+					FlagName:    "replace-icons",
+					Type:        "bool",
+					Description: "Set true with an empty icons list to restore default ORQ branding.",
 				},
 				{
 					Name:        "server_links",
@@ -568,6 +646,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 						"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
 						"MCP_TOOL_NAMING_PREFIX_ON_COLLISION",
 					},
+				},
+				{
+					Name:        "website_url",
+					FlagName:    "website-url",
+					Type:        "string",
+					Description: "Empty restores the default ORQ documentation website.",
 				},
 			},
 		)
