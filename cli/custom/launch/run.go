@@ -41,6 +41,12 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		}
 	}
 
+	if flags.MCPEnvAuth {
+		if err := checkMCPEnvAuthOrigin(creds.APIBaseURL, os.Getenv); err != nil {
+			return 1, err
+		}
+	}
+
 	plan, err := def.Resolve(&AgentContext{
 		Creds:     creds,
 		Getenv:    os.Getenv,
@@ -55,7 +61,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	}
 	reportCredentialNotices(def, creds, flags)
 	if flags.MCPEnvAuth {
-		plan.Warnings = append(plan.Warnings, mcpEnvAuthWarnings(creds, os.Getenv)...)
+		plan.Warnings = append(plan.Warnings, mcpEnvAuthWarnings(creds)...)
 	}
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)

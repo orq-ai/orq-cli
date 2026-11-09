@@ -129,6 +129,8 @@ entry takes precedence over a persisted one, which may never have finished its
 browser login. Tools need a workspace API key with their permissions, since the
 key `orq setup` saves holds only gateway access and model read. Tool approval
 stays with the agent, so a headless codex or gemini run also approves each tool.
+An `ORQ_MCP_URL` that is neither on the API host nor on loopback is refused under
+this flag, because the credential would go there.
 
 **Added:** `orq launch --thread-id <id>` and `--metadata <key=value>` (same
 agents) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on the agent's model

@@ -355,3 +355,23 @@ func TestNoGatewayIgnoresASwitchTurnedOff(t *testing.T) {
 		t.Error("no warning about a switch set to 1")
 	}
 }
+
+func TestNoGatewayNamesEveryLoginOverride(t *testing.T) {
+	for _, k := range append([]string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"}, claudeProviderSwitches...) {
+		plan, err := resolveClaude(claudeCtx(map[string]string{k: "1"}, GatewayFlags{DryRun: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, k) }) {
+			t.Errorf("%s=1: no warning, got %v", k, plan.Warnings)
+		}
+	}
+	// Only the CLAUDE_CODE_USE_* switches have an off value; a key set to 0 is a key.
+	plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_API_KEY": "0"}, GatewayFlags{DryRun: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "ANTHROPIC_API_KEY") }) {
+		t.Errorf("ANTHROPIC_API_KEY=0: no warning, got %v", plan.Warnings)
+	}
+}

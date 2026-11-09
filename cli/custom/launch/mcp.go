@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -220,16 +221,36 @@ func sessionMCPURL(ctx *AgentContext, agent string) string {
 	return url
 }
 
-// mcpEnvAuthWarnings names what --mcp-auth env cannot fix for the caller. Only
-// the first can fire without local state, so --help also says which key the
-// flag needs. The login-token case is in reportCredentialNotices, next to the
-// note it would otherwise contradict.
-func mcpEnvAuthWarnings(creds *Credentials, getenv func(string) string) []string {
-	var warnings []string
-	if override := strings.TrimSpace(getenv("ORQ_MCP_URL")); override != "" && !sameAPIOrigin(override, creds.APIBaseURL) {
-		warnings = append(warnings, fmt.Sprintf(
-			"ORQ_MCP_URL points at %s, so --mcp-auth env sends this launch's credential there", override))
+// checkMCPEnvAuthOrigin refuses to hand this launch's credential to a server on
+// another origin. It is an error because --mcp-auth env is for unattended runs,
+// where nobody reads a warning. The platform serves MCP on the API host, so no
+// real setup needs another origin; loopback is for a server under development.
+func checkMCPEnvAuthOrigin(apiBase string, getenv func(string) string) error {
+	override := strings.TrimSpace(getenv("ORQ_MCP_URL"))
+	if override == "" || sameAPIOrigin(override, apiBase) || isLoopbackURL(override) {
+		return nil
 	}
+	return fmt.Errorf("ORQ_MCP_URL points at %s, which is not on %s, so --mcp-auth env would send this launch's credential there; unset it or drop --mcp-auth env", override, apiBase)
+}
+
+func isLoopbackURL(target string) bool {
+	parsed, err := neturl.Parse(target)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return strings.EqualFold(host, "localhost")
+}
+
+// mcpEnvAuthWarnings names what --mcp-auth env cannot fix for the caller. It
+// depends on local state, so --help also says which key the flag needs. The
+// login-token case is in reportCredentialNotices, next to the note it would
+// otherwise contradict.
+func mcpEnvAuthWarnings(creds *Credentials) []string {
+	var warnings []string
 	// A profile's key is whatever the user gave it, so only the key `orq setup`
 	// minted is known to be narrow. SavedAgentKey returns the profile's otherwise.
 	if _, _, profile := profileKey(); !profile && creds.Kind == CredentialAPIKey {

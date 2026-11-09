@@ -652,25 +652,32 @@ func TestDryRunHidesMalformedHeaderEntries(t *testing.T) {
 	}
 }
 
-func TestMCPEnvAuthWarnsAboutAnotherOrigin(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	creds := &Credentials{APIKey: "sk-exported", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey}
-	warnings := func(override string) []string {
-		return mcpEnvAuthWarnings(creds, env(map[string]string{"ORQ_MCP_URL": override}))
+func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
+	check := func(override string) error {
+		return checkMCPEnvAuthOrigin(DefaultGatewayAPIBaseURL, env(map[string]string{"ORQ_MCP_URL": override}))
 	}
 
-	if got := warnings(""); len(got) != 0 {
-		t.Errorf("no override: %v", got)
+	for _, allowed := range []string{
+		"",
+		DefaultGatewayAPIBaseURL + "/v2/mcp",
+		auth.LegacyDefaultAPIBaseURL + "/v2/mcp",
+		"http://localhost:9000/v2/mcp",
+		"http://127.0.0.1:9000/v2/mcp",
+		"http://[::1]:9000/v2/mcp",
+	} {
+		if err := check(allowed); err != nil {
+			t.Errorf("%q: %v", allowed, err)
+		}
 	}
-	if got := warnings(DefaultGatewayAPIBaseURL + "/v2/mcp"); len(got) != 0 {
-		t.Errorf("same origin: %v", got)
-	}
-	if got := warnings(auth.LegacyDefaultAPIBaseURL + "/v2/mcp"); len(got) != 0 {
-		t.Errorf("the hosted service's other name: %v", got)
-	}
-	got := warnings("https://mcp.example.com/v2/mcp")
-	if len(got) != 1 || !strings.Contains(got[0], "https://mcp.example.com/v2/mcp") {
-		t.Errorf("another origin: %v", got)
+	for _, refused := range []string{
+		"https://mcp.example.com/v2/mcp",
+		"https://api.orq.ai@mcp.example.com/v2/mcp",
+		"https://localhost.example.com/v2/mcp",
+		"not a url",
+	} {
+		if err := check(refused); err == nil || !strings.Contains(err.Error(), "ORQ_MCP_URL") {
+			t.Errorf("%q: got %v, want a refusal naming ORQ_MCP_URL", refused, err)
+		}
 	}
 }
 
@@ -690,7 +697,7 @@ func TestMCPEnvAuthWarnsAboutTheSetupKey(t *testing.T) {
 
 	warned := func(key string) bool {
 		creds := &Credentials{APIKey: key, APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey}
-		return slices.ContainsFunc(mcpEnvAuthWarnings(creds, env(nil)), func(w string) bool { return strings.Contains(w, "orq setup") })
+		return slices.ContainsFunc(mcpEnvAuthWarnings(creds), func(w string) bool { return strings.Contains(w, "orq setup") })
 	}
 	if !warned("sk-setup") {
 		t.Error("the saved key must warn")
@@ -823,20 +830,16 @@ func captureStderr(t *testing.T, fn func()) string {
 	return <-done
 }
 
-func TestRunPrintsTheMCPEnvAuthWarnings(t *testing.T) {
+func TestRunRefusesMCPEnvAuthToAnotherOrigin(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("ORQ_API_KEY", "test-key")
 	t.Setenv("ORQ_LAUNCH_NON_INTERACTIVE", "1")
 	t.Setenv("ORQ_MCP_URL", "https://elsewhere.example/mcp")
-	var code int
-	var err error
-	stderr := captureStderr(t, func() {
-		code, err = Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills", "--mcp-auth", "env"})
-	})
-	if err != nil || code != 0 {
+	code, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills", "--mcp-auth", "env"})
+	if code != 1 || err == nil || !strings.Contains(err.Error(), "elsewhere.example") {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
-	if !strings.Contains(stderr, "elsewhere.example") {
-		t.Errorf("no warning about the other origin:\n%s", stderr)
+	if _, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills"}); err != nil {
+		t.Fatalf("without --mcp-auth env the override stays allowed: %v", err)
 	}
 }

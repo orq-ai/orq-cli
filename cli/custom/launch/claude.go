@@ -143,7 +143,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 }
 
 // loginOverrides are the variables that take claude off the user's own login.
-var loginOverrides = []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"}
+var loginOverrides = append([]string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"}, claudeProviderSwitches...)
 
 func noopNormalize(model string) string { return model }
 
