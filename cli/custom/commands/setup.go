@@ -929,7 +929,7 @@ func persistSetupServer(rep *reporter, complete bool) error {
 	return nil
 }
 
-var errNoLoginForGatewayKey = errors.New("no login session to record the gateway key on")
+var errNoLoginForGatewayKey = errors.New("no login session to record the gateway key on; run `orq login`, then retry")
 
 // saveGatewayKeyProfile records the minted key on the login it was minted
 // from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
@@ -1340,9 +1340,14 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return "", false, err
 	}
+	// Both checks below run before the mint: a key that cannot be saved would stay
+	// live on the platform with nothing pointing at it. An API-key profile in force
+	// refuses the save (saveGatewayKeyProfile), so refuse here first.
+	if profileInForce() {
+		return "", false, profileInForceError("create a gateway key")
+	}
 	// `orq connect` builds a state with no session, yet the key still lands on the
-	// login on disk. With none, stop here: a minted key has nowhere to be saved, and
-	// would stay live on the platform with nothing pointing at it.
+	// login on disk. With none, stop here.
 	login := state.session
 	if login == nil {
 		if login, err = auth.ReadSession(); err != nil {

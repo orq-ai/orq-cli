@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"orq/cli/custom/auth"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // projectsServerDuring runs during on the project list request, which is the network
@@ -269,10 +271,50 @@ func TestNoLoginMeansNoMint(t *testing.T) {
 
 	state := &authState{apiBase: srv.URL, bearer: "t"}
 	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
-	if !errors.Is(err, errNoLoginForGatewayKey) {
-		t.Fatalf("error = %v, want errNoLoginForGatewayKey", err)
+	// The guard returns the sentinel itself; a save failure after a mint wraps it,
+	// so identity, not errors.Is, is what tells the two apart.
+	if err != errNoLoginForGatewayKey { //nolint:errorlint // identity is the point
+		t.Fatalf("error = %v, want errNoLoginForGatewayKey from the guard", err)
 	}
 	if got := mints.Load(); got != 0 {
 		t.Errorf("minted %d keys with no login to save them on", got)
+	}
+}
+
+// An API-key profile in force refuses the save, so a mint under one would leave
+// a live key nothing points at. The guard has to stop it before the mint, which
+// is only reached when the profile's own key is rejected.
+func TestAProfileInForceMeansNoMint(t *testing.T) {
+	credsHarness(t)
+	bartolocli.Creds.SetProfile("work", map[string]string{"api_key": "sk-orq-profile"})
+	viper.Set("profile", "work")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	var mints atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/workspace-settings" {
+			// The profile's key is rejected, which is what sends setup on to mint.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":"DOMAIN_GROUP_GATEWAY","writable":true}]}`)
+			return
+		}
+		mints.Add(1)
+		fmt.Fprint(w, `{"token":"sk-orq-KEYID1-secret","api_key":{"id":"KEYID1"}}`)
+	}))
+	defer srv.Close()
+	exp := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	login := &auth.Session{Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
+		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp}}
+
+	state := &authState{apiBase: srv.URL, bearer: "t", session: login}
+	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+
+	if err == nil || !strings.Contains(err.Error(), `profile "work" is an API key`) {
+		t.Fatalf("error = %v, want the profile refusal", err)
+	}
+	if got := mints.Load(); got != 0 {
+		t.Errorf("minted %d keys under a profile that refuses the save", got)
 	}
 }
