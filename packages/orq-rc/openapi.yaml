@@ -2591,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m6zh2tmrs4tjc8fpz30qw1n7"
+              default: "reasoning_01m70pcb03t8epzxsfbf6gcxk6"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -16345,6 +16345,9 @@ components:
           items:
             $ref: "#/components/schemas/GuardrailRuleGuardrail"
           description: "Guardrails run on the arguments and result of every tool call this gateway serves."
+        expected_updated:
+          type: "string"
+          description: "Latest observed `McpGateway.updated` value. Required when changing resource exposure or re-enabling a link that exposes resources."
     UpdateMcpGatewayResponse:
       type: "object"
       properties:
@@ -16444,6 +16447,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/McpSkillExposure"
           description: "Which of the server's skills this gateway serves. Unset serves none."
+        resource_exposure:
+          allOf:
+            - $ref: "#/components/schemas/McpResourceExposure"
+          description: "Which upstream resources and templates this gateway exposes. Omission preserves an existing link's selection and exposes none on a new link."
     McpToolNaming:
       type: "string"
       enum:
@@ -16573,6 +16580,24 @@ components:
           items:
             type: "string"
           description: "`McpSkill.uri` values to expose when mode is SELECTED."
+    McpResourceExposure:
+      required:
+        - "mode"
+      type: "object"
+      properties:
+        mode:
+          description: "ALL exposes all current and future resources and templates. SELECTED exposes only the listed IDs. NONE exposes neither."
+          $ref: "#/components/schemas/McpToolExposureMode"
+        resource_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "`McpResource.selection_id` values to expose when mode is SELECTED."
+        resource_template_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "`McpResourceTemplate.selection_id` values to expose when mode is SELECTED."
     McpToolAnnotations:
       type: "object"
       properties:
@@ -16814,6 +16839,16 @@ components:
           readOnly: true
           type: "string"
           description: "Website advertised by the upstream server during discovery."
+        capabilities:
+          readOnly: true
+          allOf:
+            - $ref: "#/components/schemas/McpServerCapabilities"
+          description: "Capabilities from shared MCP discovery or the caller's current sync."
+        resource_catalog:
+          readOnly: true
+          allOf:
+            - $ref: "#/components/schemas/McpResourceCatalog"
+          description: "Get returns the shared catalog. Sync returns the caller's catalog for user-specific credentials or discovery variables. List omits this field."
     McpConnection:
       required:
         - "type"
@@ -16988,6 +17023,33 @@ components:
           type: "boolean"
           description: "Upstream generates the skill's content and publishes no manifest."
       description: "A skill an upstream server publishes through the MCP Skills extension (`io.modelcontextprotocol/skills`)."
+    McpServerCapabilities:
+      type: "object"
+      properties:
+        tools:
+          type: "boolean"
+        resources:
+          type: "boolean"
+        prompts:
+          type: "boolean"
+        completions:
+          type: "boolean"
+      description: "Capability families advertised by the upstream MCP server during discovery."
+    McpResourceCatalog:
+      type: "object"
+      properties:
+        resources:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpResource"
+        resource_templates:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpResourceTemplate"
+        resources_status:
+          $ref: "#/components/schemas/McpDiscoveryStatus"
+        resource_templates_status:
+          $ref: "#/components/schemas/McpDiscoveryStatus"
     McpConnectionType:
       type: "string"
       enum:
@@ -17095,6 +17157,79 @@ components:
           type: "string"
           description: "Length in bytes of the file's raw content."
       description: "A file of an upstream skill, as listed in the skill's manifest."
+    McpResource:
+      type: "object"
+      properties:
+        uri:
+          type: "string"
+        name:
+          type: "string"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        mime_type:
+          type: "string"
+        size:
+          type: "string"
+        annotations:
+          $ref: "#/components/schemas/McpResourceAnnotations"
+        icons:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpIcon"
+        meta:
+          type: "object"
+          description: "Resource `_meta` advertised upstream."
+        selection_id:
+          readOnly: true
+          type: "string"
+          description: "Opaque selection ID scoped to this saved server and its upstream origin. Omitted on connection probes."
+    McpResourceTemplate:
+      type: "object"
+      properties:
+        uri_template:
+          type: "string"
+        name:
+          type: "string"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        mime_type:
+          type: "string"
+        annotations:
+          $ref: "#/components/schemas/McpResourceAnnotations"
+        icons:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpIcon"
+        meta:
+          type: "object"
+          description: "Resource template `_meta` advertised upstream."
+        selection_id:
+          readOnly: true
+          type: "string"
+          description: "Opaque ID for strict selection on a saved server. Omitted on probes and when template variables cannot be matched unambiguously."
+    McpDiscoveryStatus:
+      type: "string"
+      enum:
+        - "MCP_DISCOVERY_STATUS_SYNCED"
+        - "MCP_DISCOVERY_STATUS_UNSUPPORTED"
+        - "MCP_DISCOVERY_STATUS_FAILED"
+    McpResourceAnnotations:
+      type: "object"
+      properties:
+        audience:
+          type: "array"
+          items:
+            type: "string"
+        last_modified:
+          type: "string"
+        priority:
+          type: "number"
+          format: "double"
+      description: "Upstream annotations shared by resource and resource template descriptors."
     ListModelCatalogResponse:
       required:
         - "object"
@@ -20944,6 +21079,223 @@ components:
       required:
         - "reasoning_tokens"
       type: "object"
+    PublicBatch:
+      additionalProperties: false
+      properties:
+        cancelled_at:
+          description: "Time the batch finished cancelling, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        cancelling_at:
+          description: "Time cancellation was requested, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        completed_at:
+          description: "Time the batch completed, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        completion_window:
+          description: "Time window the batch runs in, always 24h."
+          type: "string"
+        created_at:
+          description: "Creation time, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        endpoint:
+          description: "Endpoint each line of the input file is sent to."
+          type: "string"
+        error_file_id:
+          description: "ID of the JSONL file holding per-line errors, when any line failed."
+          type: "string"
+        errors:
+          $ref: "#/components/schemas/PublicBatchErrors"
+          description: "Errors that prevented the batch from running, when the status is failed."
+        expired_at:
+          description: "Time the batch expired, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        expires_at:
+          description: "Time the batch expires, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        failed_at:
+          description: "Time the batch failed, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        finalizing_at:
+          description: "Time the batch began assembling its result files, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        id:
+          description: "Batch identifier."
+          type: "string"
+        in_progress_at:
+          description: "Time the batch started running, in Unix seconds."
+          format: "int64"
+          type: "integer"
+        input_file_id:
+          description: "ID of the uploaded JSONL input file."
+          type: "string"
+        metadata:
+          additionalProperties:
+            type: "string"
+          description: "Metadata supplied at creation."
+          type: "object"
+        model:
+          description: "Model resolved for the batch."
+          type: "string"
+        object:
+          description: "Object type, always batch."
+          type: "string"
+        output_file_id:
+          description: "ID of the JSONL file holding successful responses, set once the batch completes."
+          type: "string"
+        request_counts:
+          $ref: "#/components/schemas/PublicBatchRequestCounts"
+          description: "Per-line progress counters."
+        status:
+          description: "Current batch status."
+          enum:
+            - "validating"
+            - "in_progress"
+            - "finalizing"
+            - "completed"
+            - "failed"
+            - "expired"
+            - "cancelling"
+            - "cancelled"
+          type: "string"
+        usage:
+          $ref: "#/components/schemas/PublicBatchUsage"
+          description: "Token usage summed over the successful lines."
+      required:
+        - "id"
+        - "object"
+        - "endpoint"
+        - "input_file_id"
+        - "completion_window"
+        - "status"
+        - "created_at"
+        - "request_counts"
+      type: "object"
+    PublicBatchError:
+      additionalProperties: false
+      properties:
+        code:
+          description: "Machine-readable error code."
+          type: "string"
+        line:
+          description: "Input file line the error refers to, when it is line-specific."
+          format: "int64"
+          type: "integer"
+        message:
+          description: "Human-readable error message."
+          type: "string"
+        param:
+          description: "Request field the error refers to, when it is field-specific."
+          type: "string"
+      required:
+        - "code"
+        - "message"
+      type: "object"
+    PublicBatchErrors:
+      additionalProperties: false
+      properties:
+        data:
+          description: "Errors that stopped the batch."
+          items:
+            $ref: "#/components/schemas/PublicBatchError"
+          type:
+            - "array"
+            - "null"
+        object:
+          description: "Object type, always list."
+          type: "string"
+      required:
+        - "object"
+        - "data"
+      type: "object"
+    PublicBatchExpiresAfter:
+      additionalProperties: false
+      properties:
+        anchor:
+          description: "Point the lifetime starts from. Defaults to created_at."
+          enum:
+            - "created_at"
+          type: "string"
+        seconds:
+          description: "Lifetime of the file, in seconds."
+          format: "int64"
+          type: "integer"
+      required:
+        - "seconds"
+      type: "object"
+    PublicBatchRequestCounts:
+      additionalProperties: false
+      properties:
+        completed:
+          description: "Lines that completed successfully."
+          format: "int64"
+          type: "integer"
+        failed:
+          description: "Lines that failed."
+          format: "int64"
+          type: "integer"
+        total:
+          description: "Lines in the input file."
+          format: "int64"
+          type: "integer"
+      required:
+        - "total"
+        - "completed"
+        - "failed"
+      type: "object"
+    PublicBatchUsage:
+      additionalProperties: false
+      properties:
+        input_tokens:
+          description: "Input tokens over the successful lines."
+          format: "int64"
+          type: "integer"
+        input_tokens_details:
+          $ref: "#/components/schemas/PublicBatchUsageInputTokenDetails"
+        output_tokens:
+          description: "Output tokens over the successful lines."
+          format: "int64"
+          type: "integer"
+        output_tokens_details:
+          $ref: "#/components/schemas/PublicBatchUsageOutputTokenDetails"
+        total_tokens:
+          description: "Input and output tokens combined."
+          format: "int64"
+          type: "integer"
+      required:
+        - "input_tokens"
+        - "input_tokens_details"
+        - "output_tokens"
+        - "output_tokens_details"
+        - "total_tokens"
+      type: "object"
+    PublicBatchUsageInputTokenDetails:
+      additionalProperties: false
+      properties:
+        cached_tokens:
+          description: "Input tokens served from the provider cache."
+          format: "int64"
+          type: "integer"
+      required:
+        - "cached_tokens"
+      type: "object"
+    PublicBatchUsageOutputTokenDetails:
+      additionalProperties: false
+      properties:
+        reasoning_tokens:
+          description: "Output tokens spent on reasoning."
+          format: "int64"
+          type: "integer"
+      required:
+        - "reasoning_tokens"
+      type: "object"
     PublicCacheControl:
       additionalProperties: false
       properties:
@@ -20961,6 +21313,40 @@ components:
           type: "string"
       required:
         - "type"
+      type: "object"
+    PublicCreateBatchBody:
+      additionalProperties: false
+      properties:
+        completion_window:
+          description: "Time window the batch runs in. Only 24h is supported."
+          enum:
+            - "24h"
+          type: "string"
+        endpoint:
+          description: "Endpoint each line is sent to. The batch model must support it."
+          enum:
+            - "/v1/responses"
+            - "/v1/chat/completions"
+            - "/v1/embeddings"
+            - "/v1/completions"
+            - "/v1/moderations"
+            - "/v3/router/decisions"
+          type: "string"
+        input_file_id:
+          description: "ID of an uploaded JSONL file whose purpose is batch."
+          type: "string"
+        metadata:
+          additionalProperties:
+            type: "string"
+          description: "Up to 16 key/value pairs, keys up to 64 characters and values up to 512."
+          type: "object"
+        output_expires_after:
+          $ref: "#/components/schemas/PublicBatchExpiresAfter"
+          description: "Expiration applied to the output and error files."
+      required:
+        - "input_file_id"
+        - "endpoint"
+        - "completion_window"
       type: "object"
     PublicCreateCompactBody:
       additionalProperties: false
@@ -21989,6 +22375,12 @@ components:
           anyOf:
             - $ref: "#/components/schemas/IncompleteDetails"
             - type: "null"
+        input:
+          description: "Always null. Retained for compatibility with older SDKs; input content is not returned."
+          items: {}
+          type:
+            - "array"
+            - "null"
         instructions:
           type:
             - "string"
@@ -22122,6 +22514,7 @@ components:
         - "model"
         - "previous_response_id"
         - "instructions"
+        - "input"
         - "output"
         - "error"
         - "tools"
@@ -22711,18 +23104,23 @@ components:
       additionalProperties: false
       properties:
         max_cost:
+          description: "Total cost in USD. Unset means uncapped; 0 disables a cap set on the agent manifest. Reaching it ends the run with status incomplete and incomplete_details.reason max_cost."
           format: "double"
           type: "number"
         max_depth:
+          description: "Sub-agent nesting levels, 0 to 10. Defaults to the manifest's max_agent_depth, itself 3 when unset. Exceeding it fails the call_sub_agent call with \"maximum agent depth exceeded\"; the run continues."
           format: "int64"
           type: "integer"
         max_execution_time:
+          description: "Elapsed seconds for the agent loop, excluding tool execution. Defaults to 720 when neither the request nor the agent manifest sets it; reaching it ends the run with status incomplete and incomplete_details.reason max_time."
           format: "int64"
           type: "integer"
         max_iterations:
+          description: "LLM calls in the agent loop, 1 to 100. Defaults to 10 when neither the request nor the agent manifest sets it; reaching it ends the run with status incomplete and incomplete_details.reason max_iterations."
           format: "int64"
           type: "integer"
         tool_timeout:
+          description: "Seconds for one tool execution. Defaults to 300. On timeout the call fails with {\"error\":\"timeout\"}; the run continues."
           format: "int64"
           type: "integer"
       type: "object"
@@ -27506,7 +27904,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M6ZH2TM2S0C1YE95JB5RVM08"
+                                default: "01M70PCAZ7QKFR3EC4MQ2R2QEZ"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -29401,7 +29799,7 @@ paths:
                                 - 502
                                 - 503
                                 - 504
-                          description: "Retry configuration for model requests. Retries are triggered for specific HTTP status codes (e.g., 500, 429, 502, 503, 504). Supports configurable retry count (1-5) and custom status codes."
+                          description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       required:
                         - "id"
                       description: "\n\nModel configuration with parameters and retry settings."
@@ -30583,7 +30981,7 @@ paths:
                               - 502
                               - 503
                               - 504
-                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: [429]. Common codes: 500 (internal error), 429 (rate limit), 502/503/504 (gateway errors)."
+                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       fallback_models:
                         type:
                           - "array"
@@ -31667,7 +32065,7 @@ paths:
                                     - 502
                                     - 503
                                     - 504
-                              description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: [429]. Common codes: 500 (internal error), 429 (rate limit), 502/503/504 (gateway errors)."
+                              description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                             fallback_models:
                               type:
                                 - "array"
@@ -32865,7 +33263,7 @@ paths:
                               - 502
                               - 503
                               - 504
-                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: [429]. Common codes: 500 (internal error), 429 (rate limit), 502/503/504 (gateway errors)."
+                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       fallback_models:
                         type:
                           - "array"
@@ -33654,7 +34052,7 @@ paths:
                                 - 502
                                 - 503
                                 - 504
-                          description: "Retry configuration for model requests. Retries are triggered for specific HTTP status codes (e.g., 500, 429, 502, 503, 504). Supports configurable retry count (1-5) and custom status codes."
+                          description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       required:
                         - "id"
                       description: "\n\nModel configuration with parameters and retry settings."
@@ -34838,7 +35236,7 @@ paths:
                               - 502
                               - 503
                               - 504
-                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: [429]. Common codes: 500 (internal error), 429 (rate limit), 502/503/504 (gateway errors)."
+                        description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       fallback_models:
                         type:
                           - "array"
@@ -35934,7 +36332,7 @@ paths:
                                 - 502
                                 - 503
                                 - 504
-                          description: "Retry configuration for model requests. Retries are triggered for specific HTTP status codes (e.g., 500, 429, 502, 503, 504). Supports configurable retry count (1-5) and custom status codes."
+                          description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       required:
                         - "id"
                       description: "\n\nModel configuration with parameters and retry settings."
@@ -36905,7 +37303,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M6ZH2TNK5TMGR5VDTNDV9XJT"
+                                          default: "01M70PCB15JKFCQK5K16TP09VT"
                                         name:
                                           type: "string"
                                         description:
@@ -37560,7 +37958,7 @@ paths:
                                 - 502
                                 - 503
                                 - 504
-                          description: "Retry configuration for model requests. Retries are triggered for specific HTTP status codes (e.g., 500, 429, 502, 503, 504). Supports configurable retry count (1-5) and custom status codes."
+                          description: "Retry configuration for model requests. Allows customizing retry count (1-5) and HTTP status codes that trigger retries. Default codes: 408, 429, 500, 502, 503, 504, 529."
                       required:
                         - "id"
                       description: "\n\nModel configuration with parameters and retry settings."
@@ -38531,7 +38929,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M6ZH2TNXVYXHQVPTW4602CKK"
+                                          default: "01M70PCB1GA74TVN146Q1DGMZ8"
                                         name:
                                           type: "string"
                                         description:
@@ -47588,7 +47986,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M6ZH2TPMH3CZSS77KWVBPKMT"
+                              default: "tool_01M70PCB2CMAED84Z12M48Z37J"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47689,7 +48087,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M6ZH2TPMNA1M9WW76XF4W99M"
+                              default: "tool_01M70PCB2DV7W50PJE94WDJNC5"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47792,7 +48190,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M6ZH2TPM9SG8YHQZHVYEP9VH"
+                              default: "tool_01M70PCB2DN72ZKY5ARE3407Q6"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -47936,7 +48334,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M6ZH2TPN59YZSH4144E4VMPB"
+                              default: "tool_01M70PCB2E8MHQF48A6QC8WJ6K"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48423,7 +48821,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPP5327B9MP3QJ37960"
+                        default: "tool_01M70PCB2GRGS3NJ1W7K8E2RWP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48524,7 +48922,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPQ9BMKCHB7KQA0AR6S"
+                        default: "tool_01M70PCB2JS98EWSB3KH7QCNBP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48627,7 +49025,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPQTBBKPTKGRRKFZ89B"
+                        default: "tool_01M70PCB2JSKPRW4TQT2ZQ72YK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48771,7 +49169,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPRBHG3YQ0VPT1P9GTC"
+                        default: "tool_01M70PCB2JWNDKD1QEJHCFD5HK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49275,7 +49673,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPT8EKBSZPPDY6BZ084"
+                        default: "tool_01M70PCB2MS9FP9AECXQ4SAS0V"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49376,7 +49774,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPTRGSY5VY4BNWKPGVC"
+                        default: "tool_01M70PCB2M2S33NQSRRBPCFVVF"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49479,7 +49877,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPT7WKF0EKK4RVTVHNP"
+                        default: "tool_01M70PCB2MNT5QMAW5Y5EYSYEQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49623,7 +50021,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPVE0ZBNQ4EX5XRAPX6"
+                        default: "tool_01M70PCB2NKD377Z65S576XRF4"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49790,7 +50188,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPYYQSFY1G6XXFCNWZM"
+                        default: "tool_01M70PCB2RFT58E6XEYK8FZNAH"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49891,7 +50289,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPYR52M47XJD4MF5WSK"
+                        default: "tool_01M70PCB2R4YFKFTG9E29N5CFQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49994,7 +50392,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPYM560413EJGNAJ5BT"
+                        default: "tool_01M70PCB2R6QKWW45V67HX9C0N"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50138,7 +50536,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M6ZH2TPZBY7GGZHPPGWXZC44"
+                        default: "tool_01M70PCB2SK6RX17VEKYK94CGZ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -72345,7 +72743,7 @@ paths:
       tags:
         - "MCP Gateway"
       summary: "Sync an MCP server"
-      description: "Connects to an upstream MCP server, discovers tools, and persists the tool list and sync state on the server record."
+      description: "Syncs the upstream catalogs and returns discovery outcomes. Resource catalogs and capabilities discovered with user-specific credentials or discovery variables are returned only to the caller."
       operationId: "McpServerSync"
       parameters:
         - name: "id"
@@ -72762,6 +73160,13 @@ paths:
       x-speakeasy-name-override: "list"
       x-cli-group: "model-fusions"
       x-cli-name: "list"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - List Model Fusions"
+          source: "curl --get 'https://my.orq.ai/v3/model-fusions' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+        - lang: "typescript"
+          label: "Node.js - List Model Fusions"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst page = await client.modelFusions.list({ limit: 25 });\n\nfor (const fusion of page.data) {\n  console.log(fusion.key, fusion.modelRef);\n}\n"
       security:
         - ApiKey: []
     post:
@@ -72793,6 +73198,13 @@ paths:
       x-speakeasy-name-override: "create"
       x-cli-group: "model-fusions"
       x-cli-name: "create"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Create a Model Fusion"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v3/model-fusions' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"support-fusion\",\n    \"panel_models\": [\"anthropic/claude-opus-5\", \"openai/gpt-5.4-mini\"],\n    \"judge_model\": \"openai/gpt-5.4\",\n    \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL\",\n    \"preset\": \"MODEL_FUSION_PRESET_GENERAL\"\n  }'\n"
+        - lang: "typescript"
+          label: "Node.js - Create a Model Fusion"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.modelFusions.create({\n  key: 'support-fusion',\n  panelModels: ['anthropic/claude-opus-5', 'openai/gpt-5.4-mini'],\n  judgeModel: 'openai/gpt-5.4',\n  synthesisMode: 'MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL',\n  preset: 'MODEL_FUSION_PRESET_GENERAL',\n});\n\nconsole.log(result.modelFusion.modelRef);\n"
       security:
         - ApiKey: []
   /v3/model-fusions/{model_fusion_id}:
@@ -72825,6 +73237,13 @@ paths:
       x-speakeasy-name-override: "get"
       x-cli-group: "model-fusions"
       x-cli-name: "get"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Retrieve a Model Fusion"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v3/model-fusions/019d-model-fusion-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+        - lang: "typescript"
+          label: "Node.js - Retrieve a Model Fusion"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.modelFusions.get({\n  modelFusionId: '019d-model-fusion-id',\n});\n\nconsole.log(result.modelFusion.key);\n"
       security:
         - ApiKey: []
     put:
@@ -72862,6 +73281,13 @@ paths:
       x-speakeasy-name-override: "update"
       x-cli-group: "model-fusions"
       x-cli-name: "update"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Replace a Model Fusion"
+          source: "curl --request PUT \\\n  --url 'https://my.orq.ai/v3/model-fusions/019d-model-fusion-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"panel_models\": [\"anthropic/claude-opus-5\", \"openai/gpt-5.4-mini\"],\n    \"judge_model\": \"openai/gpt-5.4\",\n    \"synthesis_mode\": \"MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL\",\n    \"preset\": \"MODEL_FUSION_PRESET_QUALITY\",\n    \"web_tools\": true,\n    \"max_tool_calls\": 5,\n    \"feed_raw_to_synth\": true\n  }'\n"
+        - lang: "typescript"
+          label: "Node.js - Replace a Model Fusion"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.modelFusions.update({\n  modelFusionId: '019d-model-fusion-id',\n  updateModelFusionRequest: {\n    panelModels: ['anthropic/claude-opus-5', 'openai/gpt-5.4-mini'],\n    judgeModel: 'openai/gpt-5.4',\n    synthesisMode: 'MODEL_FUSION_SYNTHESIS_MODE_JUDGE_WRITES_FINAL',\n    preset: 'MODEL_FUSION_PRESET_QUALITY',\n    webTools: true,\n    maxToolCalls: 5,\n    feedRawToSynth: true,\n  },\n});\n\nconsole.log(result.modelFusion.preset);\n"
       security:
         - ApiKey: []
     delete:
@@ -72893,6 +73319,13 @@ paths:
       x-speakeasy-name-override: "delete"
       x-cli-group: "model-fusions"
       x-cli-name: "delete"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Delete a Model Fusion"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v3/model-fusions/019d-model-fusion-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+        - lang: "typescript"
+          label: "Node.js - Delete a Model Fusion"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nawait client.modelFusions.delete({\n  modelFusionId: '019d-model-fusion-id',\n});\n"
       security:
         - ApiKey: []
   /v3/model-fusions/{model_fusion_id}/enabled:
@@ -72931,6 +73364,13 @@ paths:
       x-speakeasy-name-override: "setEnabled"
       x-cli-group: "model-fusions"
       x-cli-name: "setEnabled"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Enable or disable a Model Fusion"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v3/model-fusions/019d-model-fusion-id/enabled' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"enabled\":false}'\n"
+        - lang: "typescript"
+          label: "Node.js - Enable or disable a Model Fusion"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.modelFusions.setEnabled({\n  modelFusionId: '019d-model-fusion-id',\n  setModelFusionEnabledRequest: { enabled: false },\n});\n\nconsole.log(result.modelFusion.enabled);\n"
       security:
         - ApiKey: []
   /v2/monitors:
@@ -77038,6 +77478,811 @@ paths:
       x-speakeasy-name-override: "trigger"
       security:
         - ApiKey: []
+  /v3/router/batches:
+    get:
+      description: "Lists the batches in the caller's projects, most recent first. Filter by status and endpoint, or page with `after` and `before`; the two cursors are exclusive. Results are scoped to the projects the API key can reach."
+      operationId: "list-batches"
+      parameters:
+        - description: "Maximum number of batches to return, 1 to 100. Defaults to 20."
+          explode: false
+          in: "query"
+          name: "limit"
+          schema:
+            description: "Maximum number of batches to return, 1 to 100. Defaults to 20."
+            format: "int64"
+            type: "integer"
+        - description: "Cursor: return batches after this batch id."
+          explode: false
+          in: "query"
+          name: "after"
+          schema:
+            description: "Cursor: return batches after this batch id."
+            type: "string"
+        - description: "Cursor: return batches before this batch id. Cannot be combined with after."
+          explode: false
+          in: "query"
+          name: "before"
+          schema:
+            description: "Cursor: return batches before this batch id. Cannot be combined with after."
+            type: "string"
+        - description: "Free-text match on the batch id."
+          explode: false
+          in: "query"
+          name: "search"
+          schema:
+            description: "Free-text match on the batch id."
+            type: "string"
+        - description: "Comma-separated statuses to include: validating, in_progress, finalizing, completed, failed, expired, cancelling, cancelled."
+          explode: false
+          in: "query"
+          name: "status"
+          schema:
+            description: "Comma-separated statuses to include: validating, in_progress, finalizing, completed, failed, expired, cancelling, cancelled."
+            type: "string"
+        - description: "Comma-separated endpoints to include: /v1/responses, /v1/chat/completions, /v1/embeddings, /v1/completions, /v1/moderations, /v3/router/decisions."
+          explode: false
+          in: "query"
+          name: "endpoint"
+          schema:
+            description: "Comma-separated endpoints to include: /v1/responses, /v1/chat/completions, /v1/embeddings, /v1/completions, /v1/moderations, /v3/router/decisions."
+            type: "string"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    description: "Batches on the current page."
+                    items:
+                      $ref: "#/components/schemas/PublicBatch"
+                    type:
+                      - "array"
+                      - "null"
+                  first_id:
+                    description: "ID of the first batch on the page."
+                    type: "string"
+                  has_more:
+                    description: "Whether further batches exist beyond this page."
+                    type: "boolean"
+                  last_id:
+                    description: "ID of the last batch on the page."
+                    type: "string"
+                  object:
+                    description: "Object type, always list."
+                    type: "string"
+                required:
+                  - "object"
+                  - "data"
+                  - "has_more"
+                type: "object"
+          description: "Batches listed (empty array if none)."
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Invalid limit, conflicting cursors, or an unknown status or endpoint filter."
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Missing, invalid, expired or revoked API key."
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "An internal error occurred."
+      summary: "List batches"
+      tags:
+        - "Batches"
+      x-cli-group: "batches"
+      x-cli-name: "list"
+      x-code-samples:
+        - label: "Node.js"
+          lang: "typescript"
+          source: "const batches = await orq.batches.list({ limit: 20, status: \"in_progress\" });"
+      x-orq-gateway-group: true
+      x-speakeasy-group: "batches"
+      x-speakeasy-name-override: "list"
+      security:
+        - ApiKey: []
+    post:
+      description: "Creates a batch from an uploaded JSONL file whose purpose is `batch`. Each line is sent to `endpoint` with its own request body, without the throughput limits of real-time traffic. Provider batches run through the provider's batch service at its batch rates; `/v3/router/decisions` batches run on **Orq.ai** workers. See the [Batches guide](/ai-gateway/features/batches) for input file format, supported endpoints, and result files."
+      operationId: "create-batch"
+      requestBody:
+        content:
+          application/json:
+            examples:
+              chat_completions:
+                summary: "Batch of chat completions"
+                value:
+                  completion_window: "24h"
+                  endpoint: "/v1/chat/completions"
+                  input_file_id: "file-abc123"
+                  metadata:
+                    job: "nightly-eval"
+            schema:
+              additionalProperties: false
+              properties:
+                completion_window:
+                  description: "Time window the batch runs in. Only 24h is supported."
+                  enum:
+                    - "24h"
+                  type: "string"
+                endpoint:
+                  description: "Endpoint each line is sent to. The batch model must support it."
+                  enum:
+                    - "/v1/responses"
+                    - "/v1/chat/completions"
+                    - "/v1/embeddings"
+                    - "/v1/completions"
+                    - "/v1/moderations"
+                    - "/v3/router/decisions"
+                  type: "string"
+                input_file_id:
+                  description: "ID of an uploaded JSONL file whose purpose is batch."
+                  type: "string"
+                metadata:
+                  additionalProperties:
+                    type: "string"
+                  description: "Up to 16 key/value pairs, keys up to 64 characters and values up to 512."
+                  type: "object"
+                output_expires_after:
+                  $ref: "#/components/schemas/PublicBatchExpiresAfter"
+                  description: "Expiration applied to the output and error files."
+              required:
+                - "input_file_id"
+                - "endpoint"
+                - "completion_window"
+              type: "object"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  cancelled_at:
+                    description: "Time the batch finished cancelling, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  cancelling_at:
+                    description: "Time cancellation was requested, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completed_at:
+                    description: "Time the batch completed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completion_window:
+                    description: "Time window the batch runs in, always 24h."
+                    type: "string"
+                  created_at:
+                    description: "Creation time, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  endpoint:
+                    description: "Endpoint each line of the input file is sent to."
+                    type: "string"
+                  error_file_id:
+                    description: "ID of the JSONL file holding per-line errors, when any line failed."
+                    type: "string"
+                  errors:
+                    $ref: "#/components/schemas/PublicBatchErrors"
+                    description: "Errors that prevented the batch from running, when the status is failed."
+                  expired_at:
+                    description: "Time the batch expired, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  expires_at:
+                    description: "Time the batch expires, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  failed_at:
+                    description: "Time the batch failed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  finalizing_at:
+                    description: "Time the batch began assembling its result files, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  id:
+                    description: "Batch identifier."
+                    type: "string"
+                  in_progress_at:
+                    description: "Time the batch started running, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  input_file_id:
+                    description: "ID of the uploaded JSONL input file."
+                    type: "string"
+                  metadata:
+                    additionalProperties:
+                      type: "string"
+                    description: "Metadata supplied at creation."
+                    type: "object"
+                  model:
+                    description: "Model resolved for the batch."
+                    type: "string"
+                  object:
+                    description: "Object type, always batch."
+                    type: "string"
+                  output_file_id:
+                    description: "ID of the JSONL file holding successful responses, set once the batch completes."
+                    type: "string"
+                  request_counts:
+                    $ref: "#/components/schemas/PublicBatchRequestCounts"
+                    description: "Per-line progress counters."
+                  status:
+                    description: "Current batch status."
+                    enum:
+                      - "validating"
+                      - "in_progress"
+                      - "finalizing"
+                      - "completed"
+                      - "failed"
+                      - "expired"
+                      - "cancelling"
+                      - "cancelled"
+                    type: "string"
+                  usage:
+                    $ref: "#/components/schemas/PublicBatchUsage"
+                    description: "Token usage summed over the successful lines."
+                required:
+                  - "id"
+                  - "object"
+                  - "endpoint"
+                  - "input_file_id"
+                  - "completion_window"
+                  - "status"
+                  - "created_at"
+                  - "request_counts"
+                type: "object"
+          description: "Batch created. Poll or list it until it reaches a terminal status."
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Invalid body, unsupported endpoint, completion window other than 24h, or an input file that is missing the batch purpose."
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Missing, invalid, expired or revoked API key."
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "The input file does not exist in the caller's projects."
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "An internal error occurred."
+      summary: "Create batch"
+      tags:
+        - "Batches"
+      x-cli-group: "batches"
+      x-cli-name: "create"
+      x-code-samples:
+        - label: "Node.js"
+          lang: "typescript"
+          source: "const batch = await orq.batches.create({\n  inputFileId: \"file-abc123\",\n  endpoint: \"/v1/chat/completions\",\n  completionWindow: \"24h\",\n});"
+      x-orq-gateway-group: true
+      x-speakeasy-group: "batches"
+      x-speakeasy-name-override: "create"
+      security:
+        - ApiKey: []
+  /v3/router/batches/{batch_id}:
+    get:
+      description: "Retrieves one batch, including its status, per-line request counts, and the output and error file IDs once they exist."
+      operationId: "retrieve-batch"
+      parameters:
+        - description: "The batch's identifier, as returned from create."
+          in: "path"
+          name: "batch_id"
+          required: true
+          schema:
+            description: "The batch's identifier, as returned from create."
+            type: "string"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  cancelled_at:
+                    description: "Time the batch finished cancelling, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  cancelling_at:
+                    description: "Time cancellation was requested, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completed_at:
+                    description: "Time the batch completed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completion_window:
+                    description: "Time window the batch runs in, always 24h."
+                    type: "string"
+                  created_at:
+                    description: "Creation time, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  endpoint:
+                    description: "Endpoint each line of the input file is sent to."
+                    type: "string"
+                  error_file_id:
+                    description: "ID of the JSONL file holding per-line errors, when any line failed."
+                    type: "string"
+                  errors:
+                    $ref: "#/components/schemas/PublicBatchErrors"
+                    description: "Errors that prevented the batch from running, when the status is failed."
+                  expired_at:
+                    description: "Time the batch expired, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  expires_at:
+                    description: "Time the batch expires, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  failed_at:
+                    description: "Time the batch failed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  finalizing_at:
+                    description: "Time the batch began assembling its result files, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  id:
+                    description: "Batch identifier."
+                    type: "string"
+                  in_progress_at:
+                    description: "Time the batch started running, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  input_file_id:
+                    description: "ID of the uploaded JSONL input file."
+                    type: "string"
+                  metadata:
+                    additionalProperties:
+                      type: "string"
+                    description: "Metadata supplied at creation."
+                    type: "object"
+                  model:
+                    description: "Model resolved for the batch."
+                    type: "string"
+                  object:
+                    description: "Object type, always batch."
+                    type: "string"
+                  output_file_id:
+                    description: "ID of the JSONL file holding successful responses, set once the batch completes."
+                    type: "string"
+                  request_counts:
+                    $ref: "#/components/schemas/PublicBatchRequestCounts"
+                    description: "Per-line progress counters."
+                  status:
+                    description: "Current batch status."
+                    enum:
+                      - "validating"
+                      - "in_progress"
+                      - "finalizing"
+                      - "completed"
+                      - "failed"
+                      - "expired"
+                      - "cancelling"
+                      - "cancelled"
+                    type: "string"
+                  usage:
+                    $ref: "#/components/schemas/PublicBatchUsage"
+                    description: "Token usage summed over the successful lines."
+                required:
+                  - "id"
+                  - "object"
+                  - "endpoint"
+                  - "input_file_id"
+                  - "completion_window"
+                  - "status"
+                  - "created_at"
+                  - "request_counts"
+                type: "object"
+          description: "The batch."
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "The batch id is missing from the path."
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Missing, invalid, expired or revoked API key."
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "No batch with this id is visible to the API key's projects."
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "An internal error occurred."
+      summary: "Retrieve batch"
+      tags:
+        - "Batches"
+      x-cli-group: "batches"
+      x-cli-name: "retrieve"
+      x-code-samples:
+        - label: "Node.js"
+          lang: "typescript"
+          source: "const batch = await orq.batches.retrieve({ batchId: \"batch_abc123\" });"
+      x-orq-gateway-group: true
+      x-speakeasy-group: "batches"
+      x-speakeasy-name-override: "retrieve"
+      security:
+        - ApiKey: []
+  /v3/router/batches/{batch_id}/cancel:
+    post:
+      description: "Requests cancellation of a running batch and returns it with the status it holds at that moment. A batch that already reached a terminal status is returned unchanged. Poll the batch until the status is `cancelled`."
+      operationId: "cancel-batch"
+      parameters:
+        - description: "The batch's identifier, as returned from create."
+          in: "path"
+          name: "batch_id"
+          required: true
+          schema:
+            description: "The batch's identifier, as returned from create."
+            type: "string"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  cancelled_at:
+                    description: "Time the batch finished cancelling, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  cancelling_at:
+                    description: "Time cancellation was requested, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completed_at:
+                    description: "Time the batch completed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  completion_window:
+                    description: "Time window the batch runs in, always 24h."
+                    type: "string"
+                  created_at:
+                    description: "Creation time, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  endpoint:
+                    description: "Endpoint each line of the input file is sent to."
+                    type: "string"
+                  error_file_id:
+                    description: "ID of the JSONL file holding per-line errors, when any line failed."
+                    type: "string"
+                  errors:
+                    $ref: "#/components/schemas/PublicBatchErrors"
+                    description: "Errors that prevented the batch from running, when the status is failed."
+                  expired_at:
+                    description: "Time the batch expired, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  expires_at:
+                    description: "Time the batch expires, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  failed_at:
+                    description: "Time the batch failed, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  finalizing_at:
+                    description: "Time the batch began assembling its result files, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  id:
+                    description: "Batch identifier."
+                    type: "string"
+                  in_progress_at:
+                    description: "Time the batch started running, in Unix seconds."
+                    format: "int64"
+                    type: "integer"
+                  input_file_id:
+                    description: "ID of the uploaded JSONL input file."
+                    type: "string"
+                  metadata:
+                    additionalProperties:
+                      type: "string"
+                    description: "Metadata supplied at creation."
+                    type: "object"
+                  model:
+                    description: "Model resolved for the batch."
+                    type: "string"
+                  object:
+                    description: "Object type, always batch."
+                    type: "string"
+                  output_file_id:
+                    description: "ID of the JSONL file holding successful responses, set once the batch completes."
+                    type: "string"
+                  request_counts:
+                    $ref: "#/components/schemas/PublicBatchRequestCounts"
+                    description: "Per-line progress counters."
+                  status:
+                    description: "Current batch status."
+                    enum:
+                      - "validating"
+                      - "in_progress"
+                      - "finalizing"
+                      - "completed"
+                      - "failed"
+                      - "expired"
+                      - "cancelling"
+                      - "cancelled"
+                    type: "string"
+                  usage:
+                    $ref: "#/components/schemas/PublicBatchUsage"
+                    description: "Token usage summed over the successful lines."
+                required:
+                  - "id"
+                  - "object"
+                  - "endpoint"
+                  - "input_file_id"
+                  - "completion_window"
+                  - "status"
+                  - "created_at"
+                  - "request_counts"
+                type: "object"
+          description: "Cancellation requested, or the batch already reached a terminal status."
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "The batch id is missing from the path."
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Missing, invalid, expired or revoked API key."
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "No batch with this id is visible to the API key's projects."
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "An internal error occurred."
+      summary: "Cancel batch"
+      tags:
+        - "Batches"
+      x-cli-group: "batches"
+      x-cli-name: "cancel"
+      x-code-samples:
+        - label: "Node.js"
+          lang: "typescript"
+          source: "const batch = await orq.batches.cancel({ batchId: \"batch_abc123\" });"
+      x-orq-gateway-group: true
+      x-speakeasy-group: "batches"
+      x-speakeasy-name-override: "cancel"
+      security:
+        - ApiKey: []
+  /v3/router/batches/{batch_id}/results:
+    get:
+      description: "Downloads the JSONL result file of a batch that reached a terminal status. `file=output` returns the successful responses, `file=errors` the per-line failures that have an error file. Each line follows the OpenAI batch result format."
+      operationId: "download-batch-results"
+      parameters:
+        - description: "The batch's identifier, as returned from create."
+          in: "path"
+          name: "batch_id"
+          required: true
+          schema:
+            description: "The batch's identifier, as returned from create."
+            type: "string"
+        - description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output."
+          explode: false
+          in: "query"
+          name: "file"
+          schema:
+            description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output."
+            enum:
+              - "output"
+              - "errors"
+            type: "string"
+      responses:
+        "200":
+          content:
+            application/jsonl:
+              schema:
+                type: "string"
+          description: "The JSONL result file, sent as an attachment."
+        "400":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "The batch id is missing, or `file` is neither output nor errors."
+        "401":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "Missing, invalid, expired or revoked API key."
+        "404":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "No batch with this id is visible to the API key's projects."
+        "409":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "The batch has not reached a terminal status yet, or it has no result file."
+        "500":
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  error:
+                    $ref: "#/components/schemas/APIError"
+                required:
+                  - "error"
+                type: "object"
+          description: "An internal error occurred."
+      summary: "Download batch results"
+      tags:
+        - "Batches"
+      x-cli-group: "batches"
+      x-cli-name: "downloadResults"
+      x-code-samples:
+        - label: "Node.js"
+          lang: "typescript"
+          source: "const results = await orq.batches.downloadResults({ batchId: \"batch_abc123\", file: \"output\" });"
+      x-orq-gateway-group: true
+      x-speakeasy-group: "batches"
+      x-speakeasy-name-override: "downloadResults"
+      security:
+        - ApiKey: []
   /v3/router/classify:
     post:
       deprecated: true
@@ -79026,6 +80271,12 @@ paths:
                     anyOf:
                       - $ref: "#/components/schemas/IncompleteDetails"
                       - type: "null"
+                  input:
+                    description: "Always null. Retained for compatibility with older SDKs; input content is not returned."
+                    items: {}
+                    type:
+                      - "array"
+                      - "null"
                   instructions:
                     type:
                       - "string"
@@ -79159,6 +80410,7 @@ paths:
                   - "model"
                   - "previous_response_id"
                   - "instructions"
+                  - "input"
                   - "output"
                   - "error"
                   - "tools"
@@ -79259,6 +80511,12 @@ paths:
                     anyOf:
                       - $ref: "#/components/schemas/IncompleteDetails"
                       - type: "null"
+                  input:
+                    description: "Always null. Retained for compatibility with older SDKs; input content is not returned."
+                    items: {}
+                    type:
+                      - "array"
+                      - "null"
                   instructions:
                     type:
                       - "string"
@@ -79392,6 +80650,7 @@ paths:
                   - "model"
                   - "previous_response_id"
                   - "instructions"
+                  - "input"
                   - "output"
                   - "error"
                   - "tools"
@@ -79911,3 +81170,5 @@ tags:
     name: "Classify"
   - description: "Beta. Run classification decisions with the classify contract."
     name: "Decisions"
+  - description: "Run large offline workloads as JSONL batches and download OpenAI-compatible result files."
+    name: "Batches"
