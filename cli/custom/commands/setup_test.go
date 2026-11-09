@@ -765,7 +765,7 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 			state := &authState{
 				apiBase: srv.URL,
 				bearer:  "session-token",
-				session: &auth.Session{ActiveWorkspaceKey: &wsB, User: &auth.SessionUser{ID: "u1"}},
+				session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &wsB, User: &auth.SessionUser{ID: "u1"}}),
 			}
 			// noInput skips every confirm.
 			opts := &setupOptions{noInput: true}
@@ -2619,7 +2619,7 @@ func TestMintedKeyIsGatewayScopedAndStoredSeparately(t *testing.T) {
 
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	token, created, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
 	if err != nil || !created || token == "" {
 		t.Fatalf("mint: token=%q created=%v err=%v", token, created, err)
@@ -2670,7 +2670,7 @@ func TestMintIsAlwaysRestricted(t *testing.T) {
 
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	token, created, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
 	if err != nil || !created {
 		t.Fatalf("mint: created=%v err=%v", created, err)
@@ -2739,7 +2739,7 @@ func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme", ""); err != nil {
+			if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			session, err := auth.ReadSession()
@@ -2776,12 +2776,12 @@ func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	token, created, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
 	if err != nil {
 		t.Fatal(err)
@@ -2822,7 +2822,7 @@ func TestMintRecordsExpiryLocallyAndRemotely(t *testing.T) {
 
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	if _, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -2855,7 +2855,7 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme", ""); err != nil {
+			if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-k", "KEYID", tc.expiresAt, "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			check, ok := gatewayKeyExpiryCheck(now)
@@ -3011,7 +3011,7 @@ func TestMintNeverCallsTheBudgetAPI(t *testing.T) {
 	var out strings.Builder
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	if _, _, err := ensureDurableKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -3041,7 +3041,7 @@ func TestMintedKeyNameCarriesItsPurpose(t *testing.T) {
 
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	if _, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -3148,7 +3148,7 @@ func TestLogoutFailsWhenShellEnvironmentCannotBeCleared(t *testing.T) {
 // its revocation metadata remain attached to the independent login session.
 func TestAPIKeyProfileTakesPrecedenceOverMintedSessionKey(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	viper.Set("profile", "supplied")
@@ -3175,7 +3175,7 @@ func TestMintedSessionKeyDoesNotMutateAnAPIKeyProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	viper.Set("profile", "")
-	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B", ""); err != nil {
 		t.Fatal(err)
 	}
 	if key, ws := savedAPIKey(); key != "sk-orq-NEW-for-B" || ws != "workspace-B" {
@@ -3192,7 +3192,7 @@ func TestMintedSessionKeyDoesNotMutateAnAPIKeyProfile(t *testing.T) {
 // job is to explain why nothing works.
 func TestStoredAPIKeyProfileIgnoresTheGatewayKey(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if storedAPIKeyProfile() {
@@ -3604,7 +3604,7 @@ func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
 	saveTestGatewayKey(t, "sk-orq-dead", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	if _, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -3679,7 +3679,7 @@ func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
 	saveTestGatewayKey(t, "sk-orq-elsewhere", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
-		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		session: onDiskLogin(t, &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}})}
 	var out strings.Builder
 	rep := &reporter{w: &out}
 	// noInput declines the switch (it defaults to no), which falls through to a mint.
@@ -4115,7 +4115,7 @@ func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
 // reusing it must not warn; any other key still says it could not tell.
 func TestForbiddenWorkspaceProbeIsSilentForARecordedKey(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-SCOPED", "KEYID", time.Now().Add(90*24*time.Hour), "acme", "proj"); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-SCOPED", "KEYID", time.Now().Add(90*24*time.Hour), "acme", "proj"); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

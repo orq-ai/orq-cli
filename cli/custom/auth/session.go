@@ -309,6 +309,9 @@ func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string
 // and two concurrent writers end with one intact winner (last writer wins on
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
+//
+// It replaces the whole file, so it is only for a session built from scratch.
+// To change a login that already exists, use UpdateSession.
 func SaveSession(s *Session) error {
 	return saveSessionTo(SessionFilePath(), s)
 }
@@ -499,28 +502,64 @@ const (
 // by saves and logout. A response for an old login cannot replace a new login
 // or recreate one that was removed while the request was in flight.
 func updateSessionForLogin(path, refreshToken string, update func(*Session)) error {
+	_, err := applyToLogin(path, refreshToken, update)
+	return err
+}
+
+// applyToLogin reports whether update ran and was written. False with no error
+// means the login was removed or replaced, which is not a failure for a cache
+// write but is one for a command about to report success.
+func applyToLogin(path, refreshToken string, update func(*Session)) (bool, error) {
 	unlock, err := lockSessionUpdatesAt(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer unlock()
 	// Hydrated: a stored login's file has no refresh token to compare, and
 	// writing it back unhydrated would replace the stored secrets with nothing.
 	current, err := readSessionFile(path)
 	if err != nil || current == nil {
-		return err
+		return false, err
 	}
 	if err := hydrateSecrets(current, path); err != nil {
-		return err
+		return false, err
 	}
 	if current.RefreshToken != refreshToken {
-		return nil
+		return false, nil
 	}
 	if err := validateSession(current); err != nil {
-		return err
+		return false, err
 	}
 	update(current)
-	return writeSessionTo(path, current)
+	if err := writeSessionTo(path, current); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ErrSessionChanged means the login a command started from was replaced or
+// removed before the command could record its change.
+var ErrSessionChanged = errors.New("the login changed while this command ran, so nothing was saved; run it again")
+
+// UpdateSession applies update to the login on disk rather than to the caller's
+// copy, so a snapshot held across a network call cannot overwrite what another
+// command saved in the meantime. session is the login the change was decided
+// for, and on success it is refreshed to the session after update, before the
+// write prunes expired tokens from its own copy.
+func UpdateSession(session *Session, update func(*Session)) error {
+	var updated *Session
+	applied, err := applyToLogin(SessionFilePath(), session.RefreshToken, func(current *Session) {
+		update(current)
+		updated = current
+	})
+	if err != nil {
+		return err
+	}
+	if !applied {
+		return ErrSessionChanged
+	}
+	*session = *updated
+	return nil
 }
 
 func mergeBootstrapToken(path string, session *Session, token StoredAccessToken) error {

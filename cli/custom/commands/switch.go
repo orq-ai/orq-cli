@@ -113,13 +113,11 @@ func NewSwitchCommand() *cobra.Command {
 			// the project when the workspace moved: switching WITHIN the active
 			// workspace to a workspace that has no projects must still end with
 			// no active project, and that case is not a workspace change.
-			session.ActiveProjectID = ""
-			session.ActiveProjectName = ""
+			var projectID, projectName string
 			if chosen != nil {
-				session.ActiveProjectID = chosen.ProjectID
-				session.ActiveProjectName = chosen.Name
+				projectID, projectName = chosen.ProjectID, chosen.Name
 			}
-			if err := auth.SaveSession(session); err != nil {
+			if err := recordActiveProject(session, projectID, projectName); err != nil {
 				return err
 			}
 
