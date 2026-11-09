@@ -67,7 +67,7 @@ type piLikeSpec struct {
 	// extendPlan, if set, changes the session dir and plan after configFile is
 	// written with the generated provider config. If it fails, the plan is
 	// cleaned up. Changes it makes outside the session dir stay.
-	extendPlan func(plan *LaunchPlan, dir, generated string) error
+	extendPlan func(ctx *AgentContext, plan *LaunchPlan, dir, generated string) error
 }
 
 // resolvePiLike writes the generated provider config to a fresh temp dir used
@@ -115,7 +115,7 @@ func resolvePiLike(ctx *AgentContext, spec piLikeSpec) (*LaunchPlan, error) {
 		Cleanup:  cleanup,
 	}
 	if spec.extendPlan != nil {
-		if err := spec.extendPlan(plan, dir, generated); err != nil {
+		if err := spec.extendPlan(ctx, plan, dir, generated); err != nil {
 			plan.Cleanup()
 			return nil, err
 		}

@@ -16,7 +16,10 @@ const (
 
 	// omp (oh-my-pi) takes custom providers via a models.yml in its agent
 	// dir; the schema matches pi's models.json, and JSON is valid YAML.
-	OmpProvider = "orq"
+	// resolvePiLike passes PiProvider to --provider, so omp's key must match.
+	OmpProvider = PiProvider
+
+	ompConfigFile = "models.yml"
 )
 
 func ompAgent() AgentDef {
@@ -35,23 +38,18 @@ func ompAgent() AgentDef {
 	}
 }
 
-// resolveOmp points PI_CODING_AGENT_DIR at a fresh temp dir that overlays the
-// user's agent dir with orq. models.yml and .mcp.json are session-owned merged
-// copies; other entries are symlinked so omp's persistent state carries over.
-// If linking is unavailable, the partial overlay is discarded and the session
-// runs with only orq's generated config.
+// resolveOmp launches omp through resolvePiLike; extendOmpPlan adds the
+// overlay of the user's agent dir.
 func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	return resolvePiLike(ctx, piLikeSpec{
-		agent:         "omp",
-		tempPrefix:    "orq-omp-",
-		configFile:    "models.yml",
-		defaultModel:  DefaultOmpModel,
-		baseURLEnvKey: "ORQ_OMP_BASE_URL",
+		agent:        "omp",
+		tempPrefix:   "orq-omp-",
+		configFile:   ompConfigFile,
+		defaultModel: DefaultOmpModel,
 		// omp reads no model env vars, so modelEnvKey and modelsEnvKey stay empty.
-		apiKeyRef: OmpAPIKeyRef,
-		extendPlan: func(plan *LaunchPlan, dir, generated string) error {
-			return extendOmpPlan(ctx, plan, dir, generated)
-		},
+		baseURLEnvKey: "ORQ_OMP_BASE_URL",
+		apiKeyRef:     OmpAPIKeyRef,
+		extendPlan:    extendOmpPlan,
 	})
 }
 
@@ -66,16 +64,16 @@ func extendOmpPlan(ctx *AgentContext, plan *LaunchPlan, dir, generated string) e
 	}
 	userModels := ""
 	if userDir != "" {
-		userModels = filepath.Join(userDir, "models.yml")
+		userModels = filepath.Join(userDir, ompConfigFile)
 	}
 	models, err := OmpMergeProvider(userModels, generated)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "models.yml"), models, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ompConfigFile), models, 0o600); err != nil {
 		return err
 	}
-	owned := map[string]bool{"models.yml": true}
+	owned := map[string]bool{ompConfigFile: true}
 
 	// omp reads both mcp.json and .mcp.json from its agent dir and keeps the
 	// first entry per server name, mcp.json first. So the user's mcp.json is
@@ -226,7 +224,7 @@ func rebuildIsolatedOmpConfig(dir, models, mcpURL string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "models.yml"), []byte(models), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ompConfigFile), []byte(models), 0o600); err != nil {
 		return err
 	}
 	if mcpURL != "" {
@@ -253,6 +251,6 @@ func OmpPiOwned(dir, home string) bool {
 	if _, err := os.Stat(filepath.Join(dir, "models.json")); err != nil {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(dir, "models.yml"))
+	_, err := os.Stat(filepath.Join(dir, ompConfigFile))
 	return errors.Is(err, os.ErrNotExist)
 }
