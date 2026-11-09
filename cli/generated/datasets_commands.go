@@ -611,13 +611,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
 			Short:   "Update a dataset",
-			Long:    bartolocli.Markdown("Updates the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
+			Long:    bartolocli.Markdown("Updates the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -627,6 +627,12 @@ func registerdatasetsCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Project path to move the dataset to, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Takes precedence over `project_id`.",
 						},
 						{
 							Name:        "project_id",
@@ -663,6 +669,12 @@ func registerdatasetsCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Project path to move the dataset to, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Takes precedence over `project_id`.",
 				},
 				{
 					Name:        "project_id",
