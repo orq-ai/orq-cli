@@ -932,7 +932,9 @@ func persistSetupServer(rep *reporter, complete bool) error {
 var errNoLoginForGatewayKey = errors.New("no login session to record the gateway key on; run `orq login`, then retry")
 
 // saveGatewayKeyProfile records the minted key on the login it was minted
-// from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
+// from. Its refusals (an API-key profile in force, no login) come after the
+// mint, so a caller checks profileInForce() and the login before minting, as
+// ensureDurableKey does, or it leaves a live key nothing points at. It is gateway-scoped, so it never becomes a bartolo profile: a profile
 // that cannot authenticate the platform API is exactly what bartolo refuses to
 // fall back from. login must be read before the mint: a login replaced during
 // the mint then fails here instead of receiving the previous login's key.
@@ -1313,6 +1315,13 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if state.skipDurableKey {
 		return "", false, nil
 	}
+	// Before the prompt: an API-key profile in force refuses the save
+	// (saveGatewayKeyProfile), and a minted key nothing records stays live on the
+	// platform. Asking first would have the user say yes to a key they cannot get.
+	// Not higher: a working profile key is reused and returns above.
+	if profileInForce() {
+		return "", false, profileInForceError("create a gateway key")
+	}
 	if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
 		rep.ok("skipped creating an API key")
 		return "", false, nil
@@ -1340,14 +1349,9 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return "", false, err
 	}
-	// Both checks below run before the mint: a key that cannot be saved would stay
-	// live on the platform with nothing pointing at it. An API-key profile in force
-	// refuses the save (saveGatewayKeyProfile), so refuse here first.
-	if profileInForce() {
-		return "", false, profileInForceError("create a gateway key")
-	}
 	// `orq connect` builds a state with no session, yet the key still lands on the
-	// login on disk. With none, stop here.
+	// login on disk. With none, stop here, before the mint: a key that cannot be
+	// saved would stay live on the platform with nothing pointing at it.
 	login := state.session
 	if login == nil {
 		if login, err = auth.ReadSession(); err != nil {

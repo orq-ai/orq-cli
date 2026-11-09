@@ -309,8 +309,20 @@ func TestAProfileInForceMeansNoMint(t *testing.T) {
 		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp}}
 
 	state := &authState{apiBase: srv.URL, bearer: "t", session: login}
-	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	// Interactive, so the order is under test: the refusal must come before any
+	// "create a key?" question, not after the user has said yes.
+	var prompts []string
+	opts := &setupOptions{interactive: true, confirmFn: func(message string, def bool) bool {
+		prompts = append(prompts, message)
+		return true
+	}}
+	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
 
+	for _, p := range prompts {
+		if strings.Contains(p, "Create a workspace API key") {
+			t.Errorf("asked %q before refusing the profile", p)
+		}
+	}
 	if err == nil || !strings.Contains(err.Error(), `profile "work" is an API key`) {
 		t.Fatalf("error = %v, want the profile refusal", err)
 	}
