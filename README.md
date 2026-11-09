@@ -471,7 +471,7 @@ orq's skills are linked into the agent's skills directory under the directory yo
 `orq launch claude` routes Claude Code's model calls through the orq AI Router and picks no model for it, so a `/model` choice survives a restart. Gateway routing and session tracing are on, like MCP and skills:
 
 - Tracing turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so it does not create duplicate session spans. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one. `--no-otel` leaves the session uncaptured. `orq connect claude otel` configures native metrics and logs for sessions started directly with `claude`; it does not install the trace plugin. A separately installed trace plugin remains under Claude Code's plugin manager.
-- `--gateway` explicitly selects the default routing through `<host>/v3/anthropic`, where usage bills to the workspace the launcher names. `--no-gateway` keeps model calls on your own Anthropic login. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers let `/model opus|sonnet|haiku` resolve to gateway refs when routing is on.
+- `--gateway` explicitly selects the default routing through `<host>/v3/anthropic`, where usage bills to the workspace the launcher names. `--no-gateway` keeps model calls on your own Anthropic login. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers let `/model opus|sonnet|haiku` resolve to bare ids such as `claude-opus-5-5` when routing is on. These ids need a current Claude Code: on 2.1.281 the sonnet and haiku pins print `[claude-code:unrecognized_model]` and lose part of the benefit, so update Claude Code if you see that.
 
 With default routing and tracing the same call is recorded twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts. `--no-otel` keeps one copy.
 
@@ -514,7 +514,8 @@ Sandboxed execution is not available in this version.
 | `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
 | `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint), honoured with default gateway routing |
 | `ANTHROPIC_MODEL` | passes through to claude. With `--no-gateway`, a `provider/model_id` gateway ref triggers a warning because Anthropic will reject it |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | gateway refs the `/model` tiers resolve to with gateway routing |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | model ids the `/model` tiers resolve to with gateway routing. The defaults are bare ids such as `claude-opus-5-5`, the ids a first-party session sends |
+| `ENABLE_TOOL_SEARCH` | tool search with gateway routing, `true` by default. Set `false` to turn it off, or `auto` / `auto:N` to let claude decide |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
