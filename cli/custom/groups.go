@@ -91,6 +91,7 @@ var commandGroup = map[string]string{
 	"prompts":          groupAgents,
 
 	"datasets":          groupOptimization,
+	"experiments":       groupOptimization,
 	"evals":             groupOptimization,
 	"human-review-sets": groupOptimization,
 	"annotation-queues": groupOptimization,
