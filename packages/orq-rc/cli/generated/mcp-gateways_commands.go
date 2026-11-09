@@ -422,7 +422,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP gateway",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string)\n- `mode` (string)\n- ... and 7 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `expected_updated` (string)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string)\n- ... and 8 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -456,6 +456,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "Human readable name shown in the workspace.",
+						},
+						{
+							Name:        "expected_updated",
+							FlagName:    "expected-updated",
+							Type:        "string",
+							Description: "Latest observed `McpGateway.updated` value. Required when changing resource exposure or re-enabling a link that exposes resources.",
 						},
 						{
 							Name:        "guardrails",
@@ -578,6 +584,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "Human readable name shown in the workspace.",
+				},
+				{
+					Name:        "expected_updated",
+					FlagName:    "expected-updated",
+					Type:        "string",
+					Description: "Latest observed `McpGateway.updated` value. Required when changing resource exposure or re-enabling a link that exposes resources.",
 				},
 				{
 					Name:        "guardrails",
