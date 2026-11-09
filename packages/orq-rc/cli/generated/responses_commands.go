@@ -225,7 +225,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "include",
 							FlagName:    "include",
 							Type:        "string-slice",
-							Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide for the supported values.",
+							Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide.",
 						},
 						{
 							Name:        "input",
@@ -285,7 +285,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
+							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from this platform.",
 						},
 						{
 							Name:        "parallel_tool_calls",
@@ -561,7 +561,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "include",
 					FlagName:    "include",
 					Type:        "string-slice",
-					Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide for the supported values.",
+					Description: "Additional fields to include in the response. Use web_search_call.action.sources to add source URLs and titles to a web search action, or web_search_call.results for detailed results. See the [Web search](https://docs.orq.ai/ai-gateway/features/web-search) guide.",
 				},
 				{
 					Name:        "input",
@@ -621,7 +621,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from the orq.ai platform.",
+					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from this platform.",
 				},
 				{
 					Name:        "parallel_tool_calls",

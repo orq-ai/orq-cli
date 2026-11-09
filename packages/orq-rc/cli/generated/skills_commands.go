@@ -194,6 +194,92 @@ func registerskillsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
+			Use:     "delete-file skill-id",
+			Short:   "Delete a skill file",
+			Long:    bartolocli.Markdown("Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
+
+				_, decoded, err := OpenapiSkillDeleteFile(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
+
+		cmd.Flags().String("path", "", "Relative path of the file to delete within the skill bundle.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "export-bundle skill-id",
+			Short:   "Export a skill bundle",
+			Long:    bartolocli.Markdown("Downloads the skill as a zip archive containing the SKILL.md file and all files in the manifest. Basic Skills receive a synthesized SKILL.md.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to export."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiSkillExportBundle(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
 			Use:     "get skill-id",
 			Short:   "Retrieve a skill",
 			Long:    bartolocli.Markdown("Retrieves an existing skill by skill ID. Display names are also accepted for compatibility because they are unique within a workspace.\n\n## Arguments\n\n- `skill-id` — Accepts either the skill's ID (e.g. \"skill_01H...\") or its display name. Display names are unique within a workspace."),
@@ -217,6 +303,272 @@ func registerskillsCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "get-file-content skill-id",
+			Short:   "Get a presigned URL for a skill file",
+			Long:    bartolocli.Markdown("Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiSkillGetFileContent(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().String("path", "", "Relative path of the file within the skill bundle.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " import-bundle --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "import-bundle",
+			Short:   "Import a skill bundle",
+			Long:    bartolocli.Markdown("Uploads a zip archive containing a SKILL.md file and optional supporting files. Creates a new file-bearing skill. An existing display name returns AlreadyExists. Operating-system archive metadata is ignored: `__MACOSX` entries, AppleDouble sidecars (`._*`), and per-directory metadata such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` are dropped and do not count toward the per-skill file limit.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `bundle` (string, required)\n- `path` (string)\n- `project_id` (string)\n\nRequired fields: `bundle`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"bundle\": \"bundle\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "bundle",
+							FlagName:    "bundle",
+							Type:        "string",
+							Description: "Zip archive containing SKILL.md at the root and optional supporting\n files. In JSON requests the bytes are base64 encoded.\n Operating-system archive metadata (`__MACOSX`, `._*` AppleDouble\n sidecars, `.DS_Store`, `Thumbs.db`, `desktop.ini`) is ignored.",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Project path where the new skill should be stored.",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Project that should contain the skill when creating a new skill.\n Import creates a new skill; a conflicting name returns AlreadyExists.",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillImportBundle(params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "bundle",
+					FlagName:    "bundle",
+					Type:        "string",
+					Description: "Zip archive containing SKILL.md at the root and optional supporting\n files. In JSON requests the bytes are base64 encoded.\n Operating-system archive metadata (`__MACOSX`, `._*` AppleDouble\n sidecars, `.DS_Store`, `Thumbs.db`, `desktop.ini`) is ignored.",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Project path where the new skill should be stored.",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Project that should contain the skill when creating a new skill.\n Import creates a new skill; a conflicting name returns AlreadyExists.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " import-from-repository --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "import-from-repository",
+			Short:   "Import a skill from a repository",
+			Long:    bartolocli.Markdown("Creates an editable skill snapshot from a repository directory using a workspace source control connection. The source commit is retained; subsequent repository changes are not synchronized.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `connection_id` (string)\n- `path` (string)\n- `project_id` (string)\n- `ref` (string)\n- `repository_url` (string)\n- `subdirectory` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"connection_id\": \"connection_id\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"ref\": \"ref\",\n  \"repository_url\": \"repository_url\",\n  \"subdirectory\": \"subdirectory\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "connection_id",
+							FlagName:    "connection-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "ref",
+							FlagName:    "ref",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "repository_url",
+							FlagName:    "repository-url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "subdirectory",
+							FlagName:    "subdirectory",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillImportFromRepository(params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "connection_id",
+					FlagName:    "connection-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "ref",
+					FlagName:    "ref",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "repository_url",
+					FlagName:    "repository-url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "subdirectory",
+					FlagName:    "subdirectory",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -261,6 +613,460 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25). Values outside the range, including 0, are rejected.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `skill_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `skill_id` of the first item from the previous page.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "list-versions skill-id",
+			Short:   "List skill versions",
+			Long:    bartolocli.Markdown("List skill versions\n\n## Arguments\n\n- `skill-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiSkillListVersions(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " put-file skill-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "put-file skill-id",
+			Short:   "Add or replace a skill file",
+			Long:    bartolocli.Markdown("Uploads a single file to a skill's bundle. If the path already exists the file is replaced; otherwise it is added to the manifest.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string, required)\n- `path` (string, required)\n\nRequired fields: `content`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"content\": \"content\",\n  \"path\": \"path\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "content",
+							FlagName:    "content",
+							Type:        "string",
+							Description: "Raw file content. The MIME type is derived from the path extension.",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Relative path within the skill bundle, including subdirectory\n components (e.g. \"scripts/extract.py\").",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillPutFile(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "content",
+					FlagName:    "content",
+					Type:        "string",
+					Description: "Raw file content. The MIME type is derived from the path extension.",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Relative path within the skill bundle, including subdirectory\n components (e.g. \"scripts/extract.py\").",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " rename-file skill-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "rename-file skill-id",
+			Short:   "Rename a skill file",
+			Long:    bartolocli.Markdown("Changes a file's path within a skill's bundle. The file content is unchanged. SKILL.md cannot be renamed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `new_path` (string, required)\n- `old_path` (string, required)\n\nRequired fields: `new_path`, `old_path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"new_path\": \"new_path\",\n  \"old_path\": \"old_path\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "new_path",
+							FlagName:    "new-path",
+							Type:        "string",
+							Description: "New relative path for the file within the skill bundle, including any\n subdirectory components (e.g. \"scripts/extract.py\").",
+						},
+						{
+							Name:        "old_path",
+							FlagName:    "old-path",
+							Type:        "string",
+							Description: "Current relative path of the file within the skill bundle.",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillRenameFile(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "new_path",
+					FlagName:    "new-path",
+					Type:        "string",
+					Description: "New relative path for the file within the skill bundle, including any\n subdirectory components (e.g. \"scripts/extract.py\").",
+				},
+				{
+					Name:        "old_path",
+					FlagName:    "old-path",
+					Type:        "string",
+					Description: "Current relative path of the file within the skill bundle.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " replace-bundle skill-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "replace-bundle skill-id",
+			Short:   "Replace a skill bundle",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `bundle` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"bundle\": \"bundle\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "bundle",
+							FlagName:    "bundle",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillReplaceBundle(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "bundle",
+					FlagName:    "bundle",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " restore-version skill-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "restore-version skill-id",
+			Short:   "Restore a skill version",
+			Long:    bartolocli.Markdown("Restores a skill to a previous version recorded in the activity log. The restored state becomes a new version.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `version_id` (string, required)\n\nRequired fields: `version_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to restore."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"version_id\": \"version_id\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "version_id",
+							FlagName:    "version-id",
+							Type:        "string",
+							Description: "Version ID (activity ID) to restore to.",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillRestoreVersion(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "version_id",
+					FlagName:    "version-id",
+					Type:        "string",
+					Description: "Version ID (activity ID) to restore to.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := skillsCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " save-files skill-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "save-files skill-id",
+			Short:   "Save skill files atomically",
+			Long:    bartolocli.Markdown("Saves file drafts and optional skill metadata as one version.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `files` (array)\n- `instructions` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"files\": [\n    {\n      \"content\": \"content\",\n      \"path\": \"path\"\n    }\n  ],\n  \"instructions\": \"instructions\"\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "files",
+							FlagName:    "files",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "instructions",
+							FlagName:    "instructions",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
+
+				_, decoded, err := OpenapiSkillSaveFiles(args[0], params, body)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "files",
+					FlagName:    "files",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "instructions",
+					FlagName:    "instructions",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
 
 		bartolocli.SetCustomFlags(cmd)
 
