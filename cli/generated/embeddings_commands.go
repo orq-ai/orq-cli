@@ -105,7 +105,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 							Name:        "orq",
 							FlagName:    "orq",
 							Type:        "json",
-							Description: "Orq platform extension parameters. Top-level equivalents take priority when both are set.",
+							Description: "Platform extension parameters. Top-level equivalents take priority when both are set.",
 						},
 						{
 							Name:        "retry",
@@ -211,7 +211,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 					Name:        "orq",
 					FlagName:    "orq",
 					Type:        "json",
-					Description: "Orq platform extension parameters. Top-level equivalents take priority when both are set.",
+					Description: "Platform extension parameters. Top-level equivalents take priority when both are set.",
 				},
 				{
 					Name:        "retry",
