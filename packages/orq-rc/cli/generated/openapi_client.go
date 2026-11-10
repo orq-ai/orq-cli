@@ -9639,232 +9639,6 @@ func OpenapiPIIRestore(params *viper.Viper, body string) (*gentleman.Response, m
 	return resp, decoded, nil
 }
 
-// OpenapiPolicyCreate Create policy
-func OpenapiPolicyCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "policies create"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/policies"
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiPolicyDelete Delete policy
-func OpenapiPolicyDelete(paramPolicyId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
-	handlerPath := "policies delete policy-id"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/policies/{policy_id}"
-	if paramPolicyId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter policy_id cannot be empty"))
-	}
-
-	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
-
-	req := bartolocli.Client.Delete().URL(url)
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiPolicyList List policies
-func OpenapiPolicyList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "policies list"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/policies"
-
-	req := bartolocli.Client.Get().URL(url)
-
-	paramLimit := params.GetInt64("limit")
-	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
-		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
-	}
-	paramStartingAfter := params.GetString("starting-after")
-	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
-		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
-	}
-	paramEndingBefore := params.GetString("ending-before")
-	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
-		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
-	}
-	paramProjectId := params.GetString("project-id")
-	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
-		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiPolicyGet Get policy
-func OpenapiPolicyGet(paramPolicyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "policies retrieve policy-id"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/policies/{policy_id}"
-	if paramPolicyId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter policy_id cannot be empty"))
-	}
-
-	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
-
-	req := bartolocli.Client.Get().URL(url)
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiPolicyUpdate Update policy
-func OpenapiPolicyUpdate(paramPolicyId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "policies update policy-id"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/policies/{policy_id}"
-	if paramPolicyId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter policy_id cannot be empty"))
-	}
-
-	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
-
-	req := bartolocli.Client.Patch().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiProjectCreate Create a new project
 func OpenapiProjectCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects create"
@@ -17995,6 +17769,228 @@ func OpenapiCreateDecisions(params *viper.Viper, body string) (*gentleman.Respon
 	url := server + "/v3/router/decisions"
 
 	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiTelemetryDestinationsCreateDestination Create an OpenTelemetry destination
+func OpenapiTelemetryDestinationsCreateDestination(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "telemetry-destinations create-destination"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/telemetry-destinations"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiTelemetryDestinationsDeleteDestination Delete an OpenTelemetry destination
+func OpenapiTelemetryDestinationsDeleteDestination(paramDestinationId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "telemetry-destinations delete-destination destination-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/telemetry-destinations/{destination_id}"
+	if paramDestinationId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter destination_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{destination_id}", neturl.PathEscape(paramDestinationId), 1)
+
+	req := bartolocli.Client.Delete().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiTelemetryDestinationsGetDestination Retrieve an OpenTelemetry destination
+func OpenapiTelemetryDestinationsGetDestination(paramDestinationId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "telemetry-destinations get-destination destination-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/telemetry-destinations/{destination_id}"
+	if paramDestinationId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter destination_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{destination_id}", neturl.PathEscape(paramDestinationId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiTelemetryDestinationsListDestinations List OpenTelemetry destinations
+func OpenapiTelemetryDestinationsListDestinations(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "telemetry-destinations list-destinations"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/telemetry-destinations"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiTelemetryDestinationsUpdateDestination Update an OpenTelemetry destination
+func OpenapiTelemetryDestinationsUpdateDestination(paramDestinationId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "telemetry-destinations update-destination destination-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/telemetry-destinations/{destination_id}"
+	if paramDestinationId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter destination_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{destination_id}", neturl.PathEscape(paramDestinationId), 1)
+
+	req := bartolocli.Client.Put().URL(url)
 
 	if body != "" {
 		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
