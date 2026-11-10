@@ -14,10 +14,12 @@ var errOmpSymlink = errors.New("omp user-state symlink failed")
 const (
 	DefaultOmpModel = "openai/gpt-5.6-terra"
 
-	// omp (oh-my-pi) takes custom providers via a models.yml in its agent
-	// dir; the schema matches pi's models.json, and JSON is valid YAML.
+	// Must equal PiProvider: resolvePiLike passes PiProvider to --provider and
+	// as the providers key, and OmpMergeProvider looks up OmpProvider.
 	OmpProvider = "orq"
 
+	// omp (oh-my-pi) takes custom providers via a models.yml in its agent
+	// dir; the schema matches pi's models.json, and JSON is valid YAML.
 	ompConfigFile = "models.yml"
 )
 
