@@ -78,6 +78,14 @@ type GatewayFlags struct {
 	Trace  bool
 	// Subscription keeps the agent's own subscription login as the model credential; only parsed for agents with SubscriptionAuth set.
 	Subscription bool
+	// MCPEnvAuth is --mcp-auth env: the session's orq MCP entry authenticates with
+	// a reference to ORQ_API_KEY rather than the agent's own OAuth flow.
+	MCPEnvAuth bool
+	// ThreadID and Metadata go to the gateway as headers on the agent's model
+	// calls. Metadata holds the full header names, the shape every agent's wiring
+	// takes.
+	ThreadID string
+	Metadata []RequestHeader
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.
