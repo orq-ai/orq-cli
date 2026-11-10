@@ -16,8 +16,7 @@ const (
 
 	// omp (oh-my-pi) takes custom providers via a models.yml in its agent
 	// dir; the schema matches pi's models.json, and JSON is valid YAML.
-	// resolvePiLike passes PiProvider to --provider, so omp's key must match.
-	OmpProvider = PiProvider
+	OmpProvider = "orq"
 
 	ompConfigFile = "models.yml"
 )
