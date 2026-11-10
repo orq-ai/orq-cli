@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.9.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.0) — 2026-11-10
+
 **Added:** `orq launch` can authenticate the orq MCP server in a run with no
 browser. `--mcp-auth env` (claude, codex, opencode, kilo, gemini) makes the
 session's entry name `ORQ_API_KEY`; the key itself is still never written. The
