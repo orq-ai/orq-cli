@@ -6760,6 +6760,10 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -7049,6 +7053,10 @@ func OpenapiMcpServerList(params *viper.Viper) (*gentleman.Response, map[string]
 	paramSearch := params.GetString("search")
 	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
@@ -12731,6 +12739,11 @@ func OpenapiTracesGet(paramTraceId string, params *viper.Viper) (*gentleman.Resp
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -12826,6 +12839,11 @@ func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -12898,6 +12916,10 @@ func OpenapiTracesListFacetValues(paramField string, params *viper.Viper) (*gent
 	paramFilterOperator := params.GetString("filter-operator")
 	if bartolocli.FlagPassed(params, "filter-operator") || paramFilterOperator != "" {
 		req = req.AddQuery("filter_operator", fmt.Sprintf("%v", paramFilterOperator))
+	}
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
@@ -12975,6 +12997,11 @@ func OpenapiTracesListFields(params *viper.Viper) (*gentleman.Response, map[stri
 	url := server + "/v3/traces/fields"
 
 	req := bartolocli.Client.Get().URL(url)
+
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -13069,6 +13096,10 @@ func OpenapiTracesListSpans(paramTraceId string, params *viper.Viper) (*gentlema
 	paramPageToken := params.GetString("page-token")
 	if bartolocli.FlagPassed(params, "page-token") || paramPageToken != "" {
 		req = req.AddQuery("page_token", fmt.Sprintf("%v", paramPageToken))
+	}
+	paramAllAccessibleProjects := params.GetBool("all-accessible-projects")
+	if bartolocli.FlagPassed(params, "all-accessible-projects") || paramAllAccessibleProjects != false {
+		req = req.AddQuery("all_accessible_projects", fmt.Sprintf("%v", paramAllAccessibleProjects))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

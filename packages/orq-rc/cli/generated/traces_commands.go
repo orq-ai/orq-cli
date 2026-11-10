@@ -384,6 +384,8 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -466,6 +468,8 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -510,6 +514,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd.Flags().String("to", "", bartolocli.WithDateTimeHelp(""))
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("filter-operator", "", "")
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -590,6 +595,8 @@ func registertracesCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
+
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -675,6 +682,7 @@ func registertracesCommands(root *cobra.Command) {
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("page-token", "", "")
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
 
 		bartolocli.SetCustomFlags(cmd)
 

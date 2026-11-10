@@ -252,6 +252,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for the page after the given item id. Mutually exclusive with `ending_before`.")
 		cmd.Flags().String("ending-before", "", "Cursor for the page before the given item id. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("search", "", "Case-insensitive match against the server key and display name.")
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
 
 		bartolocli.SetCustomFlags(cmd)
 

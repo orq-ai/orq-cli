@@ -280,7 +280,7 @@ func registerbatchesCommands(root *cobra.Command) {
 		cmd.Flags().Int64("limit", 0, "Maximum number of batches to return, 1 to 100. Defaults to 20.")
 		cmd.Flags().String("after", "", "Cursor: return batches after this batch id.")
 		cmd.Flags().String("before", "", "Cursor: return batches before this batch id. Cannot be combined with after.")
-		cmd.Flags().String("search", "", "Free-text match on the batch id.")
+		cmd.Flags().String("search", "", "Case-insensitive match on batch id, model, or endpoint.")
 		cmd.Flags().String("status", "", "Comma-separated statuses to include: validating, in_progress, finalizing, completed, failed, expired, cancelling, cancelled.")
 		cmd.Flags().String("endpoint", "", "Comma-separated endpoints to include: /v1/responses, /v1/chat/completions, /v1/embeddings, /v1/completions, /v1/moderations, /v3/router/decisions.")
 
