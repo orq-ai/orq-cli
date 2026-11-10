@@ -26,9 +26,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	// Dry-run stays non-interactive: scripts use it and must get the plain
-	// not-logged-in error, not a prompt.
-	creds, err := resolveCredentialsOrLogin(os.Getenv, !flags.DryRun)
+	creds, err := resolveCredentialsOrLogin(os.Getenv, mayPromptLogin(flags))
 	if err != nil {
 		return 1, err
 	}
@@ -75,6 +73,12 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	}
 
 	return RunChild(def.Binary, args, plan.Env)
+}
+
+// mayPromptLogin is false for callers that must get the plain not-logged-in
+// error: scripts using a dry run, and --mcp-auth env, whose run has no browser.
+func mayPromptLogin(flags GatewayFlags) bool {
+	return !flags.DryRun && !flags.MCPEnvAuth
 }
 
 // probeTimeout bounds a probe so a hung agent binary delays the launch
@@ -141,7 +145,9 @@ Flags:
                         credential this launch resolved. Tools then need a workspace
                         API key with their permissions; a key from 'orq setup' holds
                         only gateway access and model read. Tool approval stays with
-                        the agent, so a headless run may also have to approve each tool
+                        the agent, so a headless run may also have to approve each tool.
+                        env never offers a browser login, and it refuses an ORQ_MCP_URL
+                        off the API host: unset it or drop --mcp-auth env
 `)
 	}
 	if def.RequestHeaders {

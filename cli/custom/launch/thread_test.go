@@ -661,22 +661,57 @@ func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
 		"",
 		DefaultGatewayAPIBaseURL + "/v2/mcp",
 		auth.LegacyDefaultAPIBaseURL + "/v2/mcp",
-		"http://localhost:9000/v2/mcp",
-		"http://127.0.0.1:9000/v2/mcp",
-		"http://[::1]:9000/v2/mcp",
 	} {
 		if err := check(allowed); err != nil {
 			t.Errorf("%q: %v", allowed, err)
 		}
 	}
+	// Local development serves the API and MCP on one origin, so it needs no exemption.
+	if err := checkMCPEnvAuthOrigin("http://localhost:9000", env(map[string]string{"ORQ_MCP_URL": "http://localhost:9000/v2/mcp"})); err != nil {
+		t.Errorf("local development: %v", err)
+	}
 	for _, refused := range []string{
+		"http://localhost:9000/v2/mcp",
+		"http://127.0.0.1:9000/v2/mcp",
+		"http://[::1]:9000/v2/mcp",
 		"https://mcp.example.com/v2/mcp",
 		"https://api.orq.ai@mcp.example.com/v2/mcp",
 		"https://localhost.example.com/v2/mcp",
+		"http://127.0.0.1.evil.com/v2/mcp",
 		"not a url",
 	} {
 		if err := check(refused); err == nil || !strings.Contains(err.Error(), "ORQ_MCP_URL") {
 			t.Errorf("%q: got %v, want a refusal naming ORQ_MCP_URL", refused, err)
+		}
+	}
+	for _, schemeless := range []string{"localhost:9000/v2/mcp", "my.orq.ai/v2/mcp", "not a url"} {
+		if err := check(schemeless); err == nil || !strings.Contains(err.Error(), "http:// or https://") {
+			t.Errorf("%q: got %v, want it to ask for a scheme", schemeless, err)
+		}
+	}
+	if err := check("https://mcp.example.com/v2/mcp"); err == nil || strings.Contains(err.Error(), "http:// or https://") {
+		t.Errorf("a URL with a scheme is refused for its origin: %v", err)
+	}
+	for _, secret := range []string{"https://user:s3cret@mcp.example.com/v2/mcp", "user:s3cret@mcp.example.com/v2/mcp"} {
+		if err := check(secret); err == nil || strings.Contains(err.Error(), "s3cret") {
+			t.Errorf("%q: got %v, want a refusal without the password", secret, err)
+		}
+	}
+}
+
+// --mcp-auth env is for runs with no browser, and the origin check needs the
+// resolved credentials, so a login prompt would come before a possible refusal.
+func TestLoginPromptIsOffForRunsWithNoBrowser(t *testing.T) {
+	for _, tc := range []struct {
+		flags GatewayFlags
+		want  bool
+	}{
+		{GatewayFlags{}, true},
+		{GatewayFlags{DryRun: true}, false},
+		{GatewayFlags{MCPEnvAuth: true}, false},
+	} {
+		if got := mayPromptLogin(tc.flags); got != tc.want {
+			t.Errorf("%+v: got %v, want %v", tc.flags, got, tc.want)
 		}
 	}
 }

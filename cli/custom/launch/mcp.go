@@ -3,7 +3,6 @@ package launch
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -224,25 +223,20 @@ func sessionMCPURL(ctx *AgentContext, agent string) string {
 // checkMCPEnvAuthOrigin refuses to hand this launch's credential to a server on
 // another origin. It is an error because --mcp-auth env is for unattended runs,
 // where nobody reads a warning. The platform serves MCP on the API host, so no
-// real setup needs another origin; loopback is for a server under development.
+// real setup needs another origin: local development serves both on one
+// localhost origin. Loopback gets no exemption, since a tunnel can sit behind it.
 func checkMCPEnvAuthOrigin(apiBase string, getenv func(string) string) error {
 	override := strings.TrimSpace(getenv("ORQ_MCP_URL"))
-	if override == "" || sameAPIOrigin(override, apiBase) || isLoopbackURL(override) {
+	if override == "" || sameAPIOrigin(override, apiBase) {
 		return nil
 	}
-	return fmt.Errorf("ORQ_MCP_URL points at %s, which is not on %s, so --mcp-auth env would send this launch's credential there; unset it or drop --mcp-auth env", override, apiBase)
-}
-
-func isLoopbackURL(target string) bool {
-	parsed, err := neturl.Parse(target)
-	if err != nil {
-		return false
+	// Neither error repeats the whole value: a URL can carry a password, and this
+	// flag runs in CI.
+	parsed, err := neturl.Parse(override)
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("ORQ_MCP_URL needs an http:// or https:// scheme and a host")
 	}
-	host := parsed.Hostname()
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return strings.EqualFold(host, "localhost")
+	return fmt.Errorf("ORQ_MCP_URL points at %s://%s, which is not on %s, so --mcp-auth env would send this launch's credential there; unset it or drop --mcp-auth env", parsed.Scheme, parsed.Host, apiBase)
 }
 
 // mcpEnvAuthWarnings names what --mcp-auth env cannot fix for the caller. It
