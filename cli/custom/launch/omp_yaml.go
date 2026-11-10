@@ -146,7 +146,7 @@ func OmpMergeProvider(path, generated string) ([]byte, error) {
 	}
 	doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}}
 	if path != "" {
-		if filepath.Base(path) == "models.yml" {
+		if filepath.Base(path) == ompConfigFile {
 			if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
 				path = filepath.Join(filepath.Dir(path), "models.json")
 			}

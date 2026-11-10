@@ -35,7 +35,44 @@ func piAgent() AgentDef {
 // dir used as PI_CODING_AGENT_DIR so the user's real ~/.pi/agent is never
 // touched. The apiKey field uses pi's $ENV_VAR interpolation — the key itself
 // stays out of the file.
+//
+// No MCP wiring: pi has no built-in MCP support by design (extensions only,
+// e.g. third-party pi-mcp-adapter); it is the one agent without it. omp, which
+// shares pi's lineage, does take MCP (see extendOmpPlan).
 func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
+	return resolvePiLike(ctx, piLikeSpec{
+		agent:         "pi",
+		tempPrefix:    "orq-pi-",
+		configFile:    "models.json",
+		defaultModel:  DefaultPiModel,
+		baseURLEnvKey: "ORQ_PI_BASE_URL",
+		modelEnvKey:   "PI_MODEL",
+		modelsEnvKey:  "PI_MODELS",
+		apiKeyRef:     "$ORQ_API_KEY",
+	})
+}
+
+// piLikeSpec is what differs between the agents launched through pi's
+// custom-provider mechanism.
+type piLikeSpec struct {
+	agent         string
+	tempPrefix    string
+	configFile    string
+	defaultModel  string
+	baseURLEnvKey string
+	modelEnvKey   string
+	modelsEnvKey  string
+	apiKeyRef     string
+
+	// extendPlan, if set, changes the session dir and plan after configFile is
+	// written with the generated provider config. If it fails, the plan is
+	// cleaned up. Changes it makes outside the session dir stay.
+	extendPlan func(ctx *AgentContext, plan *LaunchPlan, dir, generated string) error
+}
+
+// resolvePiLike writes the generated provider config to a fresh temp dir used
+// as PI_CODING_AGENT_DIR and returns the plan that launches the agent with it.
+func resolvePiLike(ctx *AgentContext, spec piLikeSpec) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
 		AuthToken:         ctx.Creds.APIKey,
 		APIBaseURL:        ctx.Creds.APIBaseURL,
@@ -43,35 +80,30 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		Flags:             ctx.Flags,
 		Fetch:             ctx.Fetch,
 		Normalize:         noopNormalize,
-		DefaultModel:      DefaultPiModel,
-		BaseURLEnvKey:     "ORQ_PI_BASE_URL",
-		ModelEnvKey:       "PI_MODEL",
-		ModelsEnvKey:      "PI_MODELS",
+		DefaultModel:      spec.defaultModel,
+		BaseURLEnvKey:     spec.baseURLEnvKey,
+		ModelEnvKey:       spec.modelEnvKey,
+		ModelsEnvKey:      spec.modelsEnvKey,
 		CollectModelInfos: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	config, err := BuildPiModelsJSON(resolved.BaseURL, "$ORQ_API_KEY", resolved.GatewayModels, resolved.Infos)
+	generated, err := BuildPiModelsJSON(resolved.BaseURL, spec.apiKeyRef, resolved.GatewayModels, resolved.Infos)
 	if err != nil {
 		return nil, err
 	}
-	dir, cleanup, err := writePiConfigDir(config)
+	dir, cleanup, err := writePiLikeConfigDir(spec.tempPrefix, spec.configFile, generated)
 	if err != nil {
 		return nil, err
 	}
 
-	// No MCP wiring: pi has no built-in MCP support by design (extensions
-	// only, e.g. third-party pi-mcp-adapter); it is the one agent without
-	// it. omp, which shares pi's lineage, does take MCP and always gets the
-	// session entry (see resolveOmp).
-	//
-	// Skills do not go in here: pi is a sharedReader whose only skills target
-	// is ~/.agents/skills (cli/custom/skills/targets.go), not
-	// PI_CODING_AGENT_DIR — that env var only redirects pi's own config dir.
-	// Writing into it would be a silent no-op, so pi takes the refcounted
-	// real-home path below instead.
+	// Skills do not go in here: pi and omp are sharedReaders that read
+	// .agents/skills (cli/custom/skills/targets.go), and PI_CODING_AGENT_DIR
+	// only redirects the agent's own config dir. Writing into it would be a
+	// silent no-op, so they take the refcounted session install below, which
+	// links into the current directory's set or, from $HOME, the global set.
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
@@ -82,7 +114,13 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
 	}
-	maybeInstallSessionSkills(ctx, plan, "pi")
+	if spec.extendPlan != nil {
+		if err := spec.extendPlan(ctx, plan, dir, generated); err != nil {
+			plan.Cleanup()
+			return nil, err
+		}
+	}
+	maybeInstallSessionSkills(ctx, plan, spec.agent)
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
 	appendCapWarning(plan, resolved)
 	return plan, nil
@@ -162,13 +200,13 @@ func BuildPiModelsJSON(baseURL, apiKeyRef string, gatewayModels []string, infos 
 	return string(encoded), err
 }
 
-func writePiConfigDir(modelsJSON string) (dir string, cleanup func(), err error) {
-	dir, err = os.MkdirTemp("", "orq-pi-")
+func writePiLikeConfigDir(tempPrefix, configFile, content string) (dir string, cleanup func(), err error) {
+	dir, err = os.MkdirTemp("", tempPrefix)
 	if err != nil {
 		return "", nil, err
 	}
 	cleanup = func() { os.RemoveAll(dir) }
-	if err := os.WriteFile(filepath.Join(dir, "models.json"), []byte(modelsJSON), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, configFile), []byte(content), 0o600); err != nil {
 		cleanup()
 		return "", nil, err
 	}
