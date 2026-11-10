@@ -222,9 +222,10 @@ func sessionMCPURL(ctx *AgentContext, agent string) string {
 
 // checkMCPEnvAuthOrigin refuses to hand this launch's credential to a server on
 // another origin. It is an error because --mcp-auth env is for unattended runs,
-// where nobody reads a warning. The platform serves MCP on the API host, so no
-// real setup needs another origin: local development serves both on one
-// localhost origin. Loopback gets no exemption, since a tunnel can sit behind it.
+// where nobody reads a warning. ORQ_MCP_URL must match the API base scheme, host
+// and port. The default MCP URL is derived from the API base, so only a hand-set
+// override can differ, including a local MCP server on another port than the
+// local API base. Loopback gets no exemption, since a tunnel can sit behind it.
 func checkMCPEnvAuthOrigin(apiBase string, getenv func(string) string) error {
 	override := strings.TrimSpace(getenv("ORQ_MCP_URL"))
 	if override == "" || sameAPIOrigin(override, apiBase) {
@@ -233,7 +234,10 @@ func checkMCPEnvAuthOrigin(apiBase string, getenv func(string) string) error {
 	// Neither error repeats the whole value: a URL can carry a password, and this
 	// flag runs in CI.
 	parsed, err := neturl.Parse(override)
-	if err != nil || parsed.Host == "" {
+	if err != nil {
+		return fmt.Errorf("ORQ_MCP_URL is not a valid URL; check its host and port")
+	}
+	if parsed.Host == "" {
 		return fmt.Errorf("ORQ_MCP_URL needs an http:// or https:// scheme and a host")
 	}
 	return fmt.Errorf("ORQ_MCP_URL points at %s://%s, which is not on %s, so --mcp-auth env would send this launch's credential there; unset it or drop --mcp-auth env", parsed.Scheme, parsed.Host, apiBase)

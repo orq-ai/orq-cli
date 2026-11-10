@@ -26,7 +26,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	creds, err := resolveCredentialsOrLogin(os.Getenv, mayPromptLogin(flags))
+	creds, err := resolveLaunchCredentials(os.Getenv, mayPromptLogin(flags))
 	if err != nil {
 		return 1, err
 	}
@@ -74,6 +74,10 @@ func Run(def *AgentDef, argv []string) (int, error) {
 
 	return RunChild(def.Binary, args, plan.Env)
 }
+
+// resolveLaunchCredentials is a variable so a test can see whether Run allows the
+// login prompt; the prompt itself needs a terminal.
+var resolveLaunchCredentials = resolveCredentialsOrLogin
 
 // mayPromptLogin is false for callers that must get the plain not-logged-in
 // error: scripts using a dry run, and --mcp-auth env, whose run has no browser.
@@ -147,7 +151,8 @@ Flags:
                         only gateway access and model read. Tool approval stays with
                         the agent, so a headless run may also have to approve each tool.
                         env never offers a browser login, and it refuses an ORQ_MCP_URL
-                        off the API host: unset it or drop --mcp-auth env
+                        whose scheme, host or port differs from the API base: unset
+                        it or drop --mcp-auth env
 `)
 	}
 	if def.RequestHeaders {

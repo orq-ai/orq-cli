@@ -2,6 +2,7 @@ package launch
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -670,6 +671,10 @@ func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
 	if err := checkMCPEnvAuthOrigin("http://localhost:9000", env(map[string]string{"ORQ_MCP_URL": "http://localhost:9000/v2/mcp"})); err != nil {
 		t.Errorf("local development: %v", err)
 	}
+	// A local MCP server on another port than the local API base is refused too.
+	if err := checkMCPEnvAuthOrigin("http://localhost:4200", env(map[string]string{"ORQ_MCP_URL": "http://localhost:3000/v2/mcp"})); err == nil || !strings.Contains(err.Error(), "which is not on") {
+		t.Errorf("local port mismatch: got %v, want an origin refusal", err)
+	}
 	for _, refused := range []string{
 		"http://localhost:9000/v2/mcp",
 		"http://127.0.0.1:9000/v2/mcp",
@@ -678,10 +683,9 @@ func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
 		"https://api.orq.ai@mcp.example.com/v2/mcp",
 		"https://localhost.example.com/v2/mcp",
 		"http://127.0.0.1.evil.com/v2/mcp",
-		"not a url",
 	} {
-		if err := check(refused); err == nil || !strings.Contains(err.Error(), "ORQ_MCP_URL") {
-			t.Errorf("%q: got %v, want a refusal naming ORQ_MCP_URL", refused, err)
+		if err := check(refused); err == nil || !strings.Contains(err.Error(), "which is not on") {
+			t.Errorf("%q: got %v, want an origin refusal", refused, err)
 		}
 	}
 	for _, schemeless := range []string{"localhost:9000/v2/mcp", "my.orq.ai/v2/mcp", "not a url"} {
@@ -689,8 +693,11 @@ func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
 			t.Errorf("%q: got %v, want it to ask for a scheme", schemeless, err)
 		}
 	}
-	if err := check("https://mcp.example.com/v2/mcp"); err == nil || strings.Contains(err.Error(), "http:// or https://") {
-		t.Errorf("a URL with a scheme is refused for its origin: %v", err)
+	for _, unparsable := range []string{"https://mcp.example.com:abc/v2/mcp", "https://user:s3cret@mcp.example.com:abc/v2/mcp"} {
+		err := check(unparsable)
+		if err == nil || !strings.Contains(err.Error(), "not a valid URL") || strings.Contains(err.Error(), "s3cret") {
+			t.Errorf("%q: got %v, want a parse refusal without the password", unparsable, err)
+		}
 	}
 	for _, secret := range []string{"https://user:s3cret@mcp.example.com/v2/mcp", "user:s3cret@mcp.example.com/v2/mcp"} {
 		if err := check(secret); err == nil || strings.Contains(err.Error(), "s3cret") {
@@ -702,16 +709,28 @@ func TestMCPEnvAuthRefusesAnotherOrigin(t *testing.T) {
 // --mcp-auth env is for runs with no browser, and the origin check needs the
 // resolved credentials, so a login prompt would come before a possible refusal.
 func TestLoginPromptIsOffForRunsWithNoBrowser(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	prev := resolveLaunchCredentials
+	t.Cleanup(func() { resolveLaunchCredentials = prev })
+	stop := errors.New("stop after credentials")
 	for _, tc := range []struct {
-		flags GatewayFlags
-		want  bool
+		argv []string
+		want bool
 	}{
-		{GatewayFlags{}, true},
-		{GatewayFlags{DryRun: true}, false},
-		{GatewayFlags{MCPEnvAuth: true}, false},
+		{[]string{"--no-fetch-models", "--no-skills"}, true},
+		{[]string{"--dry-run", "--no-fetch-models", "--no-skills"}, false},
+		{[]string{"--no-fetch-models", "--no-skills", "--mcp-auth", "env"}, false},
 	} {
-		if got := mayPromptLogin(tc.flags); got != tc.want {
-			t.Errorf("%+v: got %v, want %v", tc.flags, got, tc.want)
+		var got bool
+		resolveLaunchCredentials = func(_ func(string) string, allowPrompt bool) (*Credentials, error) {
+			got = allowPrompt
+			return nil, stop
+		}
+		if _, err := Run(FindAgent("gemini"), tc.argv); !errors.Is(err, stop) {
+			t.Fatalf("%v: err=%v, want the stub's error", tc.argv, err)
+		}
+		if got != tc.want {
+			t.Errorf("%v: allowPrompt=%v, want %v", tc.argv, got, tc.want)
 		}
 	}
 }
