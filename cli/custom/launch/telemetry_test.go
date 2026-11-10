@@ -1,10 +1,13 @@
 package launch
 
 import (
+	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -125,6 +128,11 @@ func TestTraceEndpoint(t *testing.T) {
 	}
 	if got := plan.Env["OTEL_EXPORTER_OTLP_HEADERS"]; got != "Authorization=Bearer orq-key" {
 		t.Errorf("headers: %q", got)
+	}
+	// The embedded plugin reads only ORQ_OTLP_ENDPOINT, so it must name the
+	// exporter's destination.
+	if plan.Env["ORQ_OTLP_ENDPOINT"] != plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"] {
+		t.Errorf("ORQ_OTLP_ENDPOINT %q differs from the exporter's %q", plan.Env["ORQ_OTLP_ENDPOINT"], plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"])
 	}
 
 	// Self-hosted installs must keep their telemetry inside their own network.
@@ -442,5 +450,37 @@ func TestNoOtelSetsTheSwitchWithoutProbing(t *testing.T) {
 	}
 	if len(calls) != 0 {
 		t.Errorf("a dry run ran claude: %v", calls)
+	}
+}
+
+// vendor-skills.sh rebuilds the manifest from assistant-plugins'
+// marketplace entry. A shape change upstream would load a plugin with no hooks,
+// which traces nothing and reports no error.
+func TestEmbeddedTracePluginManifest(t *testing.T) {
+	raw, err := fs.ReadFile(tracePlugin, "assets/orq-trace/.claude-plugin/plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Name  string                     `json:"name"`
+		Hooks map[string]json.RawMessage `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != TracePluginName {
+		t.Errorf("name %q, want %q", m.Name, TracePluginName)
+	}
+	if len(m.Hooks) == 0 {
+		t.Fatal("manifest declares no hooks")
+	}
+	paths := regexp.MustCompile(`\$\{CLAUDE_PLUGIN_ROOT\}/([^"\\]+)`).FindAllStringSubmatch(string(raw), -1)
+	if len(paths) == 0 {
+		t.Fatal("no hook command references ${CLAUDE_PLUGIN_ROOT}")
+	}
+	for _, p := range paths {
+		if _, err := fs.Stat(tracePlugin, "assets/orq-trace/"+p[1]); err != nil {
+			t.Errorf("hook command names %s, which is not embedded", p[1])
+		}
 	}
 }

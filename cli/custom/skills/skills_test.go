@@ -25,6 +25,8 @@ func TestNamesAreOrqPrefixedAndNonEmpty(t *testing.T) {
 		t.Fatal("no skills embedded; run scripts/vendor-skills.sh")
 	}
 	for _, n := range names {
+		// create-skill: assistant-plugins 4.0.0 shipped it unprefixed;
+		// orq-ai/assistant-plugins#107 renames it. Drop it with that vendor bump.
 		if !strings.HasPrefix(n, "orq-") && n != "evaluatorq" && n != "create-skill" {
 			t.Errorf("skill %q is neither orq-prefixed nor a known exception", n)
 		}

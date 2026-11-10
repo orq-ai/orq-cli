@@ -52,22 +52,24 @@ const traceProfile = "orq-launch"
 // hooks already carry content, with local redaction, and shipping prompts
 // through two redaction stories is worse than shipping them once.
 func traceEnv(ctx *AgentContext, configPath string) map[string]string {
+	endpoint := OTLPEndpoint(ctx.Creds.APIBaseURL)
 	return map[string]string{
 		"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
 		"OTEL_METRICS_EXPORTER":        "otlp",
 		"OTEL_LOGS_EXPORTER":           "otlp",
 		"OTEL_TRACES_EXPORTER":         "none",
 		"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
-		"OTEL_EXPORTER_OTLP_ENDPOINT":  OTLPEndpoint(ctx.Creds.APIBaseURL),
+		"OTEL_EXPORTER_OTLP_ENDPOINT":  endpoint,
 		"OTEL_EXPORTER_OTLP_HEADERS":   "Authorization=Bearer " + ctx.Creds.APIKey,
 		// Claude Code strips OTEL_* from the env its hooks run with, and the
 		// plugin's own derivation from a base URL breaks on non-production
-		// hosts. A session-only config whose profile outranks the user's shell
-		// and ~/.orq/config.json pins the destination for plugins before 0.6;
-		// 0.6 reads no config file and takes ORQ_OTLP_ENDPOINT instead.
+		// hosts, so the destination is passed explicitly. The embedded
+		// orq-trace (0.6+) reads ORQ_OTLP_ENDPOINT. The session-only config
+		// is for a separately installed orq-trace older than 0.6, which
+		// wireTrace uses instead of the embedded copy when it is enabled.
 		"ORQ_CONFIG_PATH":   configPath,
 		"ORQ_TRACE_PROFILE": traceProfile,
-		"ORQ_OTLP_ENDPOINT": OTLPEndpoint(ctx.Creds.APIBaseURL),
+		"ORQ_OTLP_ENDPOINT": endpoint,
 	}
 }
 
