@@ -30,7 +30,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "cancel-run experiment-id run-id",
 			Short:   "Cancel a run",
-			Long:    bartolocli.Markdown("Stops queued and running cells and moves the run to canceled. A cell whose execution is already in flight may still write its result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `row_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Stops queued and running cells and moves the run to canceled. A cell whose execution is already in flight may still write its result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `row_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,7 +45,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "row_ids",
 							FlagName:    "row-ids",
 							Type:        "string-slice",
-							Description: "",
+							Description: "Rows whose queued and running cells are canceled. Empty cancels every row.\n The run moves to canceled either way.",
 						},
 					},
 				)
@@ -75,7 +75,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "row_ids",
 					FlagName:    "row-ids",
 					Type:        "string-slice",
-					Description: "",
+					Description: "Rows whose queued and running cells are canceled. Empty cancels every row.\n The run moves to canceled either way.",
 				},
 			},
 		)
@@ -100,13 +100,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an experiment",
-			Long:    bartolocli.Markdown("Creates an experiment. project_id defaults to the API key's project and is required for keys that span several projects. When dataset_id is set, a draft run is created with rows from that dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `dataset_id` (string)\n- `dataset_version_id` (string)\n- `display_name` (string)\n- `project_id` (string)\n- `source_run` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates an experiment and its first run, a draft named Run 1. When dataset_id is set, the run gets one row per datapoint, up to 1000. project_id defaults to the caller's project and is required for API keys that span several projects.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `dataset_id` (string)\n- `display_name` (string, required)\n- `project_id` (string)\n- `source_run` (allOf)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"dataset_id\": \"dataset_id\",\n  \"dataset_version_id\": \"dataset_version_id\",\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"source_run\": {\n    \"experiment_id\": \"experiment_id\",\n    \"run_id\": \"run_id\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -115,31 +115,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "dataset_id",
 							FlagName:    "dataset-id",
 							Type:        "string",
-							Description: "",
-						},
-						{
-							Name:        "dataset_version_id",
-							FlagName:    "dataset-version-id",
-							Type:        "string",
-							Description: "",
+							Description: "Dataset whose datapoints become the rows of the first run, at most 1000.\n Must be in the experiment's project. Omit to start with an empty run.",
 						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
+							Description: "Experiment name, 1 to 255 characters.",
 						},
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "Project the experiment is created in; defaults to the API key's project when omitted.",
+							Description: "Project the experiment is created in. Defaults to the caller's project:\n the API key's project, or the project open in the AI Studio. Required for\n API keys that span several projects.",
 						},
 						{
 							Name:        "source_run",
 							FlagName:    "source-run",
 							Type:        "json",
-							Description: "Copies the task, evaluator and review columns of an existing run into the\n new experiment's first run (fork).",
+							Description: "Run to fork. Its task, metric, evaluator and review columns are copied\n into the new experiment's first run; rows still come from `dataset_id`.\n Must be in the same project as the new experiment.",
 						},
 					},
 				)
@@ -169,31 +163,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "dataset_id",
 					FlagName:    "dataset-id",
 					Type:        "string",
-					Description: "",
-				},
-				{
-					Name:        "dataset_version_id",
-					FlagName:    "dataset-version-id",
-					Type:        "string",
-					Description: "",
+					Description: "Dataset whose datapoints become the rows of the first run, at most 1000.\n Must be in the experiment's project. Omit to start with an empty run.",
 				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
+					Description: "Experiment name, 1 to 255 characters.",
 				},
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "Project the experiment is created in; defaults to the API key's project when omitted.",
+					Description: "Project the experiment is created in. Defaults to the caller's project:\n the API key's project, or the project open in the AI Studio. Required for\n API keys that span several projects.",
 				},
 				{
 					Name:        "source_run",
 					FlagName:    "source-run",
 					Type:        "json",
-					Description: "Copies the task, evaluator and review columns of an existing run into the\n new experiment's first run (fork).",
+					Description: "Run to fork. Its task, metric, evaluator and review columns are copied\n into the new experiment's first run; rows still come from `dataset_id`.\n Must be in the same project as the new experiment.",
 				},
 			},
 		)
@@ -218,13 +206,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-eval experiment-id run-id",
 			Short:   "Add an eval column",
-			Long:    bartolocli.Markdown("Links an existing evaluator. Config is updated at the evaluator source, not here.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluator_id` (string)\n- `position` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Links an existing evaluator. Each row gets one evaluator cell per task column. Config is updated at the evaluator source, not here.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluator_id` (string, required)\n- `position` (integer)\n\nRequired fields: `evaluator_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"evaluator_id\": \"evaluator_id\",\n  \"position\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"evaluator_id\": \"evaluator_id\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -233,13 +221,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "evaluator_id",
 							FlagName:    "evaluator-id",
 							Type:        "string",
-							Description: "",
+							Description: "ID of the evaluator to add. Each row gets one evaluator cell per task\n column.",
 						},
 						{
 							Name:        "position",
 							FlagName:    "position",
 							Type:        "int64",
-							Description: "",
+							Description: "0-based position among the run's columns. Defaults to the end.",
 						},
 					},
 				)
@@ -269,13 +257,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "evaluator_id",
 					FlagName:    "evaluator-id",
 					Type:        "string",
-					Description: "",
+					Description: "ID of the evaluator to add. Each row gets one evaluator cell per task\n column.",
 				},
 				{
 					Name:        "position",
 					FlagName:    "position",
 					Type:        "int64",
-					Description: "",
+					Description: "0-based position among the run's columns. Defaults to the end.",
 				},
 			},
 		)
@@ -300,13 +288,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-review experiment-id run-id",
 			Short:   "Add a human review column",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `human_eval_id` (string)\n- `human_eval_type` (string)\n- `position` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Adds a human review column. Each row gets one review cell per task column.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `human_eval_id` (string, required)\n- `human_eval_type` (string)\n- `position` (integer)\n\nRequired fields: `human_eval_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"human_eval_id\": \"human_eval_id\",\n  \"human_eval_type\": \"human_eval_type\",\n  \"position\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"human_eval_id\": \"human_eval_id\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -315,25 +303,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
+							Description: "Column name. Defaults to `human_eval_id`.",
 						},
 						{
 							Name:        "human_eval_id",
 							FlagName:    "human-eval-id",
 							Type:        "string",
-							Description: "",
+							Description: "ID of the human review definition. Each row gets one review cell per task\n column.",
 						},
 						{
 							Name:        "human_eval_type",
 							FlagName:    "human-eval-type",
 							Type:        "string",
-							Description: "",
+							Description: "Value type the review accepts: `range`, `single_select`, `multi_select`, `text` or `correction`. Empty accepts\n any value.",
 						},
 						{
 							Name:        "position",
 							FlagName:    "position",
 							Type:        "int64",
-							Description: "",
+							Description: "0-based position among the run's columns. Defaults to the end.",
 						},
 					},
 				)
@@ -363,25 +351,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
+					Description: "Column name. Defaults to `human_eval_id`.",
 				},
 				{
 					Name:        "human_eval_id",
 					FlagName:    "human-eval-id",
 					Type:        "string",
-					Description: "",
+					Description: "ID of the human review definition. Each row gets one review cell per task\n column.",
 				},
 				{
 					Name:        "human_eval_type",
 					FlagName:    "human-eval-type",
 					Type:        "string",
-					Description: "",
+					Description: "Value type the review accepts: `range`, `single_select`, `multi_select`, `text` or `correction`. Empty accepts\n any value.",
 				},
 				{
 					Name:        "position",
 					FlagName:    "position",
 					Type:        "int64",
-					Description: "",
+					Description: "0-based position among the run's columns. Defaults to the end.",
 				},
 			},
 		)
@@ -406,7 +394,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-run experiment-id",
 			Short:   "Create a run",
-			Long:    bartolocli.Markdown("Creates a new run, copying columns from the selected run when present. A rerun is a new run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`"),
+			Long:    bartolocli.Markdown("Creates a new run, copying columns from the selected run when present. A rerun is a new run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -421,13 +409,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
-							Description: "",
+							Description: "Run name. Defaults to `Run ` plus the last four characters of the run ID.",
 						},
 						{
 							Name:        "settings",
 							FlagName:    "settings",
 							Type:        "json",
-							Description: "",
+							Description: "Execution settings. Concurrency defaults to 10.",
 						},
 					},
 				)
@@ -457,13 +445,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
-					Description: "",
+					Description: "Run name. Defaults to `Run ` plus the last four characters of the run ID.",
 				},
 				{
 					Name:        "settings",
 					FlagName:    "settings",
 					Type:        "json",
-					Description: "",
+					Description: "Execution settings. Concurrency defaults to 10.",
 				},
 			},
 		)
@@ -488,13 +476,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-task experiment-id run-id",
 			Short:   "Add a task column",
-			Long:    bartolocli.Markdown("Attaches a prompt, orq agent, or (reserved) harness config as a task column. Input mapping is required.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent` (object)\n- `display_name` (string)\n- `harness` (object)\n- `openresponse` (object)\n- `position` (integer)\n- `prompt` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Adds a task column with one source: a prompt, an agent, or an openresponse column filled outside orq.ai. Every existing row gets a cell for it, and the first task column also adds cost and latency metric columns.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent` (allOf)\n- `display_name` (string, required)\n- `openresponse` (allOf)\n- `position` (integer)\n- `prompt` (allOf)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"harness\": {\n    \"harness_config_id\": \"harness_config_id\"\n  },\n  \"openresponse\": {},\n  \"position\": 0,\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -503,37 +491,31 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "agent",
 							FlagName:    "agent",
 							Type:        "json",
-							Description: "",
+							Description: "Runs an agent.",
 						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
-						},
-						{
-							Name:        "harness",
-							FlagName:    "harness",
-							Type:        "json",
-							Description: "",
+							Description: "Column name.",
 						},
 						{
 							Name:        "openresponse",
 							FlagName:    "openresponse",
 							Type:        "json",
-							Description: "",
+							Description: "Creates a column whose cells are filled outside orq.ai.",
 						},
 						{
 							Name:        "position",
 							FlagName:    "position",
 							Type:        "int64",
-							Description: "",
+							Description: "0-based position among the run's columns. Defaults to the end.",
 						},
 						{
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "json",
-							Description: "",
+							Description: "Runs a prompt. Set exactly one of `prompt`, `agent` or `openresponse`.",
 						},
 					},
 				)
@@ -563,37 +545,31 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "agent",
 					FlagName:    "agent",
 					Type:        "json",
-					Description: "",
+					Description: "Runs an agent.",
 				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
-				},
-				{
-					Name:        "harness",
-					FlagName:    "harness",
-					Type:        "json",
-					Description: "",
+					Description: "Column name.",
 				},
 				{
 					Name:        "openresponse",
 					FlagName:    "openresponse",
 					Type:        "json",
-					Description: "",
+					Description: "Creates a column whose cells are filled outside orq.ai.",
 				},
 				{
 					Name:        "position",
 					FlagName:    "position",
 					Type:        "int64",
-					Description: "",
+					Description: "0-based position among the run's columns. Defaults to the end.",
 				},
 				{
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "json",
-					Description: "",
+					Description: "Runs a prompt. Set exactly one of `prompt`, `agent` or `openresponse`.",
 				},
 			},
 		)
@@ -616,7 +592,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete experiment-id",
 			Short:   "Delete an experiment",
-			Long:    bartolocli.Markdown("Deletes an experiment and its runs.\n\n## Arguments\n\n- `experiment-id`"),
+			Long:    bartolocli.Markdown("Deletes an experiment with all its runs, rows and cells.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -660,7 +636,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-eval experiment-id run-id eval-id",
 			Short:   "Remove an eval column",
-			Long:    bartolocli.Markdown("Remove an eval column\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `eval-id`"),
+			Long:    bartolocli.Markdown("Removes an evaluator column and all its cells.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `eval-id` — ID of the evaluator column."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -704,7 +680,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-review experiment-id run-id review-id",
 			Short:   "Remove a human review column",
-			Long:    bartolocli.Markdown("Remove a human review column\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `review-id`"),
+			Long:    bartolocli.Markdown("Removes a human review column and all its cells.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `review-id` — ID of the review column."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -750,7 +726,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-rows experiment-id run-id",
 			Short:   "Delete rows",
-			Long:    bartolocli.Markdown("Deletes the given rows of a run and their cells.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `row_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Deletes the given rows of a run and their cells.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `row_ids` (array, required)\n\nRequired fields: `row_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -765,7 +741,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "row_ids",
 							FlagName:    "row-ids",
 							Type:        "string-slice",
-							Description: "",
+							Description: "Rows to delete, at least one. Unknown IDs are ignored as long as one row\n matches.",
 						},
 					},
 				)
@@ -795,7 +771,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "row_ids",
 					FlagName:    "row-ids",
 					Type:        "string-slice",
-					Description: "",
+					Description: "Rows to delete, at least one. Unknown IDs are ignored as long as one row\n matches.",
 				},
 			},
 		)
@@ -818,7 +794,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-run experiment-id run-id",
 			Short:   "Delete a run",
-			Long:    bartolocli.Markdown("Deletes a run and its cell data. Distinct from cancel, which keeps completed cells.\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Deletes a run and its cell data. The last run of an experiment cannot be deleted. Distinct from cancel, which keeps completed cells.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -862,7 +838,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-task experiment-id run-id task-id",
 			Short:   "Delete a task column",
-			Long:    bartolocli.Markdown("Delete a task column\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `task-id`"),
+			Long:    bartolocli.Markdown("Deletes a task column with its cells and the evaluator, metric and review cells linked to it. Deleting the last task column also removes the metric columns.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `task-id` — ID of the task column."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -906,7 +882,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "duplicate-row experiment-id run-id row-id",
 			Short:   "Duplicate a row",
-			Long:    bartolocli.Markdown("Copies a row's dataset cells into a new row placed after the source. Task, evaluator, metric and review cells start empty.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `row-id`"),
+			Long:    bartolocli.Markdown("Copies a row into a new row at the end of the run. Dataset and review cells keep their values; task, evaluator and metric cells start empty.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `row-id` — ID of the row to copy."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -958,7 +934,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "execute-run experiment-id run-id",
 			Short:   "Execute a run",
-			Long:    bartolocli.Markdown("Executes cells at the requested scope. FULL, PARTIAL, ROW and COLUMN queue the matching cells (a task column also queues its linked evaluator, metric and review cells) and start the orchestrator, which also re-runs failed cells of every row it picks up. A run that is already queued or running rejects new execution until it finishes or is cancelled. CELL re-runs one task or evaluator cell in place. Re-executing a terminal run does not require creating a new run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `constraints` (object)\n- `repeat_count` (integer)\n- `scope` (string)\n- `targets` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Executes cells at the requested scope. FULL, PARTIAL, ROW and COLUMN queue the matching cells (a task column also queues its linked evaluator and metric cells) and start the orchestrator, which also re-runs failed cells of every row it picks up. A run that is already queued or running rejects new execution until it finishes or is cancelled. CELL re-runs one task or evaluator cell in place. Re-executing a terminal run does not require creating a new run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `constraints` (allOf)\n- `scope` (string, required)\n- `targets` (array)\n\nRequired fields: `scope`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -973,19 +949,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "constraints",
 							FlagName:    "constraints",
 							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "repeat_count",
-							FlagName:    "repeat-count",
-							Type:        "int64",
-							Description: "",
+							Description: "Limits for this execution, saved into the run's settings.",
 						},
 						{
 							Name:        "scope",
 							FlagName:    "scope",
 							Type:        "enum-string",
-							Description: "",
+							Description: "What to execute. `EXECUTE_SCOPE_FULL`: every executable cell.\n `EXECUTE_SCOPE_PARTIAL`: like full, but skips completed and running cells.\n `EXECUTE_SCOPE_ROW`: the cells of the rows in `targets`.\n `EXECUTE_SCOPE_COLUMN`: the cells of the columns in `targets`.\n `EXECUTE_SCOPE_CELL`: each combination of a target row and a target\n column. Targets also narrow full and partial executions.",
 							Enum: []string{
 								"EXECUTE_SCOPE_UNSPECIFIED",
 								"EXECUTE_SCOPE_CELL",
@@ -999,7 +969,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "targets",
 							FlagName:    "targets",
 							Type:        "json",
-							Description: "",
+							Description: "Rows and columns to execute. Required for row, column and cell scope.",
 						},
 					},
 				)
@@ -1029,19 +999,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "constraints",
 					FlagName:    "constraints",
 					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "repeat_count",
-					FlagName:    "repeat-count",
-					Type:        "int64",
-					Description: "",
+					Description: "Limits for this execution, saved into the run's settings.",
 				},
 				{
 					Name:        "scope",
 					FlagName:    "scope",
 					Type:        "enum-string",
-					Description: "",
+					Description: "What to execute. `EXECUTE_SCOPE_FULL`: every executable cell.\n `EXECUTE_SCOPE_PARTIAL`: like full, but skips completed and running cells.\n `EXECUTE_SCOPE_ROW`: the cells of the rows in `targets`.\n `EXECUTE_SCOPE_COLUMN`: the cells of the columns in `targets`.\n `EXECUTE_SCOPE_CELL`: each combination of a target row and a target\n column. Targets also narrow full and partial executions.",
 					Enum: []string{
 						"EXECUTE_SCOPE_UNSPECIFIED",
 						"EXECUTE_SCOPE_CELL",
@@ -1055,7 +1019,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "targets",
 					FlagName:    "targets",
 					Type:        "json",
-					Description: "",
+					Description: "Rows and columns to execute. Required for row, column and cell scope.",
 				},
 			},
 		)
@@ -1078,7 +1042,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "export-run experiment-id run-id",
 			Short:   "Export a run",
-			Long:    bartolocli.Markdown("Downloads the run as a file, including human review and evaluator corrections made after an earlier export.\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Downloads the run as a file, including human review and evaluator corrections made after an earlier export.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1100,7 +1064,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().String("format", "", " (one of: csv, json, jsonl)")
+		cmd.Flags().String("format", "", "File format: `json` (an array of records), `jsonl` (one record per line) or `csv`. Each record is one row and task column. (one of: csv, json, jsonl)")
 		_ = cmd.RegisterFlagCompletionFunc("format", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"csv", "json", "jsonl"}, cobra.ShellCompDirectiveNoFileComp
 		})
@@ -1123,7 +1087,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get experiment-id",
 			Short:   "Get an experiment",
-			Long:    bartolocli.Markdown("Returns experiment metadata. Runs and cell data are separate resources.\n\n## Arguments\n\n- `experiment-id`"),
+			Long:    bartolocli.Markdown("Returns experiment metadata. Runs and cell data are separate resources.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1163,7 +1127,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-run experiment-id run-id",
 			Short:   "Get a run",
-			Long:    bartolocli.Markdown("Returns run status, per-cell status counts, row count, and column configs. Does not return the cell matrix.\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Returns run status, per-cell status counts, row count, and column configs. Does not return the cell matrix.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1203,7 +1167,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-run-metrics experiment-id run-id",
 			Short:   "Get run metrics",
-			Long:    bartolocli.Markdown("Returns aggregated evaluator and built-in metrics for a run, keyed by task column and metric. Pass baseline_run_id to include the delta against another run.\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Returns aggregated evaluator and built-in metrics for a run, keyed by task column and metric. Pass baseline_run_id to include the delta against another run.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1225,7 +1189,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().String("baseline-run-id", "", "")
+		cmd.Flags().String("baseline-run-id", "", "Run of the same experiment to compare against. A run without values returns no baseline.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1267,10 +1231,10 @@ func registerexperimentsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "")
-		cmd.Flags().String("ending-before", "", "")
-		cmd.Flags().String("project-id", "", "")
+		cmd.Flags().Int64("limit", 0, "Page size, 1 to 200. Defaults to 25.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `experiment_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `experiment_id` of the first item from the previous page.")
+		cmd.Flags().String("project-id", "", "Restrict results to one project. Omit to list every project the caller can access.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1290,7 +1254,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-evals experiment-id run-id",
 			Short:   "List eval columns",
-			Long:    bartolocli.Markdown("List eval columns\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Lists the evaluator columns of a run.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1330,7 +1294,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-reviews experiment-id run-id",
 			Short:   "List human review columns",
-			Long:    bartolocli.Markdown("List human review columns\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Lists the human review columns of a run.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1370,7 +1334,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-runs experiment-id",
 			Short:   "List runs",
-			Long:    bartolocli.Markdown("Lists runs for an experiment, newest first. Each run is metadata only.\n\n## Arguments\n\n- `experiment-id`"),
+			Long:    bartolocli.Markdown("Lists runs for an experiment, newest first. Each run is metadata only.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1392,10 +1356,10 @@ func registerexperimentsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "")
-		cmd.Flags().String("ending-before", "", "")
-		cmd.Flags().Bool("include-metrics", false, "")
+		cmd.Flags().Int64("limit", 0, "Page size, 1 to 200. Defaults to 25.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `run_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `run_id` of the first item from the previous page.")
+		cmd.Flags().Bool("include-metrics", false, "Include each run's average evaluator results in `metrics`.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1415,7 +1379,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-tasks experiment-id run-id",
 			Short:   "List task columns",
-			Long:    bartolocli.Markdown("List task columns\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Lists the task columns of a run: prompt, agent and openresponse columns.\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1452,252 +1416,18 @@ func registerexperimentsCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " patch-eval-cell experiment-id run-id eval-id datapoint-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "patch-eval-cell experiment-id run-id eval-id datapoint-id",
-			Short:   "Correct an eval cell",
-			Long:    bartolocli.Markdown("Human override of an automated evaluator verdict on one datapoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `value` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `eval-id`\n- `datapoint-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(4),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"value\": {}\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[4:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "value",
-							FlagName:    "value",
-							Type:        "string-map",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiExperimentEvalCellPatch(args[0], args[1], args[2], args[3], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "value",
-					FlagName:    "value",
-					Type:        "string-map",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := experimentsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " patch-review-cell experiment-id run-id review-id datapoint-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "patch-review-cell experiment-id run-id review-id datapoint-id",
-			Short:   "Set a human review cell",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `value` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `review-id`\n- `datapoint-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(4),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"value\": {}\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[4:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "value",
-							FlagName:    "value",
-							Type:        "string-map",
-							Description: "Human review value. type is required: range uses {type: range, value: number}; single- and multi-select use {type: categorical, value: string} or {type: categorical, values: [{value: string, sentiment: string}]}; text and correction use {type: free_form_text, text: string}.",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiExperimentReviewCellPatch(args[0], args[1], args[2], args[3], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "value",
-					FlagName:    "value",
-					Type:        "string-map",
-					Description: "Human review value. type is required: range uses {type: range, value: number}; single- and multi-select use {type: categorical, value: string} or {type: categorical, values: [{value: string, sentiment: string}]}; text and correction use {type: free_form_text, text: string}.",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := experimentsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " patch-task-cell experiment-id run-id task-id datapoint-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "patch-task-cell experiment-id run-id task-id datapoint-id",
-			Short:   "Ingest a task cell",
-			Long:    bartolocli.Markdown("Writes a cell result, including externally executed or harness cells.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `artifacts` (object)\n- `repeat_index` (integer)\n- `value` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `task-id`\n- `datapoint-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(4),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"artifacts\": {\n    \"patch_object_key\": \"patch_object_key\",\n    \"pull_request_url\": \"pull_request_url\",\n    \"response_id\": \"response_id\",\n    \"session_id\": \"session_id\",\n    \"session_run_id\": \"session_run_id\",\n    \"trace_id\": \"trace_id\"\n  },\n  \"repeat_index\": 0,\n  \"value\": {}\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[4:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "artifacts",
-							FlagName:    "artifacts",
-							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "repeat_index",
-							FlagName:    "repeat-index",
-							Type:        "int64",
-							Description: "",
-						},
-						{
-							Name:        "value",
-							FlagName:    "value",
-							Type:        "string-map",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiExperimentTaskCellPatch(args[0], args[1], args[2], args[3], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "artifacts",
-					FlagName:    "artifacts",
-					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "repeat_index",
-					FlagName:    "repeat-index",
-					Type:        "int64",
-					Description: "",
-				},
-				{
-					Name:        "value",
-					FlagName:    "value",
-					Type:        "string-map",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := experimentsCmd
-
-		params := viper.New()
-
-		var examples string
-
 		examples += "  " + parent.CommandPath() + " query-run experiment-id run-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "query-run experiment-id run-id",
 			Short:   "Query run cells",
-			Long:    bartolocli.Markdown("Returns selected cells by row and column name. POST because selections can exceed URL limits.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `columns` (array)\n- `exclude_static_cells` (boolean)\n- `limit` (integer)\n- `partial_rows` (boolean)\n- `repeat_index` (integer)\n- `rows` (array)\n- `starting_after` (string)\n- `updated_after` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\nRenamed flags (the original names belong to global flags):\n- `columns` is `--body-columns` (not `--columns`)\n\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Returns the rows of a run with their cells, filtered by row and column. POST because selections can exceed URL limits.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `columns` (array)\n- `exclude_static_cells` (boolean)\n- `limit` (integer)\n- `partial_rows` (boolean)\n- `rows` (array)\n- `starting_after` (string)\n- `updated_after` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\nRenamed flags (the original names belong to global flags):\n- `columns` is `--body-columns` (not `--columns`)\n\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"columns\": [\n    \"columns\"\n  ],\n  \"exclude_static_cells\": false,\n  \"limit\": 0,\n  \"partial_rows\": false,\n  \"repeat_index\": 0,\n  \"rows\": [\n    \"rows\"\n  ],\n  \"starting_after\": \"starting_after\",\n  \"updated_after\": \"2024-01-01T00:00:00Z\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"columns\": [\n    \"columns\"\n  ],\n  \"exclude_static_cells\": false,\n  \"limit\": 0,\n  \"partial_rows\": false,\n  \"rows\": [\n    \"rows\"\n  ],\n  \"starting_after\": \"starting_after\",\n  \"updated_after\": \"2024-01-01T00:00:00Z\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -1706,49 +1436,43 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "columns",
 							FlagName:    "body-columns",
 							Type:        "string-slice",
-							Description: "columns (body field \"columns\", renamed to keep the reserved --columns flag available)",
+							Description: "Columns to return, matched against column ID, key and display name. Every\n matching column is used, and an entry that matches nothing is rejected.\n Omit for every column. (body field \"columns\", renamed to keep the reserved --columns flag available)",
 						},
 						{
 							Name:        "exclude_static_cells",
 							FlagName:    "exclude-static-cells",
 							Type:        "bool",
-							Description: "",
+							Description: "Leave out data cells: inputs, messages, expected output and job output.",
 						},
 						{
 							Name:        "limit",
 							FlagName:    "limit",
 							Type:        "int64",
-							Description: "",
+							Description: "Page size, 1 to 1000. Defaults to 25.",
 						},
 						{
 							Name:        "partial_rows",
 							FlagName:    "partial-rows",
 							Type:        "bool",
-							Description: "",
-						},
-						{
-							Name:        "repeat_index",
-							FlagName:    "repeat-index",
-							Type:        "int64",
-							Description: "",
+							Description: "Return only running, completed and failed rows.",
 						},
 						{
 							Name:        "rows",
 							FlagName:    "rows",
 							Type:        "string-slice",
-							Description: "",
+							Description: "Row IDs to return. Unknown IDs are ignored. Omit for every row.",
 						},
 						{
 							Name:        "starting_after",
 							FlagName:    "starting-after",
 							Type:        "string",
-							Description: "",
+							Description: "Cursor for forward pagination. Set to the `row_id` of the last row from\n the previous page.",
 						},
 						{
 							Name:        "updated_after",
 							FlagName:    "updated-after",
 							Type:        "datetime",
-							Description: "Incremental refresh: returns running rows plus completed or failed rows\n updated after this instant.",
+							Description: "Incremental refresh: return only rows updated after this instant. Pass the\n previous response's `server_timestamp`. With `partial_rows`, running rows\n are returned as well.",
 						},
 					},
 				)
@@ -1778,49 +1502,43 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "columns",
 					FlagName:    "body-columns",
 					Type:        "string-slice",
-					Description: "columns (body field \"columns\", renamed to keep the reserved --columns flag available)",
+					Description: "Columns to return, matched against column ID, key and display name. Every\n matching column is used, and an entry that matches nothing is rejected.\n Omit for every column. (body field \"columns\", renamed to keep the reserved --columns flag available)",
 				},
 				{
 					Name:        "exclude_static_cells",
 					FlagName:    "exclude-static-cells",
 					Type:        "bool",
-					Description: "",
+					Description: "Leave out data cells: inputs, messages, expected output and job output.",
 				},
 				{
 					Name:        "limit",
 					FlagName:    "limit",
 					Type:        "int64",
-					Description: "",
+					Description: "Page size, 1 to 1000. Defaults to 25.",
 				},
 				{
 					Name:        "partial_rows",
 					FlagName:    "partial-rows",
 					Type:        "bool",
-					Description: "",
-				},
-				{
-					Name:        "repeat_index",
-					FlagName:    "repeat-index",
-					Type:        "int64",
-					Description: "",
+					Description: "Return only running, completed and failed rows.",
 				},
 				{
 					Name:        "rows",
 					FlagName:    "rows",
 					Type:        "string-slice",
-					Description: "",
+					Description: "Row IDs to return. Unknown IDs are ignored. Omit for every row.",
 				},
 				{
 					Name:        "starting_after",
 					FlagName:    "starting-after",
 					Type:        "string",
-					Description: "",
+					Description: "Cursor for forward pagination. Set to the `row_id` of the last row from\n the previous page.",
 				},
 				{
 					Name:        "updated_after",
 					FlagName:    "updated-after",
 					Type:        "datetime",
-					Description: "Incremental refresh: returns running rows plus completed or failed rows\n updated after this instant.",
+					Description: "Incremental refresh: return only rows updated after this instant. Pass the\n previous response's `server_timestamp`. With `partial_rows`, running rows\n are returned as well.",
 				},
 			},
 		)
@@ -1845,7 +1563,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update experiment-id",
 			Short:   "Update an experiment",
-			Long:    bartolocli.Markdown("Updates experiment metadata. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `project_id` (string)\n- `row_height_level` (integer)\n- `selected_run_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`"),
+			Long:    bartolocli.Markdown("Updates experiment metadata. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `project_id` (string)\n- `row_height_level` (integer)\n- `selected_run_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1860,25 +1578,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
+							Description: "New experiment name, 1 to 255 characters.",
 						},
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "",
+							Description: "Moves the experiment to another project the caller can access. The\n dataset stays where it is, so new runs need a dataset in the new project.",
 						},
 						{
 							Name:        "row_height_level",
 							FlagName:    "row-height-level",
 							Type:        "int64",
-							Description: "",
+							Description: "Row height in the AI Studio grid: 1 (compact), 2 or 3 (tallest).",
 						},
 						{
 							Name:        "selected_run_id",
 							FlagName:    "selected-run-id",
 							Type:        "string",
-							Description: "",
+							Description: "Run to show by default. Must be a run of this experiment.",
 						},
 					},
 				)
@@ -1908,25 +1626,25 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
+					Description: "New experiment name, 1 to 255 characters.",
 				},
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "",
+					Description: "Moves the experiment to another project the caller can access. The\n dataset stays where it is, so new runs need a dataset in the new project.",
 				},
 				{
 					Name:        "row_height_level",
 					FlagName:    "row-height-level",
 					Type:        "int64",
-					Description: "",
+					Description: "Row height in the AI Studio grid: 1 (compact), 2 or 3 (tallest).",
 				},
 				{
 					Name:        "selected_run_id",
 					FlagName:    "selected-run-id",
 					Type:        "string",
-					Description: "",
+					Description: "Run to show by default. Must be a run of this experiment.",
 				},
 			},
 		)
@@ -1951,7 +1669,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-review experiment-id run-id review-id",
 			Short:   "Update review column metadata",
-			Long:    bartolocli.Markdown("Updates display fields on the column. The human-eval definition is updated at source.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `review-id`"),
+			Long:    bartolocli.Markdown("Updates display fields on the column. The human-eval definition is updated at source.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `review-id` — ID of the review column."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1966,7 +1684,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
+							Description: "New column name. Must not be empty.",
 						},
 					},
 				)
@@ -1996,7 +1714,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
+					Description: "New column name. Must not be empty.",
 				},
 			},
 		)
@@ -2021,7 +1739,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-run experiment-id run-id",
 			Short:   "Update a run",
-			Long:    bartolocli.Markdown("Updates run key and execution settings. Does not execute the run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Updates run key and execution settings. Does not execute the run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -2036,13 +1754,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
-							Description: "",
+							Description: "New run name. Must not be empty.",
 						},
 						{
 							Name:        "settings",
 							FlagName:    "settings",
 							Type:        "json",
-							Description: "",
+							Description: "Settings to change. `concurrency`, `timeout` and `max_turns` change only\n when set. `hidden_column_ids` is replaced, and cleared when omitted.",
 						},
 					},
 				)
@@ -2072,83 +1790,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
-					Description: "",
+					Description: "New run name. Must not be empty.",
 				},
 				{
 					Name:        "settings",
 					FlagName:    "settings",
 					Type:        "json",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := experimentsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " update-run-cell experiment-id run-id row-id cell-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "update-run-cell experiment-id run-id row-id cell-id",
-			Short:   "Update a cell",
-			Long:    bartolocli.Markdown("Writes a cell value by cell id, including dataset and review cells. An empty value clears the cell. Running cells cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `value` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `row-id`\n- `cell-id`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(4),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"value\": {}\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[4:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "value",
-							FlagName:    "value",
-							Type:        "string-map",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiExperimentRunCellUpdate(args[0], args[1], args[2], args[3], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "value",
-					FlagName:    "value",
-					Type:        "string-map",
-					Description: "",
+					Description: "Settings to change. `concurrency`, `timeout` and `max_turns` change only\n when set. `hidden_column_ids` is replaced, and cleared when omitted.",
 				},
 			},
 		)
@@ -2173,13 +1821,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-run-column-layout experiment-id run-id",
 			Short:   "Update column layout",
-			Long:    bartolocli.Markdown("Reorders, resizes, hides or shows columns of a run in one call. Columns not listed keep their layout.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `columns` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `columns` is `--body-columns` (not `--columns`)\n\n\n## Arguments\n\n- `experiment-id`\n- `run-id`"),
+			Long:    bartolocli.Markdown("Reorders, resizes, hides or shows columns of a run in one call. Columns not listed keep their layout.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `columns` (array, required)\n\nRequired fields: `columns`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `columns` is `--body-columns` (not `--columns`)\n\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"columns\": [\n    {\n      \"active\": false,\n      \"column_id\": \"column_id\",\n      \"position\": 0,\n      \"width\": 0\n    }\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"columns\": [\n    {\n      \"column_id\": \"column_id\"\n    }\n  ]\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
@@ -2188,7 +1836,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "columns",
 							FlagName:    "body-columns",
 							Type:        "json",
-							Description: "columns (body field \"columns\", renamed to keep the reserved --columns flag available)",
+							Description: "Layout changes, at least one. Columns not listed keep their layout. (body field \"columns\", renamed to keep the reserved --columns flag available)",
 						},
 					},
 				)
@@ -2218,7 +1866,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "columns",
 					FlagName:    "body-columns",
 					Type:        "json",
-					Description: "columns (body field \"columns\", renamed to keep the reserved --columns flag available)",
+					Description: "Layout changes, at least one. Columns not listed keep their layout. (body field \"columns\", renamed to keep the reserved --columns flag available)",
 				},
 			},
 		)
@@ -2243,13 +1891,13 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-task experiment-id run-id task-id",
 			Short:   "Update a task column",
-			Long:    bartolocli.Markdown("Updates an unlinked task column in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent` (object)\n- `display_name` (string)\n- `harness` (object)\n- `prompt` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id`\n- `run-id`\n- `task-id`"),
+			Long:    bartolocli.Markdown("Renames a task column or replaces its source. Existing cells are not changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent` (allOf)\n- `display_name` (string)\n- `prompt` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `task-id` — ID of the task column."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"harness\": {\n    \"harness_config_id\": \"harness_config_id\"\n  },\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {}\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[3:], params,
@@ -2258,25 +1906,19 @@ func registerexperimentsCommands(root *cobra.Command) {
 							Name:        "agent",
 							FlagName:    "agent",
 							Type:        "json",
-							Description: "",
+							Description: "Replaces the column's source with this agent.",
 						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "",
-						},
-						{
-							Name:        "harness",
-							FlagName:    "harness",
-							Type:        "json",
-							Description: "",
+							Description: "New column name. Must not be empty.",
 						},
 						{
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "json",
-							Description: "",
+							Description: "Replaces the column's source with this prompt. A new source replaces the\n whole config and can change the column type; existing cells are not\n changed.",
 						},
 					},
 				)
@@ -2306,25 +1948,19 @@ func registerexperimentsCommands(root *cobra.Command) {
 					Name:        "agent",
 					FlagName:    "agent",
 					Type:        "json",
-					Description: "",
+					Description: "Replaces the column's source with this agent.",
 				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "",
-				},
-				{
-					Name:        "harness",
-					FlagName:    "harness",
-					Type:        "json",
-					Description: "",
+					Description: "New column name. Must not be empty.",
 				},
 				{
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "json",
-					Description: "",
+					Description: "Replaces the column's source with this prompt. A new source replaces the\n whole config and can change the column type; existing cells are not\n changed.",
 				},
 			},
 		)
