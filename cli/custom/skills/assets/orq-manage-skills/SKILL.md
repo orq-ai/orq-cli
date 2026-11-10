@@ -7,7 +7,7 @@ description: >
   and how Skills get consumed (the `{{skill.<display_name>}}` template placeholder
   inside prompts and agent instructions). Use when the user wants to create,
   audit, edit, retire, or hook up orq.ai Skills.
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, mcp__orq-workspace__list_skills, mcp__orq-workspace__get_skill, mcp__orq-workspace__create_skill, mcp__orq-workspace__update_skill, mcp__orq-workspace__delete_skill, mcp__orq-workspace__search_entities, mcp__orq-workspace__get_deployment, mcp__orq-workspace__get_agent
+allowed-tools: Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, mcp__orq-workspace__list_skills, mcp__orq-workspace__get_skill, mcp__orq-workspace__search_entities, mcp__orq-workspace__get_deployment, mcp__orq-workspace__get_agent
 ---
 
 # Manage Skills
@@ -48,15 +48,16 @@ When the user says "create a Skill" without context, ask which one they mean. Th
 - **Build the agent itself?** → `orq-build-agent`
 - **Invoke a deployment or agent?** → `orq-invoke-deployment`
 - **Evaluate an agent that uses the Skill?** → `orq-run-experiment`
-- **Improve the prose inside `instructions`?** → `orq-optimize-prompt` is tuned for system prompts; reuse its clarity heuristics but apply judgment — Skill `instructions` are typically shorter and more capability-scoped.
-- **Debug why a referenced Skill isn't rendering?** → `orq-analyze-trace-failures`
+- **Improve the prose inside `instructions`?** → `orq-improve-agent` is tuned for system prompts; reuse its clarity heuristics but apply judgment — Skill `instructions` are typically shorter and more capability-scoped.
+- **Debug why a referenced Skill isn't rendering?** → `orq-analyze-traces`
 
 ## Companion Skills
 
 - `orq-build-agent` — author the agents whose instructions reference these Skills via `{{skill.<key>}}`
-- `orq-optimize-prompt` — review prose quality for `instructions`
+- `orq-improve-agent` — review prose quality for `instructions`
 - `orq-run-experiment` — verify a Skill change improves downstream behavior
-- `orq-analyze-trace-failures` — diagnose Skills that aren't producing the expected output in production
+- `orq-analyze-traces` — diagnose Skills that aren't producing the expected output in production
+- `orq-cli` — the same Skills CRUD from a shell (`orq skills list|get|create|update|delete`), for scripting or bulk audits. See its "MCP tools or the CLI?" table before choosing.
 
 ## Constraints
 
@@ -65,6 +66,12 @@ When the user says "create a Skill" without context, ask which one they mean. Th
 - **ALWAYS** before `delete_skill`, find places that may reference the Skill via `{{skill.<display_name>}}` or `{{snippet.<display_name>}}` (other Skills' `instructions`, deployment prompts, agent instructions) and warn the user — those references will silently render to empty/missing content after the Skill is gone.
 - **ALWAYS** offer tagging the Skill with `retired` (via `update_skill`) as an alternative to `delete_skill`. This is a reversible soft-retire signal visible in the Studio; `delete_skill` is permanent.
 - **NEVER** rely on `+NEVER+` (or any prose negation) inside `instructions` as a hard guardrail. Skill instructions are *soft* hints to the model; hard constraints belong in **MCP tool gates** (refuse the call at the tool layer). See [resources/known-caveats.md](resources/known-caveats.md).
+
+## Destructive Actions
+
+The following require explicit user confirmation via `AskUserQuestion`:
+
+- **`delete_skill`** — before every call, print the exact `skill_id` and `display_name` that will be deleted and confirm via `AskUserQuestion`. Never bulk-delete without first listing every item that will be removed. Deletes are permanent; when in doubt, stop and ask. (`delete_skill` is deliberately not in `allowed-tools`, so the harness prompts too — do not ask the user to pre-approve it for the session; see Phase 5 for the reference scan that precedes any delete.)
 
 ## orq.ai Documentation
 
@@ -99,7 +106,7 @@ all_skills = []
 while True:
     page = list_skills(limit=200, starting_after=cursor)
     all_skills.extend(page.data)
-    if not page.has_more:
+    if not page.has_more or not page.data:
         break
     cursor = page.data[-1].id  # the response uses "id", not "skill_id" (it's the same value)
 ```
@@ -137,7 +144,7 @@ tagged_skills  = [s for s in all_skills if "policy" in s.tags]
 
 ## Prerequisites
 
-- The orq.ai MCP server is connected (run the `quickstart` skill / `/orq:quickstart` to verify in Claude Code, or the equivalent onboarding flow in your assistant).
+- The orq.ai MCP server is connected (run the `orq-quickstart` skill to verify).
 - `ORQ_API_KEY` is set.
 - The user knows which **project** the Skill belongs to (run `search_directories` if not).
 - **Preflight: confirm the Skills API is available.** Try `list_skills` once at session start. If the tool is unknown OR returns "method not found" against `/v2/skills`, the workspace's backend doesn't expose the new entity yet. Two options:
@@ -204,7 +211,7 @@ Use when the user wants to edit an existing Skill.
 2. **Patch fields explicitly.** Only send the fields being changed (`update_skill` is a patch — don't echo back unchanged tags or `instructions`).
 3. **`display_name` rename — DANGER.** The `display_name` IS the lookup key for `{{skill.<display_name>}}` and `{{snippet.<display_name>}}`. Renaming it silently breaks every prompt or agent instruction that references the old name. Before sending a rename, run the reference scan from Phase 5 step 1 and warn the user. Offer to update the references in the same session.
 4. **Soft-retire pattern** — adding a `retired` tag via `update_skill` is the recommended first step before deletion. It's visible in the Studio, reversible, and leaves a clear signal for audits. Reserve `delete_skill` for actual cleanup after the Skill has been confirmed unused.
-5. **`instructions` changes:** if the user is rewriting the body, run a clarity pass first — reuse `orq-optimize-prompt`'s heuristics (clarity, structure, no soft-constraint anti-patterns) but adapt; Skill `instructions` are typically shorter and capability-scoped, not full system prompts.
+5. **`instructions` changes:** if the user is rewriting the body, run a clarity pass first — reuse `orq-improve-agent`'s heuristics (clarity, structure, no soft-constraint anti-patterns) but adapt; Skill `instructions` are typically shorter and capability-scoped, not full system prompts.
 6. **Verify** by calling `get_skill` post-update and confirming the change landed.
 
 ### Phase 5: Delete (with reference scan)
@@ -212,9 +219,9 @@ Use when the user wants to edit an existing Skill.
 Use when the user wants to permanently retire a Skill. **`delete_skill` is irreversible** and does not scrub `{{skill.<display_name>}}` / `{{snippet.<display_name>}}` references elsewhere — those references silently fail to resolve after delete. Always offer tagging the Skill with `retired` first (Phase 4 step 4) and only proceed to delete when the user is sure.
 
 1. **Reference scan.** Find places that may reference the Skill by its `display_name`:
-   - Run `search_entities` with `type='prompt'`, `type='deployment'`, and `type='agent'` to enumerate non-skill candidates. You can also use `type='skill'` to enumerate sibling Skills — but note that `search_entities` only matches **metadata** (`display_name`, `key`, `description`) not body text, so it cannot find `{{skill.X}}` / `{{snippet.X}}` references inside instructions.
-   - Therefore, for any candidate returned by `search_entities`, and for all sibling Skills (paginate `list_skills`), fetch the full body and grep it yourself.
-   - For each candidate, fetch its full body (`get_deployment` for deployments; `get_agent` for agents; `get_skill` for sibling Skills' `instructions`; prompt bodies come back from `search_entities`/the prompt-fetch tool) and grep the body for both `{{skill.<display_name>}}` and `{{snippet.<display_name>}}` (case-sensitive — match the Skill's exact `display_name`).
+   - Enumerate candidates exactly as in the [known-caveats.md](resources/known-caveats.md) `delete_skill` workaround: `search_entities` once per `type` (`prompt`, `deployment`, `agent`), each paged to completion, plus every sibling Skill from a paginated `list_skills`. An unpaged `search_entities` call stops at 50 results per type, and a partial scan can wrongly clear a Skill for delete.
+   - `search_entities` only matches **metadata** (`display_name`, `key`, `description`), not body text, so it cannot find `{{skill.X}}` / `{{snippet.X}}` references inside instructions. Fetch every candidate's full body and grep it yourself.
+   - For each candidate, fetch its full body (`get_deployment` for deployments; `get_agent` for agents; `get_skill` for sibling Skills' `instructions`; `orq prompts retrieve <id>` for prompts, since `search_entities` returns metadata only) and grep the body for both `{{skill.<display_name>}}` and `{{snippet.<display_name>}}` (case-sensitive — match the Skill's exact `display_name`).
    - Note: this scan can be expensive in large workspaces. Cache results within the session.
    - If the user has a faster way to grep their workspace (e.g., a synced repo of prompts), prefer that.
 2. **Warn and confirm.** Show the user:

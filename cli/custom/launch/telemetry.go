@@ -63,9 +63,11 @@ func traceEnv(ctx *AgentContext, configPath string) map[string]string {
 		// Claude Code strips OTEL_* from the env its hooks run with, and the
 		// plugin's own derivation from a base URL breaks on non-production
 		// hosts. A session-only config whose profile outranks the user's shell
-		// and ~/.orq/config.json is the one channel that pins the destination.
+		// and ~/.orq/config.json pins the destination for plugins before 0.6;
+		// 0.6 reads no config file and takes ORQ_OTLP_ENDPOINT instead.
 		"ORQ_CONFIG_PATH":   configPath,
 		"ORQ_TRACE_PROFILE": traceProfile,
+		"ORQ_OTLP_ENDPOINT": OTLPEndpoint(ctx.Creds.APIBaseURL),
 	}
 }
 

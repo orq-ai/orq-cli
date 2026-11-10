@@ -6,12 +6,16 @@ description: >
   Use when evaluating LLM agents, deployments, conversations, or RAG pipelines
   end-to-end. Do NOT use without a dataset and evaluators. Do NOT use for
   cross-framework comparisons with external agents (use orq-compare-agents).
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Task, AskUserQuestion, orq*
+allowed-tools: Read, Write, Edit, Grep, Glob, Task, AskUserQuestion, mcp__orq-workspace__list_experiment_runs, mcp__orq-workspace__get_experiment_run, mcp__orq-workspace__search_entities, mcp__orq-workspace__list_datapoints, mcp__orq-workspace__search_docs
 ---
 
 # Run Experiment
 
+> `allowed-tools` here is a curated read/search allowlist so lookups run without permission prompts; `create_*`/`update_*`/`delete_*`/`invoke_*` and shell commands are intentionally not pre-approved and still prompt. The `delete_*` tools are disabled entirely while this skill is active.
+
 You are an **orq.ai evaluation engineer**. Your job is to design, execute, and analyze experiments that measure LLM pipeline quality — then turn results into prioritized, actionable improvements.
+
+**Invocation policy (models and agents):** Default to `POST /v3/router/responses` or `orq responses create`. Set `model` to `provider/model-id` for a model or `agent/<key>` for a managed agent, and pass `input`. Use `openai/gpt-6-luna` for default model command examples unless the user specifies another model. Prefer Responses over Chat Completions; do not use v2 inference routes. Use another inference interface only when the user explicitly requests it. Legacy agent execution APIs remain deprecated. Never fall back to v2, Chat Completions, or legacy agent endpoints after a routing or model error. Use Responses for streaming and continuation too. Prefer the orq SDK for new code and when it is already imported. If orq is not imported and OpenAI already is, reuse OpenAI instead of adding a second SDK. Configuration, deployment, evaluator, and telemetry APIs retain their own contracts.
 
 ## Constraints
 
@@ -30,9 +34,11 @@ You are an **orq.ai evaluation engineer**. Your job is to design, execute, and a
 
 - `orq-build-agent` — create and configure orq.ai agents
 - `orq-build-evaluator` — design judge prompts for subjective criteria
-- `orq-analyze-trace-failures` — build failure taxonomies from production traces
+- `orq-analyze-traces` — build failure taxonomies from production traces
 - `orq-generate-synthetic-dataset` — generate diverse test scenarios
-- `orq-optimize-prompt` — analyze and rewrite prompts using a structured guidelines framework
+- `orq-improve-agent` — analyze and rewrite prompts using a structured guidelines framework
+- `evaluatorq` — the code-based counterpart to this skill: write the experiment as a Python (or TypeScript) script when the platform UI cannot express it
+- **orq-cli** — the same platform operations from a shell, for anything that must run again without an agent present (CI, cron, scripts, bulk): auth via `ORQ_API_KEY`, `-o json` output. See its "MCP tools or the CLI?" table before choosing.
 
 ## When to use
 
@@ -47,9 +53,10 @@ You are an **orq.ai evaluation engineer**. Your job is to design, execute, and a
 
 - **No dataset yet?** → Use `orq-generate-synthetic-dataset` first
 - **No evaluators yet?** → Use `orq-build-evaluator` first
-- **Don't know what's failing?** → Use `orq-analyze-trace-failures` first
+- **Don't know what's failing?** → Use `orq-analyze-traces` first
 - **Comparing agents across frameworks (LangGraph, CrewAI, etc.)?** → Use `orq-compare-agents`
-- **Just need to optimize a prompt?** → Use `orq-optimize-prompt`
+- **Just need to optimize a prompt?** → Use `orq-improve-agent`
+- **Need code in the loop?** → Use `evaluatorq`. Reach for it when the thing under test is a function or a framework agent rather than a platform entity, when scoring needs custom Python (schema checks, cost, latency, a code-defined `llm_jury()` panel), when you want to re-score a past run's recorded outputs without regenerating them (`ExperimentInput` + `inference=False`), or when the evaluation has to run in CI. It still reports to orq.ai → Experiments when `ORQ_API_KEY` is set, so the results land in the same place as a platform experiment.
 
 ## Workflow Checklist
 
@@ -106,7 +113,7 @@ Consult these docs as needed:
 - **Experiment tabs:** Runs (compare iterations), Review (individual responses), Compare (models side-by-side)
 - **Agents** can have executable tools in experiments — HTTP, Python, data fetching
 - **Traces** show step-by-step tool interactions: tool names, args, payloads, responses
-- **LLM evaluators** access `{{log.messages}}` (conversation history) and `{{log.retrievals}}` (KB results)
+- **LLM evaluators** access conversation history and KB results via `{{input.all_messages}}` and `{{input.retrievals}}` (v4.14+). The legacy `{{log.retrievals}}` is the same variable renamed, but `{{log.messages}}` is **not** `{{input.all_messages}}` — it omits the graded turn. Canonical list: `skills/orq-build-evaluator/resources/judge-prompt-template.md` §6.
 - **Prompts** support versioning; **Deployments** expose versions to the API
 
 ## Prerequisites
@@ -378,11 +385,5 @@ Is the average score above your threshold?
 
 ## Documentation & Resolution
 
-When you need to look up orq.ai platform details, check in this order:
+**Lookup order: [`doc-resolution.md`](../orq-shared/resources/doc-resolution.md).** Live queries first — for this skill that means `mcp__orq-workspace__create_experiment`, `get_experiment_run`, `list_experiment_runs`.
 
-1. **orq MCP tools** — query live data first (`create_experiment`, `get_experiment_run`, `list_experiment_runs`); API responses are always authoritative
-2. **orq.ai documentation MCP** — use `search_orq_ai_documentation` or `get_page_orq_ai_documentation` to look up platform docs programmatically
-3. **[docs.orq.ai](https://docs.orq.ai)** — browse official documentation directly
-4. **This skill file** — may lag behind API or docs changes
-
-When this skill's content conflicts with live API behavior or official docs, trust the source higher in this list.

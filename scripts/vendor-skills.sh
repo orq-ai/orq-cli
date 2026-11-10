@@ -24,9 +24,21 @@ cp -R "$tmp/src/skills/." "$DEST/"
 # --trace` loads it with --plugin-dir for one session, so nothing is installed.
 rm -rf "$TRACE_DEST"
 mkdir -p "$TRACE_DEST"
-for part in .claude-plugin hooks src package.json; do
+for part in hooks src package.json; do
   cp -R "$tmp/src/plugins/trace-hooks/$part" "$TRACE_DEST/"
 done
+# assistant-plugins 4.0.0 dropped the nested manifest: orq-trace's marketplace
+# entry carries it inline (strict: false). --plugin-dir still needs the file, so
+# rebuild it from that entry when the nested one is gone.
+mkdir -p "$TRACE_DEST/.claude-plugin"
+if [ -f "$tmp/src/plugins/trace-hooks/.claude-plugin/plugin.json" ]; then
+  cp "$tmp/src/plugins/trace-hooks/.claude-plugin/plugin.json" "$TRACE_DEST/.claude-plugin/"
+else
+  jq '.plugins[] | select(.name == "orq-trace") | del(.source, .category, .strict)' \
+    "$tmp/src/.claude-plugin/marketplace.json" > "$TRACE_DEST/.claude-plugin/plugin.json"
+  jq -e '.name == "orq-trace" and .hooks' "$TRACE_DEST/.claude-plugin/plugin.json" > /dev/null \
+    || { echo "error: no orq-trace entry with hooks in marketplace.json at $REF" >&2; exit 1; }
+fi
 
 resolved="$(git -C "$tmp/src" rev-parse HEAD)"
 cat > "$DEST/SOURCE.json" <<JSON

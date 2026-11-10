@@ -1,38 +1,20 @@
 # Known Gotchas
 
+Prefer the orq SDK for new code and when it is already imported. If orq is not imported and OpenAI already is, reuse OpenAI instead of adding a second SDK.
+
 Common pitfalls when running cross-framework agent comparisons with evaluatorq.
 
 ---
 
 ## orq.ai SDK
 
-### `agents.invoke()` vs `agents.responses.create()`
+### Agent calls use general Responses
 
-`invoke()` returns an async A2A task with `status: "submitted"` — it does NOT return the agent's response. Use `responses.create(background=False)` to get a synchronous response with output.
+Use `POST /v3/router/responses`, SDK `client.responses.create(model="agent/<key>", input=query)`, or `orq responses create --model "agent/<key>" --input "..." -o json`. The legacy agent-specific invoke/stream/Responses APIs are deprecated and must only be used when explicitly requested, even if a model fails on one of them.
 
-```python
-# Wrong — returns task status, not output
-response = orq.agents.invoke(agent_key="my-agent", ...)
+### Message and output format
 
-# Correct — returns actual response
-response = orq.agents.responses.create(
-    agent_key="my-agent",
-    background=False,
-    message={"role": "user", "parts": [{"kind": "text", "text": query}]},
-)
-```
-
-### Message format
-
-The orq agent API uses A2A message format, not OpenAI-style:
-
-```python
-# Wrong
-message={"role": "user", "content": "Hello"}
-
-# Correct
-message={"role": "user", "parts": [{"kind": "text", "text": "Hello"}]}
-```
+Use Responses `input` (text or message items), rather than legacy A2A `message.parts`. Read message `content` blocks of type `output_text`, or `response.output_text` with the OpenAI SDK; output may also contain tool and reasoning items. Continue with `previous_response_id=response.id` (keep `store: true`), rather than a task ID. Failed, incomplete or background responses are not completed quality results — check status first.
 
 ### Code tools: `additionalProperties: false`
 
@@ -61,20 +43,42 @@ result = orq.evals.invoke(
 
 Note: `evals.invoke()` takes the evaluator **ID** (not key), and uses `query`/`output`/`reference` as top-level parameters (not an `inputs` dict).
 
-### Response structure is nested
+### Response structure is flat
 
-The response from `evals.invoke()` wraps the evaluation result inside `result.value`:
+`evals.invoke()` returns a flat `EvaluationResult` (orq-ai-sdk 4.15.6, verified 2026-09-20 with a live invoke returning `{"type": "number", "value": 10, "evaluator_id": …, "status": "passed", "passed": true, "explanation": …, "categories": []}`). Older skills and scripts read it as nested; that is wrong on the current SDK:
 
 ```python
 result = orq.evals.invoke(id="...", query="...", output="...", reference="...")
 
-# Wrong — AttributeError: 'InvokeEvalResponseBodyLLM' has no attribute 'explanation'
-result.explanation
+# Wrong — the verdict is not wrapped
+result.value.value
+result.value.explanation
 
-# Correct — value and explanation are nested under result.value
-result.value.value        # bool or number (the evaluator score)
-result.value.explanation  # str (the evaluator reasoning)
+# Correct — siblings on the result
+result.value        # the verdict: bool, number, or the chosen label
+result.explanation  # str, the evaluator's reasoning
+result.passed       # the guardrail's decision when the evaluator has one, else the grader's own
+result.status       # "passed" | "condition_failed" | "failed" | "timed_out"
+result.type         # verdict shape discriminator; a categorical evaluator reports "string"
 ```
+
+Also available: `categories`, `confidence`, `evaluator_id`, `trace_id`, `span_id`. In TypeScript the same call is `orq.evals.invoke({ id, invokeEvaluatorRequest: {...} })` — the request key is `invokeEvaluatorRequest`, not `requestBody` — and returns the same flat shape.
+
+### Installing both TypeScript packages downgrades the node SDK
+
+`@orq-ai/evaluatorq` 1.3.2 declares an **optional peer** on `@orq-ai/node` `^3.9.26`, so `npm install @orq-ai/evaluatorq @orq-ai/node` resolves the node SDK to 3.x — and `evals.invoke()` does not exist there. A scorer calling a platform evaluator then fails to compile with `Property 'invoke' does not exist on type 'Evals'`, even though the docs are right about 4.x.
+
+Force the newer SDK (this is what `skills/orq-compare-agents/tests/ts/package.json` does, and how that fixture type-checks at all):
+
+```json
+{ "overrides": { "@orq-ai/node": "latest" } }
+```
+
+Verified 2026-09-21 against `@orq-ai/evaluatorq` 1.3.2 and `@orq-ai/node` 4.15.9.
+
+### `parallelism` was renamed in Python
+
+Python evaluatorq takes `datapoint_parallelism` (default `10`); `parallelism` is a still-accepted deprecated alias. TypeScript kept `parallelism`, and its default is `1` — sequential. See `evaluatorq-api.md`.
 
 The Python SDK import is `from orq_ai_sdk import Orq` (package: `pip install orq-ai-sdk`).
 
@@ -133,6 +137,6 @@ TypeScript evaluatorq exits with code 1 when any evaluator returns `pass: false`
 
 ## Staging Environment
 
-When using `ORQ_BASE_URL` with a staging URL like `https://my.staging.orq.ai`, evaluatorq internally transforms `my.` to `api.` in URLs. If `api.staging.orq.ai` doesn't exist, this will cause connection errors.
+`ORQ_BASE_URL` is used **verbatim** — set `https://my.staging.orq.ai` (or any self-hosted host) and evaluatorq talks to exactly that host for inference, upload, and OTEL. Default: `https://my.orq.ai`.
 
-**Workaround:** Set `ORQ_BASE_URL=https://api.staging.orq.ai` directly, bypassing the transformation.
+> Historical note: evaluatorq versions before v1.10.0 rewrote `my.` to `api.` internally, which broke staging hosts. That rewrite is gone — if you carried an `api.staging.orq.ai` workaround, drop it.

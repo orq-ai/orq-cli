@@ -25,8 +25,8 @@ func TestNamesAreOrqPrefixedAndNonEmpty(t *testing.T) {
 		t.Fatal("no skills embedded; run scripts/vendor-skills.sh")
 	}
 	for _, n := range names {
-		if !strings.HasPrefix(n, "orq-") && n != "evaluatorq" {
-			t.Errorf("skill %q is neither orq-prefixed nor the known exception", n)
+		if !strings.HasPrefix(n, "orq-") && n != "evaluatorq" && n != "create-skill" {
+			t.Errorf("skill %q is neither orq-prefixed nor a known exception", n)
 		}
 	}
 }

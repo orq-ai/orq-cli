@@ -28,14 +28,15 @@ You can chain references: a Skill's `instructions` may itself contain `{{snippet
 There is no `list_consumers(skill_id)` API. To find every place a Skill is referenced, you have to text-search the rendered surface:
 
 ```text
-1. Enumerate candidates with search_entities (supports type="prompt", "deployment",
-   "agent", and "skill"). Note: search_entities only matches metadata fields
-   (display_name, key, description) — it does NOT search body text. Use it to
-   enumerate entities, then always fetch bodies separately to find {{skill.X}}
-   references. Also paginate list_skills for sibling Skills not caught by search.
+1. Enumerate candidates as in known-caveats.md (delete_skill workaround):
+   search_entities once per type ("prompt", "deployment", "agent"), each paged
+   to completion, plus a paginated list_skills for sibling Skills.
+   search_entities only matches metadata fields (display_name, key,
+   description) — it does NOT search body text, so always fetch bodies
+   separately to find {{skill.X}} references.
 2. For each candidate, fetch its full body with the appropriate get_* tool
-   (get_deployment, get_agent, get_skill, or the prompt body returned by
-   search_entities).
+   (get_deployment, get_agent, get_skill, or `orq prompts retrieve <id>`;
+   search_entities returns metadata only).
 3. Substring-match both `{{skill.<display_name>}}` and `{{snippet.<display_name>}}` (case-sensitive) in the body.
 4. Collect the matches.
 ```
@@ -70,7 +71,7 @@ Always start project-scoped (set `project_id`). Wire one consumer first (a singl
 
 ### Iterate
 - Iterate on `instructions` and `description`, not `display_name`. **Renaming `display_name` breaks every `{{snippet.<old-name>}}` reference.** See [known-caveats.md](known-caveats.md) for the rename workflow.
-- Sanity-check `instructions` rewrites (clarity, structure, no prose-negation anti-patterns) — see `orq-optimize-prompt` for prose heuristics, but apply judgment: Skill `instructions` are usually shorter and more capability-scoped than a system prompt.
+- Sanity-check `instructions` rewrites (clarity, structure, no prose-negation anti-patterns) — see `orq-improve-agent` for prose heuristics, but apply judgment: Skill `instructions` are usually shorter and more capability-scoped than a system prompt.
 - After each meaningful change, run `orq-run-experiment` against an agent or deployment that consumes the Skill to confirm the change improves (or at least doesn't regress) behavior.
 
 ### Stabilize

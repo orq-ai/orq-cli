@@ -124,6 +124,17 @@ jobs:
           echo "api_version=$API_VERSION" >> "$GITHUB_OUTPUT"
           echo "Verifying v$(printf '%s\n' "$go_output" | awk -F= '$1 == "version" { print $2 }') (channel=$channel, orq API $API_VERSION)"
 
+      - name: Vendor the latest orq skills
+        # Every release embeds the latest assistant-plugins release, so `orq
+        # connect skills` never ships a stale set. The commit-back below carries
+        # the vendored tree to main, which keeps builds from main hermetic.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api repos/orq-ai/assistant-plugins/releases/latest --jq .tag_name)"
+          ./scripts/vendor-skills.sh "$tag"
+
       - name: Regenerate CLI from schema
         run: |
           workdir="${MODULE_DIR:-.}"
@@ -175,7 +186,7 @@ jobs:
           # Per path, because a single `git add a b c || true` cannot tell a
           # missing optional path (rc has no surface.json) from a real failure,
           # and swallowing the latter releases the previous generated tree.
-          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION CHANGELOG.md; do
+          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION CHANGELOG.md cli/custom/skills/assets cli/custom/launch/assets/orq-trace; do
             if [ -e "$path" ]; then git add "$path"; fi
           done
           if git diff --cached --quiet; then

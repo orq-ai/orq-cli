@@ -5,14 +5,18 @@ description: >
   knowledge bases, and memory stores. Use when building new agents, attaching
   KBs or memory, writing system instructions, selecting models, or setting up
   RAG pipelines. Do NOT use for debugging existing agents (use
-  orq-analyze-trace-failures) or comparing agents across frameworks (use
+  orq-analyze-traces) or comparing agents across frameworks (use
   orq-compare-agents).
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, orq*
+allowed-tools: Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, mcp__orq-workspace__get_agent, mcp__orq-workspace__list_models, mcp__orq-workspace__search_entities, mcp__orq-workspace__search_docs
 ---
 
 # Build Agent
 
+> `allowed-tools` here is a curated read/search allowlist so lookups run without permission prompts; `create_*`/`update_*`/`delete_*`/`invoke_*` and shell commands are intentionally not pre-approved and still prompt. The `delete_*` tools are disabled entirely while this skill is active.
+
 You are an **orq.ai agent architect**. Your job is to design, create, and configure production-grade AI agents — from defining purpose and selecting models to configuring tools, knowledge bases, and memory stores.
+
+**Invocation policy (models and agents):** Default to `POST /v3/router/responses` or `orq responses create`. Set `model` to `provider/model-id` for a model or `agent/<key>` for a managed agent, and pass `input`. Use `openai/gpt-6-luna` for default model command examples unless the user specifies another model. Prefer Responses over Chat Completions; do not use v2 inference routes. Use another inference interface only when the user explicitly requests it. Legacy agent execution APIs remain deprecated. Never fall back to v2, Chat Completions, or legacy agent endpoints after a routing or model error. Use Responses for streaming and continuation too. Prefer the orq SDK for new code and when it is already imported. If orq is not imported and OpenAI already is, reuse OpenAI instead of adding a second SDK. Configuration, deployment, evaluator, and telemetry APIs retain their own contracts.
 
 ## Constraints
 
@@ -31,10 +35,11 @@ You are an **orq.ai agent architect**. Your job is to design, create, and config
 ## Companion Skills
 
 - `orq-build-evaluator` — design quality evaluators for agent outputs
-- `orq-analyze-trace-failures` — diagnose agent failures from trace data
+- `orq-analyze-traces` — diagnose agent failures from trace data
 - `orq-run-experiment` — run end-to-end evaluations and model comparisons
 - `orq-generate-synthetic-dataset` — create test datasets for agent evaluation
-- `orq-optimize-prompt` — improve agent system instructions and prompt quality
+- `orq-improve-agent` — improve agent system instructions and prompt quality
+- **orq-cli** — the same platform operations from a shell, for anything that must run again without an agent present (CI, cron, scripts, bulk): auth via `ORQ_API_KEY`, `-o json` output. See its "MCP tools or the CLI?" table before choosing.
 
 ## When to use
 
@@ -46,10 +51,10 @@ You are an **orq.ai agent architect**. Your job is to design, create, and config
 
 ## When NOT to use
 
-- **Agent failing in production?** → Use `orq-analyze-trace-failures` to diagnose first
+- **Agent failing in production?** → Use `orq-analyze-traces` to diagnose first
 - **Comparing agents across frameworks?** → Use `orq-compare-agents`
 - **Running evaluations on an existing agent?** → Use `orq-run-experiment`
-- **Need to improve an agent's prompt?** → Use `orq-optimize-prompt`
+- **Need to improve an agent's prompt?** → Use `orq-improve-agent`
 
 ## Workflow Checklist
 
@@ -79,7 +84,7 @@ Agent Build Progress:
 ## Resources
 
 - **System instruction template:** See [resources/system-instruction-template.md](resources/system-instruction-template.md)
-- **Tool description guide:** See [resources/tool-description-guide.md](resources/tool-description-guide.md)
+- **Tool description guide:** See [`tool-description-guide.md`](../orq-shared/resources/tool-description-guide.md) (in `orq-shared`)
 - **Knowledge Base management:** See [resources/knowledge-base-management.md](resources/knowledge-base-management.md)
 - **Memory Store management:** See [resources/memory-store-management.md](resources/memory-store-management.md)
 - **API reference (MCP + HTTP):** See [resources/api-reference.md](resources/api-reference.md)
@@ -188,7 +193,7 @@ Follow these steps **in order**. Do NOT skip steps.
     - Match tools to the agent's tasks
     - Start with the minimum set needed
 
-12. **Write tool descriptions** following [resources/tool-description-guide.md](resources/tool-description-guide.md):
+12. **Write tool descriptions** following [`tool-description-guide.md`](../orq-shared/resources/tool-description-guide.md) (in `orq-shared`):
     - Each description must clearly state WHEN to use it
     - Include what the tool DOES NOT do (to prevent confusion)
     - Specify required vs optional parameters
@@ -295,11 +300,5 @@ After completing this skill, direct the user to:
 
 ## Documentation & Resolution
 
-When you need to look up orq.ai platform details, check in this order:
+**Lookup order: [`doc-resolution.md`](../orq-shared/resources/doc-resolution.md).** Live queries first — for this skill that means `mcp__orq-workspace__create_agent`, `get_agent`, `list_models`.
 
-1. **orq MCP tools** — query live data first (`create_agent`, `get_agent`, `list_models`); API responses are always authoritative
-2. **orq.ai documentation MCP** — use `search_orq_ai_documentation` or `get_page_orq_ai_documentation` to look up platform docs programmatically
-3. **[docs.orq.ai](https://docs.orq.ai)** — browse official documentation directly
-4. **This skill file** — may lag behind API or docs changes
-
-When this skill's content conflicts with live API behavior or official docs, trust the source higher in this list.
