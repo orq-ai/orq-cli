@@ -630,3 +630,22 @@ func TestMigrateLeavesAPIKeyLoginFileAlone(t *testing.T) {
 		t.Fatalf("session was not migrated to its host name: %v", err)
 	}
 }
+
+func TestMigrateCredentialsKeepsProfileWhoseKeyIsInStore(t *testing.T) {
+	dir := layoutHarness(t, `{"profiles":{"work":{"type":"apikey","api_key_store":"macOS Keychain","workspace":"acme"}}}`, nil)
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	creds := readDoc(t, filepath.Join(dir, "credentials.json"))
+	profiles, _ := creds["profiles"].(map[string]any)
+	work, ok := profiles["work"].(map[string]any)
+	if !ok {
+		t.Fatalf("profile whose key is in the store was deleted: %v", creds)
+	}
+	if work["api_key_store"] != "macOS Keychain" {
+		t.Errorf("marker lost: %v", work)
+	}
+	if _, has := work["workspace"]; has {
+		t.Errorf("legacy workspace field survived: %v", work)
+	}
+}

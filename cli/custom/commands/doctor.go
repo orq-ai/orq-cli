@@ -206,6 +206,7 @@ func NewDoctorCommand() *cobra.Command {
 
 			authStatus := string(inspect.Status)
 			authSource := "none"
+			var storeErr error
 			var userEmail string
 			var activeWS any
 			workspaceCount := 0
@@ -226,6 +227,11 @@ func NewDoctorCommand() *cobra.Command {
 				workspaceCount = len(inspect.Session.Workspaces)
 			} else if storedAPIKeyProfile() {
 				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
+			} else if storeErr = auth.ProfileKeyUnreadable(); profileInForce() && storeErr != nil {
+				// The key exists but sits in a secure store this process
+				// could not read; re-adding the profile is not the fix.
+				authStatus = bartolocli.ProfileStoreUnreadable
+				authSource = "credentials.json:" + bartolocli.ActiveProfileName()
 			} else if profileInForce() {
 				// A profile in force with no api_key authenticates nothing, and
 				// bartolo will not reach past it to an ambient key: reporting
@@ -245,6 +251,15 @@ func NewDoctorCommand() *cobra.Command {
 				"user_email":           userEmail,
 				"active_workspace_key": activeWS,
 				"workspace_count":      workspaceCount,
+			}
+			if profileInForce() {
+				authMap["api_key_store"] = profileKeyLocation()
+			}
+			if storeErr != nil {
+				authMap["store_error"] = storeErr.Error()
+			}
+			if c, ok := profileKeyStoreCheck(storeErr); ok {
+				checks = append(checks, c)
 			}
 			if inspect.Status != auth.StatusOK && inspect.Status != auth.StatusMissing {
 				authMap["session_error"] = map[string]any{
@@ -958,6 +973,33 @@ func exposedAPIKeyAdvice(keyID string) string {
 // credPermChmod is the --fix repair, indirected so a test can make it fail
 // without needing a path chmod can refuse on every platform the tests run on.
 var credPermChmod = func(f *os.File, mode os.FileMode) error { return f.Chmod(mode) }
+
+// profileKeyStoreCheck reports where the in-force profile's API key is kept,
+// and fails when it sits in a store this process cannot read. It has no setup
+// fix: the key still exists, so re-adding the profile would replace it.
+func profileKeyStoreCheck(storeErr error) (doctorCheck, bool) {
+	if !profileInForce() {
+		return doctorCheck{}, false
+	}
+	loc := profileKeyLocation()
+	if storeErr != nil {
+		return doctorCheck{
+			ID:      "api_key_store",
+			Status:  "fail",
+			Message: storeErr.Error(),
+			Details: map[string]any{"api_key_store": loc, "store_error": storeErr.Error()},
+		}, true
+	}
+	if !storedAPIKeyProfile() {
+		return doctorCheck{}, false
+	}
+	return doctorCheck{
+		ID:      "api_key_store",
+		Status:  "pass",
+		Message: "API key of profile " + bartolocli.ActiveProfileName() + " stored in: " + loc,
+		Details: map[string]any{"api_key_store": loc},
+	}, true
+}
 
 // credentialPermsCheck reports credential files and directories left with
 // group/other permission bits set. Bartolo v0.6.0 already writes every

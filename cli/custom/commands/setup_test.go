@@ -4235,3 +4235,46 @@ func TestLoginStepErrorNamesTheFailedStep(t *testing.T) {
 		t.Error("non-auth errors pass through untouched")
 	}
 }
+
+// seedMarkerOnlyProfile makes "work" a profile whose key was moved to a secure
+// store (marker only) and puts it in force. Under go test secure stores are off,
+// so the key always reads as unreadable.
+func seedMarkerOnlyProfile(t *testing.T) {
+	t.Helper()
+	bartolocli.Creds.SetProfile("work", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	viper.Set("profile", "work")
+}
+
+func TestSaveAPIKeyProfileDropsStaleStoreMarker(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	if err := saveAPIKeyProfile("sk-orq-new"); err != nil {
+		t.Fatal(err)
+	}
+	if got := bartolocli.GetProfile()["api_key"]; got != "sk-orq-new" {
+		t.Errorf("api_key = %q, want the new key", got)
+	}
+	if _, ok := bartolocli.Creds.GetStringMapString("profiles.work")["api_key_store"]; ok {
+		t.Errorf("stale api_key_store marker survived: %v", bartolocli.Creds.GetStringMapString("profiles.work"))
+	}
+	if err := bartolocli.ProfileKeyUnreadable("work"); err != nil {
+		t.Errorf("profile still reads as unreadable: %v", err)
+	}
+}
+
+func TestResolveAuthReportsUnreadableProfileStore(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	_, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{})
+	if err == nil {
+		t.Fatal("want an error for an unreadable profile store")
+	}
+	for _, want := range []string{"macOS Keychain", "still stored"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "auth profile add") {
+		t.Errorf("error tells the user to re-add the profile: %v", err)
+	}
+}

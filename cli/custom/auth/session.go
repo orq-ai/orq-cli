@@ -425,10 +425,24 @@ func warnStoredSecretRemains(store SecretStore, host, why string) {
 	fmt.Fprintln(os.Stderr, msg)
 }
 
+// ProfileKeyUnreadable is bartolo's error for the in-force profile's API key
+// sitting in a secure store this process could not read (locked, or no store
+// here), with the fix, or nil. Only meaningful after bartolocli.GetProfile.
+// A non-nil error means the key still exists: re-adding the profile replaces it.
+func ProfileKeyUnreadable() error {
+	err := bartolocli.ProfileKeyUnreadable(bartolocli.ActiveProfileName())
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w; the key is still stored there, so unlock that store and retry. Re-adding the profile would replace it", err)
+}
+
 // SavedAgentKey returns the credential agent configs are wired with, and the
 // workspace it was minted for. A bartolo profile in force is authoritative: its
 // key is returned with an unknowable workspace and the login session is ignored
-// completely. With no profile in force, the gateway key belongs to the login
+// completely. With a profile in force, an empty key can mean the store could
+// not be read, not that the key is missing; callers that report a missing key
+// check ProfileKeyUnreadable first. With no profile in force, the gateway key belongs to the login
 // session. It lives here because launch needs it too and launch cannot import
 // commands.
 func SavedAgentKey() (key, workspace string) {

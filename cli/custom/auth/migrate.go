@@ -204,7 +204,7 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		for _, f := range ownedFields {
 			delete(profile, f)
 		}
-		apiKeyProfile := stringField(profile, "api_key") != ""
+		apiKeyProfile := hasAPIKey(profile)
 		// Gateway metadata belongs to the browser login even when an older CLI
 		// happened to store it beside a real API-key profile. A lone workspace
 		// on a brought-key profile has no such provenance and is intentionally
@@ -238,7 +238,7 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		// state.<name>, so this should not be reachable — but a state entry
 		// is proof of ownership for a same-named keyless profile, so if one
 		// is still there, it goes too rather than surviving keyless forever.
-		if key, profile, ok := profileEntryFold(profiles, name); ok && stringField(profile, "api_key") == "" {
+		if key, profile, ok := profileEntryFold(profiles, name); ok && !hasAPIKey(profile) {
 			delete(profiles, key)
 		}
 	}
@@ -563,4 +563,10 @@ func uniqueJSONPath(path string) string {
 			return candidate
 		}
 	}
+}
+
+// hasAPIKey reports whether a profile holds an API key: inline, or moved to a
+// secure store (marked by api_key_store). A marker-only profile is not keyless.
+func hasAPIKey(profile map[string]any) bool {
+	return stringField(profile, "api_key") != "" || stringField(profile, "api_key_store") != ""
 }

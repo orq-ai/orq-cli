@@ -20,7 +20,7 @@ const operationPrefix = "error calling operation: "
 
 // staleAuthRemedy is the missing-key remedy bartolo's apikey handler prints. It
 // names `auth setup`, which this CLI removed; the `--profile` variants too.
-var staleAuthRemedy = regexp.MustCompile("configure a profile with `auth setup[^`]*`")
+var staleAuthRemedy = regexp.MustCompile("configure a profile with `(?:orq )?auth setup[^`]*`")
 
 // apiError keeps the original error for errors.As / exit-code mapping and
 // replaces only what a person reads.

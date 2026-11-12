@@ -404,6 +404,9 @@ func applyProfileAPIKey(announce bool) {
 	}
 	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
 	if key == "" {
+		// The key is either missing or in a store this process can't read;
+		// bartolo's apikey handler fails the call with ProfileKeyUnreadable's
+		// error, which names the store.
 		// Nothing to export, and nothing to clear either: bartolo will fail
 		// this call on the keyless profile, and doctor reports it. Unsetting
 		// here would only hide what the user actually has set.
