@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
+
 **Changed:** `orq setup` and `orq connect skills` install the current orq
 skills, from [assistant-plugins](https://github.com/orq-ai/assistant-plugins)
 4.0.0; until now the CLI shipped a copy from 2026-07-29. The set grows from 14
