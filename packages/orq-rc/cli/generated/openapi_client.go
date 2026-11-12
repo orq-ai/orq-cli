@@ -15184,12 +15184,12 @@ func OpenapiExperimentCreate(params *viper.Viper, body string) (*gentleman.Respo
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentEvalCreate Add an eval column
-func OpenapiExperimentEvalCreate(paramExperimentId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "experiments create-eval experiment-id run-id"
+// OpenapiExperimentAnnotationCreate Add an annotation column
+func OpenapiExperimentAnnotationCreate(paramExperimentId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments create-annotation experiment-id run-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/annotations"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
@@ -15235,12 +15235,12 @@ func OpenapiExperimentEvalCreate(paramExperimentId string, paramRunId string, pa
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentReviewCreate Add a human review column
-func OpenapiExperimentReviewCreate(paramExperimentId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "experiments create-review experiment-id run-id"
+// OpenapiExperimentEvalCreate Add an eval column
+func OpenapiExperimentEvalCreate(paramExperimentId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments create-eval experiment-id run-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/reviews"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
@@ -15423,25 +15423,25 @@ func OpenapiExperimentDelete(paramExperimentId string, params *viper.Viper) (*ge
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentEvalDelete Remove an eval column
-func OpenapiExperimentEvalDelete(paramExperimentId string, paramRunId string, paramEvalId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
-	handlerPath := "experiments delete-eval experiment-id run-id eval-id"
+// OpenapiExperimentAnnotationDelete Remove an annotation column
+func OpenapiExperimentAnnotationDelete(paramExperimentId string, paramRunId string, paramAnnotationColumnId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+	handlerPath := "experiments delete-annotation experiment-id run-id annotation-column-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators/{eval_id}"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/annotations/{annotation_column_id}"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
-	if paramEvalId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter eval_id cannot be empty"))
+	if paramAnnotationColumnId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter annotation_column_id cannot be empty"))
 	}
 
 	url = strings.Replace(url, "{experiment_id}", neturl.PathEscape(paramExperimentId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
-	url = strings.Replace(url, "{eval_id}", neturl.PathEscape(paramEvalId), 1)
+	url = strings.Replace(url, "{annotation_column_id}", neturl.PathEscape(paramAnnotationColumnId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -15470,25 +15470,25 @@ func OpenapiExperimentEvalDelete(paramExperimentId string, paramRunId string, pa
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentReviewDelete Remove a human review column
-func OpenapiExperimentReviewDelete(paramExperimentId string, paramRunId string, paramReviewId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
-	handlerPath := "experiments delete-review experiment-id run-id review-id"
+// OpenapiExperimentEvalDelete Remove an eval column
+func OpenapiExperimentEvalDelete(paramExperimentId string, paramRunId string, paramEvalId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+	handlerPath := "experiments delete-eval experiment-id run-id eval-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/reviews/{review_id}"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators/{eval_id}"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
-	if paramReviewId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter review_id cannot be empty"))
+	if paramEvalId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter eval_id cannot be empty"))
 	}
 
 	url = strings.Replace(url, "{experiment_id}", neturl.PathEscape(paramExperimentId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
-	url = strings.Replace(url, "{review_id}", neturl.PathEscape(paramReviewId), 1)
+	url = strings.Replace(url, "{eval_id}", neturl.PathEscape(paramEvalId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -16012,12 +16012,12 @@ func OpenapiExperimentList(params *viper.Viper) (*gentleman.Response, map[string
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentEvalList List eval columns
-func OpenapiExperimentEvalList(paramExperimentId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "experiments list-evals experiment-id run-id"
+// OpenapiExperimentAnnotationList List annotation columns
+func OpenapiExperimentAnnotationList(paramExperimentId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments list-annotations experiment-id run-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/annotations"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
@@ -16059,12 +16059,12 @@ func OpenapiExperimentEvalList(paramExperimentId string, paramRunId string, para
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentReviewList List human review columns
-func OpenapiExperimentReviewList(paramExperimentId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "experiments list-reviews experiment-id run-id"
+// OpenapiExperimentEvalList List eval columns
+func OpenapiExperimentEvalList(paramExperimentId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments list-evals experiment-id run-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/reviews"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/evaluators"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
@@ -16213,6 +16213,65 @@ func OpenapiExperimentTaskList(paramExperimentId string, paramRunId string, para
 	return resp, decoded, nil
 }
 
+// OpenapiExperimentAnnotationCellPatch Set an annotation cell
+func OpenapiExperimentAnnotationCellPatch(paramExperimentId string, paramRunId string, paramAnnotationColumnId string, paramDatapointId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments patch-annotation-cell experiment-id run-id annotation-column-id datapoint-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/annotations/{annotation_column_id}/cells/{datapoint_id}"
+	if paramExperimentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
+	}
+	if paramRunId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
+	}
+	if paramAnnotationColumnId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter annotation_column_id cannot be empty"))
+	}
+	if paramDatapointId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datapoint_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{experiment_id}", neturl.PathEscape(paramExperimentId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
+	url = strings.Replace(url, "{annotation_column_id}", neturl.PathEscape(paramAnnotationColumnId), 1)
+	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
+
+	req := bartolocli.Client.Patch().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiExperimentRunQuery Query run cells
 func OpenapiExperimentRunQuery(paramExperimentId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "experiments query-run experiment-id run-id"
@@ -16311,25 +16370,25 @@ func OpenapiExperimentUpdate(paramExperimentId string, params *viper.Viper, body
 	return resp, decoded, nil
 }
 
-// OpenapiExperimentReviewUpdate Update review column metadata
-func OpenapiExperimentReviewUpdate(paramExperimentId string, paramRunId string, paramReviewId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "experiments update-review experiment-id run-id review-id"
+// OpenapiExperimentAnnotationUpdate Update annotation column metadata
+func OpenapiExperimentAnnotationUpdate(paramExperimentId string, paramRunId string, paramAnnotationColumnId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "experiments update-annotation experiment-id run-id annotation-column-id"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/reviews/{review_id}"
+	url := server + "/v3/experiments/{experiment_id}/runs/{run_id}/annotations/{annotation_column_id}"
 	if paramExperimentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter experiment_id cannot be empty"))
 	}
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
-	if paramReviewId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter review_id cannot be empty"))
+	if paramAnnotationColumnId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter annotation_column_id cannot be empty"))
 	}
 
 	url = strings.Replace(url, "{experiment_id}", neturl.PathEscape(paramExperimentId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
-	url = strings.Replace(url, "{review_id}", neturl.PathEscape(paramReviewId), 1)
+	url = strings.Replace(url, "{annotation_column_id}", neturl.PathEscape(paramAnnotationColumnId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
