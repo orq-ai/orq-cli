@@ -494,6 +494,9 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	if profileInForce() {
 		key, _ := savedAPIKey()
 		if key == "" {
+			if err := auth.ProfileKeyUnreadable(); err != nil {
+				return nil, err
+			}
 			name := bartoloProfileName()
 			// `auth profile add` rather than a wizard: --api-key-file feeds it
 			// the key from disk — off the argv, where `ps` would show it — so a
@@ -858,18 +861,19 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 
 // saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
 // handler type and the resolved server, nothing of ours. bartolo resolves it
-// from here on. Only ever writes a named, selected profile — an unselected one
+// from here on. SetProfile moves the key into the OS secure store and leaves an
+// api_key_store marker; with no store available the key stays in the 0600 file. Only ever writes a named, selected profile — an unselected one
 // is unreachable, so a caller with no profile in force must not reach here.
 func saveAPIKeyProfile(key string) error {
 	name := bartoloProfileName()
 	if name == "" {
 		return errors.New("cannot save an API-key profile without a selected profile (--profile / ORQ_PROFILE / `orq auth profile use`)")
 	}
-	bartolocli.Creds.Set("profiles."+name+".api_key", key)
-	bartolocli.Creds.Set("profiles."+name+".type", BartoloAuthType())
+	fields := map[string]string{"api_key": key, "type": BartoloAuthType()}
 	if server := auth.Server(); server != "" {
-		bartolocli.Creds.Set("profiles."+name+".server", server)
+		fields["server"] = server
 	}
+	bartolocli.Creds.SetProfile(name, fields)
 	return saveCreds()
 }
 
@@ -1176,6 +1180,19 @@ func clearShellEnvFile() ([]string, error) {
 		cleared = append(cleared, path)
 	}
 	return cleared, errors.Join(clearErrors...)
+}
+
+// profileKeyLocation names where the in-force profile's API key is kept: the
+// secure store bartolo moved it to, or credentials.json. Call after GetProfile.
+func profileKeyLocation() string {
+	name := bartolocli.ActiveProfileName()
+	if store := strings.TrimSpace(bartolocli.Creds.GetStringMapString("profiles." + name)["api_key_store"]); store != "" {
+		return store
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(auth.CredentialStoreEnv)), "file") {
+		return "credentials.json (" + auth.CredentialStoreEnv + "=file)"
+	}
+	return "credentials.json"
 }
 
 // storedAPIKeyProfile reports whether a bartolo profile in force holds a key.

@@ -450,6 +450,10 @@ func NewWhoAmICommand() *cobra.Command {
 				rawKey := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
 				key := maskToken(rawKey)
 				apiBase := auth.ResolveURLs(serverURL()).APIBaseURL
+				var storeErr error
+				if rawKey == "" {
+					storeErr = auth.ProfileKeyUnreadable()
+				}
 				check := credentialCheck{Authenticated: rawKey != ""}
 				if rawKey != "" {
 					check = checkCredential(auth.NewClient(apiBase).WithContext(cmd.Context()).ProbeToken(rawKey))
@@ -457,6 +461,11 @@ func NewWhoAmICommand() *cobra.Command {
 				if wantsHumanView(cmd) {
 					success("Using API-key profile %s", bartolocli.ActiveProfileName())
 					kv(9, "server", "%s", apiBase)
+					kv(9, "api_key_store", "%s", profileKeyLocation())
+					if storeErr != nil {
+						kv(9, "api_key", "%s", "(unreadable: "+storeErr.Error()+")")
+						return storeErr
+					}
 					if key == "" {
 						// The profile exists but carries no key, so every request
 						// will fail; say that rather than print a blank field.
@@ -474,6 +483,10 @@ func NewWhoAmICommand() *cobra.Command {
 					"session_file":  auth.SessionFilePath(),
 					"identity":      nil,
 					"authenticated": check.Authenticated,
+				}
+				out["api_key_store"] = profileKeyLocation()
+				if storeErr != nil {
+					out["store_error"] = storeErr.Error()
 				}
 				if check.AuthError != "" {
 					out["auth_error"] = check.AuthError

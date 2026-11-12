@@ -749,6 +749,28 @@ func useProfile(t *testing.T, name, key string) {
 	t.Cleanup(func() { bartolocli.Creds = prev; viper.Set("profile", "") })
 }
 
+func TestResolveCredentialsReportsUnreadableProfileStore(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ORQ_API_KEY", "")
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds.SetProfile("acme", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	prev := bartolocli.Creds
+	bartolocli.Creds = creds
+	viper.Set("profile", "acme")
+	t.Cleanup(func() { bartolocli.Creds = prev; viper.Set("profile", "") })
+
+	_, err = ResolveCredentials(os.Getenv)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "macOS Keychain") || strings.Contains(err.Error(), "has no api_key") {
+		t.Errorf("error = %v, want the store named and no missing-key claim", err)
+	}
+}
+
 // TestResolveCredentialsProfileInForce: a selected API-key profile is the
 // credential. No session is read — there is none on disk here and no server
 // to reach — and a keyless profile is an error, never a fall-through to the

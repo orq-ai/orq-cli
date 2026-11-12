@@ -196,9 +196,21 @@ func printProfileList(rec record) {
 		if p["active"] == true {
 			marker = paint(ansiOK, "✓")
 		}
-		rows = append(rows, tableRow{marker: marker, cells: []string{fmt.Sprint(p["name"]), orDash(p["server"]), orDash(p["api_key"])}})
+		rows = append(rows, tableRow{marker: marker, cells: []string{fmt.Sprint(p["name"]), orDash(p["server"]), profileKeyCell(p)}})
 	}
 	printTable(bartolocli.Stdout, []string{"NAME", "SERVER", "KEY"}, rows)
+}
+
+// profileKeyCell shows a profile's key column. Bartolo's list reads the raw
+// file, so a key moved to a secure store has only an api_key_store marker.
+func profileKeyCell(p map[string]any) string {
+	if s, ok := p["api_key"].(string); ok && s != "" {
+		return s
+	}
+	if store, ok := p["api_key_store"].(string); ok && store != "" {
+		return "in " + store
+	}
+	return "-"
 }
 
 func orDash(v any) string {
