@@ -120,6 +120,21 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** `orq setup` and `orq connect skills` install the current orq
+skills, from [assistant-plugins](https://github.com/orq-ai/assistant-plugins)
+4.0.0; until now the CLI shipped a copy from 2026-07-29. The set grows from 14
+to 20 skills: `orq-analyze-trace-failures` and `orq-optimize-prompt` are
+replaced by `orq-analyze-traces` and `orq-improve-agent`, and `create-skill`,
+`orq-cli`, `orq-quickstart`, `orq-recommend-evaluators`, `orq-review-agent` and
+`orq-shared` are new. An existing install drops the two retired skills on its
+next skills command; run `orq connect skills` again to install the new ones.
+From now on a scheduled workflow opens a PR whenever assistant-plugins
+releases, so the embedded skills no longer go stale between CLI releases.
+
+**Changed:** `orq launch claude --trace` loads orq-trace 0.6.1 (was 0.5.0) and
+pins its destination with `ORQ_OTLP_ENDPOINT`, which 0.6 reads in place of a
+config file, so a traced staging session keeps exporting to staging.
+
 ## [12.9.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.0) — 2026-11-10
 
 **Added:** `orq launch` can authenticate the orq MCP server in a run with no

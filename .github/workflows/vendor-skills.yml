@@ -1,0 +1,134 @@
+name: Vendor orq skills
+
+# Opens a PR that moves the embedded orq skills and orq-trace plugin to the
+# latest orq-ai/assistant-plugins release. The release pipeline builds what is
+# committed, so upstream content reaches a binary only through a reviewed PR,
+# and merging that PR changes cli/custom/, which cuts a release by itself.
+# assistant-plugins can trigger this right after it releases with a
+# repository_dispatch of type assistant-plugins-release; the schedule is the
+# fallback.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [assistant-plugins-release]
+
+concurrency:
+  group: vendor-skills
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # persist-credentials required: the job pushes the bump branch.
+        # zizmor: ignore[artipacked]
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # No cache: this job holds a write token, so it must not restore a
+          # cache another workflow could have written.
+          cache: false
+
+      - name: Resolve the latest assistant-plugins release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api repos/orq-ai/assistant-plugins/releases/latest --jq .tag_name)"
+          current="$(jq -r .ref cli/custom/skills/assets/SOURCE.json)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$tag" = "$current" ]; then
+            echo "Embedded skills are already at $tag."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Embedded skills are at $current; latest is $tag."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Vendor and record the change
+        if: steps.latest.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+          CURRENT: ${{ steps.latest.outputs.current }}
+        run: |
+          set -euo pipefail
+          skills() { find cli/custom/skills/assets -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort; }
+          # "a b" -> "`a`, `b`"
+          names() { awk 'NF { printf "%s`%s`", (n++ ? ", " : ""), $0 }'; }
+          before="$(skills)"
+          ./scripts/vendor-skills.sh "$TAG"
+          after="$(skills)"
+          added="$(comm -13 <(echo "$before") <(echo "$after") | names)"
+          removed="$(comm -23 <(echo "$before") <(echo "$after") | names)"
+          trace="$(jq -r .version cli/custom/launch/assets/orq-trace/.claude-plugin/plugin.json)"
+          # One entry under "## Unreleased", the hand-written release notes.
+          entry="**Changed:** the embedded orq skills move to assistant-plugins $TAG (was $CURRENT), with orq-trace $trace."
+          [ -n "$added" ] && entry="$entry Added: $added."
+          [ -n "$removed" ] && entry="$entry Removed: $removed. An existing install drops the removed skills on its next refresh; \`orq connect skills\` installs the added ones."
+          ENTRY="$entry" python3 - <<'PY'
+          import os
+          path = "CHANGELOG.md"
+          text = open(path).read()
+          marker = "## Unreleased\n"
+          assert marker in text, "CHANGELOG.md has no '## Unreleased' heading"
+          text = text.replace(marker, marker + "\n" + os.environ["ENTRY"] + "\n", 1)
+          open(path, "w").write(text)
+          PY
+
+      - name: Test the vendored tree
+        id: test
+        if: steps.latest.outputs.changed == 'true'
+        # A failing upstream still gets a PR, as a draft, so the code change it
+        # needs is made there. Nothing reaches main until that PR merges.
+        run: |
+          if make test > test.log 2>&1; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+            tail -n 60 test.log
+          fi
+
+      - name: Open or update the PR
+        if: steps.latest.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+          CURRENT: ${{ steps.latest.outputs.current }}
+          RESULT: ${{ steps.test.outputs.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          branch="bot/vendor-assistant-plugins-$TAG"
+          git config user.name "Orq GitHub Actions"
+          git config user.email "admin@orq.ai"
+          git switch -c "$branch"
+          git add cli/custom/skills/assets cli/custom/launch/assets/orq-trace CHANGELOG.md
+          git commit -m "chore(skills): vendor assistant-plugins $TAG"
+          git push --force origin "$branch"
+          if [ "$RESULT" = "pass" ]; then
+            tests="\`make test\` passed on the vendored tree ([run]($RUN_URL))."
+          else
+            tests="**\`make test\` failed on the vendored tree** ([run]($RUN_URL)). This PR is a draft until the CLI is changed to match."
+          fi
+          body="Moves the embedded orq skills and orq-trace plugin from assistant-plugins \`$CURRENT\` to [\`$TAG\`](https://github.com/orq-ai/assistant-plugins/releases/tag/$TAG), generated by \`scripts/vendor-skills.sh $TAG\`.
+
+          $tests
+
+          A PR opened by this workflow starts no CI of its own (GITHUB_TOKEN), so close and reopen it, or push to it, to run the full checks before merging. Review the upstream release notes for behaviour the CLI depends on."
+          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$branch" --body "$body"
+          elif [ "$RESULT" = "pass" ]; then
+            gh pr create --head "$branch" --title "chore(skills): vendor assistant-plugins $TAG" --body "$body"
+          else
+            gh pr create --draft --head "$branch" --title "chore(skills): vendor assistant-plugins $TAG" --body "$body"
+          fi
