@@ -2941,12 +2941,10 @@ func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *
 	}
 }
 
-// With no durable key, an interactive otel connect offers connect's own mint
-// instead of silently writing an unauthenticated exporter. Unattended runs and
-// machines that already hold a key are never asked.
 func TestOfferOtelKey(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
+		agents []string
 		envKey string
 		opts   setupOptions
 		asked  bool
@@ -2955,6 +2953,7 @@ func TestOfferOtelKey(t *testing.T) {
 		{name: "key present", envKey: "sk-live"},
 		{name: "no-input", opts: setupOptions{noInput: true}},
 		{name: "yes", opts: setupOptions{yes: true}},
+		{name: "no agent writes otel", agents: []string{"codex"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -2970,10 +2969,14 @@ func TestOfferOtelKey(t *testing.T) {
 			opts := tc.opts
 			opts.confirmFn = func(message string, _ bool) bool {
 				prompts = append(prompts, message)
-				return false // decline: nothing may be minted or saved
+				return false
+			}
+			agents := tc.agents
+			if agents == nil {
+				agents = []string{"claude"}
 			}
 			var out strings.Builder
-			offerOtelKey(NewConnectCommand(), &reporter{w: &out}, &opts)
+			offerOtelKey(NewConnectCommand(), &reporter{w: &out}, &opts, agents)
 			if asked := len(prompts) > 0; asked != tc.asked {
 				t.Fatalf("asked = %v (%q), want %v\n%s", asked, prompts, tc.asked, out.String())
 			}
@@ -2987,6 +2990,41 @@ func TestOfferOtelKey(t *testing.T) {
 				t.Errorf("declined offer saved a key: %q", key)
 			}
 		})
+	}
+}
+
+func TestConnectOtelOfferMintsKeyIntoSettings(t *testing.T) {
+	const minted = "sk-orq-MINTED-FOR-OTEL"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "api-keys"):
+			fmt.Fprintf(w, `{"token":%q}`, minted)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	defer srv.Close()
+	home := connectHarness(t, srv)
+	saveConnectSession(t, srv.URL, "acme", "", "")
+	t.Setenv("ORQ_API_KEY", "")
+	ResetUserEnvAPIKey()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	opts := &setupOptions{noProject: true, confirmFn: func(string, bool) bool { return true }}
+	var out strings.Builder
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, opts, []string{"claude"}, []string{capOtel}, false); err != nil {
+		t.Fatalf("connect otel: %v\n%s", err, out.String())
+	}
+	_, env := claudeSettings(t, filepath.Join(home, ".claude", "settings.json"))
+	if got, want := env["OTEL_EXPORTER_OTLP_HEADERS"], "Authorization=Bearer "+minted; got != want {
+		t.Errorf("Authorization header = %v, want %q\n%s", got, want, out.String())
 	}
 }
 

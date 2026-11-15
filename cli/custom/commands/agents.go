@@ -504,7 +504,7 @@ func claudeNativeOtelState(path, endpoint string) (bool, error) {
 	}
 	header, _ := env["OTEL_EXPORTER_OTLP_HEADERS"].(string)
 	if !strings.HasPrefix(strings.TrimSpace(header), "Authorization=Bearer ") || strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(header), "Authorization=Bearer ")) == "" {
-		return false, errors.New("OTel Authorization header is missing; run 'orq connect claude otel' with a configured credential")
+		return false, errors.New("OTel Authorization header is missing; " + otelKeyRemedy("claude"))
 	}
 	for key, want := range claudeOtelSettings {
 		if got, _ := env[key].(string); got != want {

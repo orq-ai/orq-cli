@@ -567,7 +567,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			// when something in this run actually needs a credential:
 			// warning a skills-only run about a key it will never ask for
 			// is the same false network dependency, stated in advance.
-			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
+			if capsNeedCredential(caps) && !connectHasCredential(opts) {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
 			agents, err = promptForAgents(rep, caps)
@@ -645,7 +645,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	otelFailed := false
 	if hasCap(caps, capOtel) {
 		if !askedForCredential {
-			offerOtelKey(cmd, rep, opts)
+			offerOtelKey(cmd, rep, opts, agents)
 		}
 		otelResults, otelFailed = connectOtel(rep, opts, agents)
 	}
@@ -853,7 +853,7 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 			}
 		}
 		if key == "" {
-			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you run 'orq setup', or rerun 'orq connect %s otel --api-key <key>'", id, capOtel, id)
+			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you %s", id, capOtel, otelKeyRemedy(id))
 		}
 		sh := detectShell(viper.GetString("config-directory"))
 		results = append(results, otelResult{
@@ -863,13 +863,13 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 	return results, failed
 }
 
-// offerOtelKey runs connect's login-and-mint path when the otel leg would
-// otherwise write exporter settings with no Authorization header. Any valid key
-// can ingest OTLP (orquesta-web authenticates /v2/otel/* but checks no
-// permission domain), so the gateway key it mints is enough. Like every other
-// connect mint, it never runs unattended.
-func offerOtelKey(cmd *cobra.Command, rep *reporter, opts *setupOptions) {
-	if opts.noInput || opts.yes {
+// offerOtelKey mints a key before the otel leg would write an exporter with no
+// Authorization header. The gateway key suffices: OTLP ingest checks no
+// permission domain, only that the key is valid.
+func offerOtelKey(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents []string) {
+	// Offer only where resolveConnectAuth will actually mint, so the prompt
+	// never ends in "using your saved key" and an unauthenticated exporter.
+	if opts.noInput || opts.yes || !anyNativeOtelAgent(agents) || connectHasCredential(opts) {
 		return
 	}
 	if key, err := nativeOtelCredential(opts); err != nil || key != "" {
@@ -879,6 +879,20 @@ func offerOtelKey(cmd *cobra.Command, rep *reporter, opts *setupOptions) {
 	if _, _, err := resolveConnectAuth(cmd, rep, opts); err != nil && !errors.Is(err, errLoginDeclined) {
 		rep.warn("otel key not created: %v", err)
 	}
+}
+
+func anyNativeOtelAgent(agents []string) bool {
+	for _, id := range agents {
+		if spec, ok := lookupAgent(id); ok && spec.writeOtel != nil && spec.otelConfig != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// otelKeyRemedy completes "telemetry will not authenticate until you ...".
+func otelKeyRemedy(agent string) string {
+	return "rerun 'orq connect " + agent + " otel --api-key <durable key>', or run 'orq setup' to create one"
 }
 
 // nativeOtelCredential selects a durable credential suitable for a persistent
@@ -1043,6 +1057,13 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 // fault, so the caller turns it into a hint and exit 0.
 var errLoginDeclined = errors.New("login declined")
 
+// connectHasCredential is resolveConnectAuth's test for "something to reuse":
+// when it is false, an interactive resolveConnectAuth logs in and mints.
+func connectHasCredential(opts *setupOptions) bool {
+	saved, _ := savedAPIKey()
+	return saved != "" || strings.TrimSpace(opts.apiKey) != "" || UserEnvAPIKey() != ""
+}
+
 // resolveConnectAuth is connect's credential path. It reuses whatever exists —
 // saved key, ORQ_API_KEY, --api-key, session — and when nothing does, an
 // interactive run offers to log in and mint one right here, so the selection
@@ -1050,7 +1071,7 @@ var errLoginDeclined = errors.New("login declined")
 func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (*authState, *auth.Client, error) {
 	saved, savedWS := savedAPIKey()
 	envKey := UserEnvAPIKey()
-	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
+	if !connectHasCredential(opts) {
 		if opts.noInput || opts.yes {
 			return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
 		}
