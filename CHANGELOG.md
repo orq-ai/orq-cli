@@ -120,6 +120,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** `orq connect claude otel` on a machine with no saved API key now
+offers to log in and create one, the same prompt `orq connect` uses for the
+gateway, instead of saving exporter settings that cannot authenticate. Runs
+with `--yes` or `--no-input` still never create a key; they save the settings
+and the warning now points at `orq setup` or `--api-key`.
+
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 
 **Changed:** `orq setup` and `orq connect skills` install the current orq

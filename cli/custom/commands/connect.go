@@ -601,7 +601,8 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	// must never demand a key, prompt for a login, or fail without one.
 	var state *authState
 	var client *auth.Client
-	if capsNeedCredential(caps) {
+	askedForCredential := capsNeedCredential(caps)
+	if askedForCredential {
 		var err error
 		state, client, err = resolveConnectAuth(cmd, rep, opts)
 		switch {
@@ -643,6 +644,9 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	var otelResults []otelResult
 	otelFailed := false
 	if hasCap(caps, capOtel) {
+		if !askedForCredential {
+			offerOtelKey(cmd, rep, opts)
+		}
 		otelResults, otelFailed = connectOtel(rep, opts, agents)
 	}
 	failed := mcpFailed || otelFailed
@@ -849,7 +853,7 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 			}
 		}
 		if key == "" {
-			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you run 'orq connect claude otel' with a configured credential", id, capOtel)
+			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you run 'orq setup', or rerun 'orq connect %s otel --api-key <key>'", id, capOtel, id)
 		}
 		sh := detectShell(viper.GetString("config-directory"))
 		results = append(results, otelResult{
@@ -857,6 +861,24 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 		})
 	}
 	return results, failed
+}
+
+// offerOtelKey runs connect's login-and-mint path when the otel leg would
+// otherwise write exporter settings with no Authorization header. Any valid key
+// can ingest OTLP (orquesta-web authenticates /v2/otel/* but checks no
+// permission domain), so the gateway key it mints is enough. Like every other
+// connect mint, it never runs unattended.
+func offerOtelKey(cmd *cobra.Command, rep *reporter, opts *setupOptions) {
+	if opts.noInput || opts.yes {
+		return
+	}
+	if key, err := nativeOtelCredential(opts); err != nil || key != "" {
+		return
+	}
+	rep.info("otel needs an API key to authenticate telemetry")
+	if _, _, err := resolveConnectAuth(cmd, rep, opts); err != nil && !errors.Is(err, errLoginDeclined) {
+		rep.warn("otel key not created: %v", err)
+	}
 }
 
 // nativeOtelCredential selects a durable credential suitable for a persistent

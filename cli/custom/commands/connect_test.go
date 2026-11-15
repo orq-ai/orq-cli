@@ -2941,6 +2941,55 @@ func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *
 	}
 }
 
+// With no durable key, an interactive otel connect offers connect's own mint
+// instead of silently writing an unauthenticated exporter. Unattended runs and
+// machines that already hold a key are never asked.
+func TestOfferOtelKey(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		envKey string
+		opts   setupOptions
+		asked  bool
+	}{
+		{name: "no key, interactive", asked: true},
+		{name: "key present", envKey: "sk-live"},
+		{name: "no-input", opts: setupOptions{noInput: true}},
+		{name: "yes", opts: setupOptions{yes: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("ORQ_API_KEY", "")
+			ResetUserEnvAPIKey()
+			if tc.envKey != "" {
+				SetUserEnvAPIKey(tc.envKey)
+			}
+			t.Cleanup(ResetUserEnvAPIKey)
+			ensureCreds(t)
+			resetSetupMemos(t)
+			var prompts []string
+			opts := tc.opts
+			opts.confirmFn = func(message string, _ bool) bool {
+				prompts = append(prompts, message)
+				return false // decline: nothing may be minted or saved
+			}
+			var out strings.Builder
+			offerOtelKey(NewConnectCommand(), &reporter{w: &out}, &opts)
+			if asked := len(prompts) > 0; asked != tc.asked {
+				t.Fatalf("asked = %v (%q), want %v\n%s", asked, prompts, tc.asked, out.String())
+			}
+			if !tc.asked {
+				return
+			}
+			if !strings.Contains(out.String(), "otel needs an API key") {
+				t.Errorf("offer did not say why it is asking:\n%s", out.String())
+			}
+			if key, _ := savedAPIKey(); key != "" {
+				t.Errorf("declined offer saved a key: %q", key)
+			}
+		})
+	}
+}
+
 func TestConnectOtelSkipsUnsupportedAgent(t *testing.T) {
 	var out strings.Builder
 	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{}, []string{"codex"})
