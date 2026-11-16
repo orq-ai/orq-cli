@@ -3947,6 +3947,44 @@ func TestConnectLoginTokenFlagNeedsOtel(t *testing.T) {
 	}
 }
 
+// --use-login-token is refused up front under a profile, and without a login
+// session even when a durable key exists.
+func TestConnectLoginTokenFlagRejectedEarly(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T)
+		want  string
+	}{
+		{"profile", func(t *testing.T) {
+			ensureCreds(t)
+			bartolocli.Creds.Set("profiles.work.type", "apikey")
+			viper.Set("profile", "work")
+			t.Cleanup(func() { viper.Set("profile", "") })
+		}, `profile "work"`},
+		{"no session", func(t *testing.T) {
+			if err := auth.ClearSession(); err != nil {
+				t.Fatal(err)
+			}
+			SetUserEnvAPIKey("sk-durable")
+		}, "needs a login"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := keyMintServer(t)
+			settings := sessionOtelHarness(t, srv)
+			tc.setup(t)
+			cmd := NewConnectCommand()
+			cmd.SetArgs([]string{"claude", "otel", "--use-login-token", "--yes"})
+			var sink strings.Builder
+			cmd.SetErr(&sink)
+			cmd.SetOut(&sink)
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want one containing %q", err, tc.want)
+			}
+			assertNoOtelExporter(t, settings)
+		})
+	}
+}
+
 // writeLoginTokenOtel wires otel with the login token and returns the settings path.
 func writeLoginTokenOtel(t *testing.T) string {
 	t.Helper()
