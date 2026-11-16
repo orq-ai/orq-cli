@@ -105,9 +105,11 @@ func offerLaunchKey(cmd *cobra.Command, opts *setupOptions) (string, error) {
 	if keyOfferDeclined(dir) {
 		return "", nil
 	}
-	question := fmt.Sprintf("No durable API key for this workspace; the login token expires in about an hour. Create a %d-day API key now?",
-		int(gatewayKeyLifetime.Hours()/24))
-	if !opts.confirm(question, true) {
+	switch opts.choose(noDurableKeyMessage, keyChoices("Use my login token, and don't ask again in this directory")) {
+	case keyChoiceCreate:
+	case keyChoiceSession, -1:
+		return "", nil
+	default:
 		if rememberKeyOfferDeclined(dir) == nil {
 			fmt.Fprintln(os.Stderr, "Not asking again in this directory; 'orq setup' creates the key whenever you want it.")
 		}

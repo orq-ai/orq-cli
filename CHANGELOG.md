@@ -129,9 +129,16 @@ create a key. Every connect leg now picks its key from one place, in one order:
 `--api-key`, the saved key, `ORQ_API_KEY`, then an `orq auth login --api-key`
 login; that last one is now reused instead of minting a second key.
 
+**Added:** for quick checks, `orq connect <agent> otel` can write the login
+token instead of a durable key: pick "Use my login token" at the key prompt, or
+pass `--use-session-token` (the only way in `--yes`/`--no-input` runs). It warns
+that traces stop when the token expires, in about an hour, and the next connect
+run with a durable key replaces it.
+
 **Changed:** `orq launch` offers the same key when it would hand the agent (and
-its trace export) the session token. Declining remembers the answer for that
-directory only; `orq setup` creates the key whenever you want it.
+its trace export) the session token, with the same three choices: create the
+key, use the login token this time, or use it and stop asking in this
+directory. `orq setup` creates the key whenever you want it.
 
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 

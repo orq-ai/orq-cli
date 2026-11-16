@@ -3805,6 +3805,72 @@ func TestConnectOtelUnattendedNeverMints(t *testing.T) {
 	}
 }
 
+// The login token is written only when asked for, at the prompt or with
+// --use-session-token, says it expires, and a rerun with a durable key replaces it.
+func TestConnectOtelSessionTokenOptIn(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts setupOptions
+	}{
+		{"picked", setupOptions{chooseFn: func(string, []string) int { return keyChoiceSession }}},
+		{"flag", setupOptions{noInput: true, useSessionToken: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, mints := keyMintServer(t)
+			home := connectHarness(t, srv)
+			saveConnectSession(t, srv.URL, "acme", "", "")
+			t.Setenv("ORQ_API_KEY", "")
+			ResetUserEnvAPIKey()
+			t.Cleanup(ResetUserEnvAPIKey)
+			t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+			if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			resetSetupMemos(t)
+			settings := filepath.Join(home, ".claude", "settings.json")
+			opts := tc.opts
+			opts.noProject = true
+			var out strings.Builder
+			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude"}, []string{capOtel}, false); err != nil {
+				t.Fatalf("connect otel: %v\n%s", err, out.String())
+			}
+			_, env := claudeSettings(t, settings)
+			if got, want := env["OTEL_EXPORTER_OTLP_HEADERS"], "Authorization=Bearer session-token-acme"; got != want || *mints != 0 {
+				t.Errorf("header = %v, mints = %d; want %q and no mint\n%s", got, *mints, want, out.String())
+			}
+			if !strings.Contains(out.String(), "uses your login token") {
+				t.Errorf("expiry not warned:\n%s", out.String())
+			}
+
+			SetUserEnvAPIKey("sk-durable")
+			out.Reset()
+			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &setupOptions{noInput: true}, []string{"claude"}, []string{capOtel}, false); err != nil {
+				t.Fatalf("rerun: %v\n%s", err, out.String())
+			}
+			if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer sk-durable" {
+				t.Errorf("rerun kept %v, want the durable key", env["OTEL_EXPORTER_OTLP_HEADERS"])
+			}
+		})
+	}
+}
+
+// Taking the login token at launch's prompt is for this run: it asks again.
+func TestOfferLaunchKeyLoginTokenChoiceAsksAgain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ensureCreds(t)
+	t.Chdir(t.TempDir())
+	asked := 0
+	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return keyChoiceSession }}
+	for range 2 {
+		if key, err := offerLaunchKey(NewLaunchCommand(), opts); key != "" || err != nil {
+			t.Fatalf("login token choice returned (%q, %v)", key, err)
+		}
+	}
+	if asked != 2 {
+		t.Fatalf("asked %d times, want 2: the login token choice must not silence the offer", asked)
+	}
+}
+
 // Declining launch's key offer silences it for that directory only.
 func TestOfferLaunchKeyRemembersDeclinePerDirectory(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())

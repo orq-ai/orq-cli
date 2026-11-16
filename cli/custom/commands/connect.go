@@ -345,6 +345,7 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f := cmd.Flags()
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key for this run instead of the saved one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
+	f.BoolVar(&opts.useSessionToken, "use-session-token", false, "otel: with no durable API key, write the login token instead (traces stop when it expires, in about an hour)")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
 	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
 	f.BoolVar(&opts.subscription, "subscription", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only); claude uses it via orq launch")
@@ -799,12 +800,18 @@ type otelResult struct {
 	// Skipped is the entry that was never attempted, as opposed to Error's
 	// entry that was attempted and failed.
 	Skipped string `json:"skipped,omitempty"`
+	// Credential is where the written key came from; "login token" expires
+	// within the hour.
+	Credential string `json:"credential,omitempty"`
 }
 
 // connectOtel configures Claude Code's native metrics and logs exporters. It
 // writes only the user's settings file and never invokes Claude's plugin CLI.
 func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []otelResult, failed bool) {
 	cred, credErr := durableCredential(opts)
+	if credErr == nil && cred.key == "" && opts.useSessionToken {
+		cred, credErr = sessionCredential()
+	}
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
@@ -861,9 +868,12 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 				rep.ok("%-8s %-9s %s", id, capOtel, tilde(path))
 			}
 		}
+		if cred.source == sessionTokenSource {
+			rep.warn("%-8s %-9s uses your login token: traces stop when it expires, in about an hour — %s", id, capOtel, otelKeyRemedy(id))
+		}
 		sh := detectShell(viper.GetString("config-directory"))
 		results = append(results, otelResult{
-			Agent: id, Path: path, Already: already, ShellExportsKey: envFileExports(sh),
+			Agent: id, Path: path, Already: already, ShellExportsKey: envFileExports(sh), Credential: cred.source,
 		})
 	}
 	return results, failed
@@ -874,7 +884,7 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 // enough: OTLP ingest checks no permission domain, only that the key is valid.
 // Unattended runs never mint: otel then skips its agents and names the fix.
 func otelWantsKey(opts *setupOptions, agents, caps []string) bool {
-	if !hasCap(caps, capOtel) || opts.noInput || opts.yes || !anyNativeOtelAgent(agents) {
+	if !hasCap(caps, capOtel) || opts.noInput || opts.yes || opts.useSessionToken || !anyNativeOtelAgent(agents) {
 		return false
 	}
 	cred, err := durableCredential(opts)
@@ -899,7 +909,20 @@ func otelKeyRemedy(agent string) string {
 // where it came from.
 type credential struct{ key, source string }
 
-const savedKeySource = "saved key"
+const (
+	savedKeySource     = "saved key"
+	sessionTokenSource = "login token"
+)
+
+// sessionCredential is the login session's workspace token, which otel writes
+// only when the user asked for it. A rerun with a durable key overwrites it.
+func sessionCredential() (credential, error) {
+	active, err := auth.NewClient(apiBaseFromEnv()).GetActiveWorkspaceAccessToken()
+	if err != nil {
+		return credential{}, fmt.Errorf("could not get the login token: %w", err)
+	}
+	return credential{active.AccessToken, sessionTokenSource}, nil
+}
 
 // durableCredential is connect's one answer to "which API key do the agents
 // get": --api-key, then (under a profile, only) the profile's key, then the
@@ -1069,12 +1092,26 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 		if opts.noInput || opts.yes {
 			return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
 		}
-		message := "No API key on this machine — log in now?"
-		if session, _ := auth.ReadSession(); session != nil {
-			message = "No API key on this machine — create one now?"
-		}
-		if !opts.confirm(message, true) {
-			return nil, nil, errLoginDeclined
+		session, _ := auth.ReadSession()
+		switch {
+		case session != nil && hasCap(opts.caps, capOtel) && anyNativeOtelAgent(opts.agents):
+			// otel alone can take the login token; the gateway still skips.
+			switch opts.choose(noDurableKeyMessage, keyChoices("Skip for now")) {
+			case keyChoiceCreate:
+			case keyChoiceSession:
+				opts.useSessionToken = true
+				return nil, nil, errLoginDeclined
+			default:
+				return nil, nil, errLoginDeclined
+			}
+		case session != nil:
+			if !opts.confirm("No API key on this machine — create one now?", true) {
+				return nil, nil, errLoginDeclined
+			}
+		default:
+			if !opts.confirm("No API key on this machine — log in now?", true) {
+				return nil, nil, errLoginDeclined
+			}
 		}
 	}
 	// A saved key with no session must not fall into resolveAuth's login path:
