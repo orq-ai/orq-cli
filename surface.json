@@ -2386,7 +2386,7 @@
           "type": "bool"
         },
         {
-          "name": "use-session-token",
+          "name": "use-login-token",
           "type": "bool"
         },
         {

@@ -295,6 +295,8 @@ type claudeOtelOwnership struct {
 	Version  int                        `json:"version"`
 	Original map[string]json.RawMessage `json:"original"`
 	Written  map[string]*string         `json:"written"`
+	// LoginToken marks a bearer that is the login session's hour-long token.
+	LoginToken bool `json:"login_token,omitempty"`
 }
 
 // nativeOtel reports whether connect can write this agent's OTel exporter settings.
@@ -323,6 +325,43 @@ func writeClaudeOtelOwnership(path string, ownership *claudeOtelOwnership) error
 		return err
 	}
 	return auth.WriteSecretFile(claudeOtelOwnershipPath(path), raw)
+}
+
+// otelLoginToken reports that connect last wrote the login token as the bearer.
+func otelLoginToken(path string) bool {
+	ownership, _, err := readClaudeOtelOwnership(path)
+	return err == nil && ownership.LoginToken
+}
+
+// setOtelLoginToken records whether the bearer just written is the login token.
+func setOtelLoginToken(path string, on bool) error {
+	ownership, _, err := readClaudeOtelOwnership(path)
+	if err != nil {
+		return err
+	}
+	if ownership.LoginToken == on {
+		return nil
+	}
+	ownership.LoginToken = on
+	return writeClaudeOtelOwnership(path, ownership)
+}
+
+// otelBearer is the Authorization bearer in the settings file, or "".
+func otelBearer(path string) string {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return ""
+	}
+	env, err := claudeSettingsEnv(cfg)
+	if err != nil {
+		return ""
+	}
+	header, _ := env["OTEL_EXPORTER_OTLP_HEADERS"].(string)
+	header = strings.TrimSpace(header)
+	if !strings.HasPrefix(header, "Authorization=Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(header, "Authorization=Bearer "))
 }
 
 func claudeNativeOtelEnv(endpoint, apiKey string) map[string]string {
@@ -505,8 +544,7 @@ func claudeNativeOtelState(path, endpoint string) (bool, error) {
 	if gotEndpoint == "" {
 		return false, errors.New("OTel endpoint is missing")
 	}
-	header, _ := env["OTEL_EXPORTER_OTLP_HEADERS"].(string)
-	if !strings.HasPrefix(strings.TrimSpace(header), "Authorization=Bearer ") || strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(header), "Authorization=Bearer ")) == "" {
+	if otelBearer(path) == "" {
 		return false, errors.New("OTel Authorization header is missing; " + otelKeyRemedy("claude"))
 	}
 	for key, want := range claudeOtelSettings {

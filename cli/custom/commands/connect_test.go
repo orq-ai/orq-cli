@@ -3806,14 +3806,14 @@ func TestConnectOtelUnattendedNeverMints(t *testing.T) {
 }
 
 // The login token is written only when asked for, at the prompt or with
-// --use-session-token, says it expires, and a rerun with a durable key replaces it.
-func TestConnectOtelSessionTokenOptIn(t *testing.T) {
+// --use-login-token, and says it expires.
+func TestConnectOtelLoginTokenOptIn(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		opts setupOptions
 	}{
 		{"picked", setupOptions{chooseFn: func(string, []string) int { return int(keySession) }}},
-		{"flag", setupOptions{noInput: true, useSessionToken: true}},
+		{"flag", setupOptions{noInput: true, useLoginToken: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, mints := keyMintServer(t)
@@ -3840,15 +3840,6 @@ func TestConnectOtelSessionTokenOptIn(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), "uses your login token") {
 				t.Errorf("expiry not warned:\n%s", out.String())
-			}
-
-			SetUserEnvAPIKey("sk-durable")
-			out.Reset()
-			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &setupOptions{noInput: true}, []string{"claude"}, []string{capOtel}, false); err != nil {
-				t.Fatalf("rerun: %v\n%s", err, out.String())
-			}
-			if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer sk-durable" {
-				t.Errorf("rerun kept %v, want the durable key", env["OTEL_EXPORTER_OTLP_HEADERS"])
 			}
 		})
 	}
@@ -3889,9 +3880,9 @@ func gatewayMintServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func TestConnectGatewayAndOtelSessionTokenFlag(t *testing.T) {
+func TestConnectGatewayAndOtelLoginTokenFlag(t *testing.T) {
 	settings := sessionOtelHarness(t, gatewayMintServer(t))
-	opts := setupOptions{noInput: true, noProject: true, useSessionToken: true,
+	opts := setupOptions{noInput: true, noProject: true, useLoginToken: true,
 		chooseFn: func(string, []string) int { t.Fatal("the flag must not prompt"); return -1 }}
 	var out strings.Builder
 	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude", "kimi"}, []string{capGateway, capOtel}, false); err != nil {
@@ -3913,7 +3904,7 @@ func TestConnectGatewayAndOtelPromptLabelsAndChoices(t *testing.T) {
 		wantNoted string
 	}{
 		{"session", keySession, true, "gateway skipped: it needs a durable API key"},
-		{"skip", keyThird, false, "gateway skipped: no credential"},
+		{"skip", keyOther, false, "gateway skipped: no credential"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := sessionOtelHarness(t, gatewayMintServer(t))
@@ -3926,7 +3917,7 @@ func TestConnectGatewayAndOtelPromptLabelsAndChoices(t *testing.T) {
 			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude", "kimi"}, []string{capGateway, capOtel}, false); err != nil {
 				t.Fatalf("connect: %v\n%s", err, out.String())
 			}
-			if len(labels) != 3 || labels[1] != "Use my login token for otel only (gateway is skipped)" || labels[2] != "Skip otel and gateway" {
+			if len(labels) != 3 || !strings.Contains(labels[1], "gateway") || !strings.Contains(labels[2], "gateway") {
 				t.Errorf("labels = %q", labels)
 			}
 			if !strings.Contains(out.String(), tc.wantNoted) {
@@ -3943,45 +3934,69 @@ func TestConnectGatewayAndOtelPromptLabelsAndChoices(t *testing.T) {
 	}
 }
 
-func TestConnectSessionTokenFlagNeedsOtel(t *testing.T) {
+func TestConnectLoginTokenFlagNeedsOtel(t *testing.T) {
 	srv, _ := keyMintServer(t)
 	sessionOtelHarness(t, srv)
 	cmd := NewConnectCommand()
-	cmd.SetArgs([]string{"claude", "mcp", "--use-session-token", "--yes"})
+	cmd.SetArgs([]string{"claude", "mcp", "--use-login-token", "--yes"})
 	var errOut strings.Builder
 	cmd.SetErr(&errOut)
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--use-session-token") {
+	if err == nil || !strings.Contains(err.Error(), "--use-login-token") {
 		t.Fatalf("err = %v, want a usage error naming the flag", err)
 	}
 }
 
-// Swapping the login token for a durable key is a change, not "already configured".
-func TestConnectOtelRerunWithDurableKeyIsNotAlready(t *testing.T) {
+// writeLoginTokenOtel wires otel with the login token and returns the settings path.
+func writeLoginTokenOtel(t *testing.T) string {
+	t.Helper()
 	srv, _ := keyMintServer(t)
 	settings := sessionOtelHarness(t, srv)
 	var out strings.Builder
-	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useSessionToken: true}, []string{"claude"}, []string{capOtel}, false); err != nil {
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useLoginToken: true}, []string{"claude"}, []string{capOtel}, false); err != nil {
 		t.Fatalf("connect: %v\n%s", err, out.String())
 	}
-	status := &reporter{w: &out}
-	out.Reset()
-	reportUnreadableOtelConfigs(status, []string{"claude"})
+	return settings
+}
+
+func TestConnectOtelStatusWarnsOnLoginToken(t *testing.T) {
+	writeLoginTokenOtel(t)
+	var out strings.Builder
+	reportOtelWarnings(&reporter{w: &out}, []string{"claude"})
 	if !strings.Contains(out.String(), "login token") {
 		t.Errorf("status did not flag the login token:\n%s", out.String())
 	}
-
-	SetUserEnvAPIKey("sk-durable")
-	out.Reset()
-	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useSessionToken: true}, []string{"claude"})
-	if failed || len(results) != 1 || results[0].Already || strings.Contains(out.String(), "already configured") {
-		t.Fatalf("swap reported already: %+v\n%s", results, out.String())
+	if got := wiredTargets([]string{"claude"}, []string{capOtel}, &setupOptions{}); len(got) != 1 || got[0].status != "warn" {
+		t.Errorf("wired row = %+v, want warn", got)
 	}
-	if !strings.Contains(out.String(), "--use-session-token is ignored") {
-		t.Errorf("ignored flag not mentioned:\n%s", out.String())
+}
+
+// The record is written with the token, not derived from the session cache.
+func TestConnectOtelStatusWarnsAfterSessionChanges(t *testing.T) {
+	writeLoginTokenOtel(t)
+	srv, _ := keyMintServer(t)
+	saveConnectSession(t, srv.URL, "other", "", "")
+	var out strings.Builder
+	reportOtelWarnings(&reporter{w: &out}, []string{"claude"})
+	if !strings.Contains(out.String(), "login token") {
+		t.Errorf("status lost the login-token warning:\n%s", out.String())
+	}
+}
+
+// Swapping the login token for a durable key is a change, not "already configured".
+func TestConnectOtelDurableKeySwapIsNotAlready(t *testing.T) {
+	settings := writeLoginTokenOtel(t)
+	SetUserEnvAPIKey("sk-durable")
+	var out strings.Builder
+	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, noProject: true}, []string{"claude"})
+	if failed || len(results) != 1 || results[0].Already || results[0].LoginToken || strings.Contains(out.String(), "already configured") {
+		t.Fatalf("swap reported already: %+v\n%s", results, out.String())
 	}
 	if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer sk-durable" {
 		t.Errorf("header = %v", env["OTEL_EXPORTER_OTLP_HEADERS"])
+	}
+	if otelLoginToken(settings) {
+		t.Error("login-token record survived a durable key")
 	}
 	out.Reset()
 	if results, _ := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true}, []string{"claude"}); len(results) != 1 || !results[0].Already {
@@ -3989,7 +4004,34 @@ func TestConnectOtelRerunWithDurableKeyIsNotAlready(t *testing.T) {
 	}
 }
 
-func TestConnectSessionTokenRefusedUnderProfile(t *testing.T) {
+func TestConnectOtelIgnoredLoginTokenFlagIsSaid(t *testing.T) {
+	writeLoginTokenOtel(t)
+	SetUserEnvAPIKey("sk-durable")
+	var out strings.Builder
+	connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useLoginToken: true}, []string{"claude"})
+	if !strings.Contains(out.String(), "--use-login-token is ignored") {
+		t.Errorf("ignored flag not mentioned:\n%s", out.String())
+	}
+}
+
+// setup exists to create the durable key, so it never offers the login token.
+func TestConnectAuthWithoutLoginTokenChoiceUsesConfirm(t *testing.T) {
+	srv, _ := keyMintServer(t)
+	sessionOtelHarness(t, srv)
+	confirmed := 0
+	opts := setupOptions{noProject: true, noLoginToken: true,
+		chooseFn:  func(string, []string) int { t.Fatal("must not offer the login token"); return -1 },
+		confirmFn: func(string, bool) bool { confirmed++; return false }}
+	var out strings.Builder
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude"}, []string{capOtel}, false); err != nil {
+		t.Fatalf("connect: %v\n%s", err, out.String())
+	}
+	if confirmed != 1 {
+		t.Errorf("confirm asked %d times, want 1", confirmed)
+	}
+}
+
+func TestConnectLoginTokenRefusedUnderProfile(t *testing.T) {
 	srv, _ := keyMintServer(t)
 	settings := sessionOtelHarness(t, srv)
 	ensureCreds(t)
@@ -3997,7 +4039,7 @@ func TestConnectSessionTokenRefusedUnderProfile(t *testing.T) {
 	viper.Set("profile", "work")
 	t.Cleanup(func() { viper.Set("profile", "") })
 	var out strings.Builder
-	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, useSessionToken: true}, []string{"claude"})
+	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, useLoginToken: true}, []string{"claude"})
 	if !failed || len(results) != 1 || !strings.Contains(results[0].Error, `profile "work"`) {
 		t.Fatalf("results = %+v failed = %v\n%s", results, failed, out.String())
 	}
@@ -4030,7 +4072,7 @@ func TestOfferLaunchKeyRemembersDeclinePerDirectory(t *testing.T) {
 	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
 
 	asked := 0
-	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return int(keyThird) }}
+	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return int(keyOther) }}
 	offer := func() {
 		t.Helper()
 		if key, err := offerLaunchKey(NewLaunchCommand(), opts); key != "" || err != nil {

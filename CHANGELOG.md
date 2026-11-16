@@ -131,13 +131,13 @@ login; that last one is now reused instead of minting a second key.
 
 **Added:** for quick checks, `orq connect <agent> otel` can write the login
 token instead of a durable key: pick "Use my login token" at the key prompt, or
-pass `--use-session-token` (the only way in `--yes`/`--no-input` runs). It warns
+pass `--use-login-token` (the only way in `--yes`/`--no-input` runs; it needs `orq auth login` and no profile). `orq setup` does not offer it. It warns
 that traces stop when the token expires, in about an hour, and the next connect
 run with a durable key replaces it. The gateway still needs a durable key, so
 it is skipped when the login token is picked.
 
 **Changed:** `orq launch` offers the same key when it would hand the agent (and
-its trace export) the session token, with the same three choices: create the
+its trace export) the session token, with three choices: create the
 key, use the login token this time, or use it and stop asking in this
 directory. `orq setup` creates the key whenever you want it.
 

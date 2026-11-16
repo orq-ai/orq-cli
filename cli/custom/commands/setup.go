@@ -79,9 +79,11 @@ type setupOptions struct {
 	confirmFn func(message string, def bool) bool
 	// chooseFn overrides the single-choice prompt, for tests.
 	chooseFn func(message string, options []string) int
-	// useSessionToken lets otel write the login session's hour-long token when
-	// no durable key exists: --use-session-token, or picked at the key prompt.
-	useSessionToken bool
+	// useLoginToken lets otel write the login session's hour-long token when
+	// no durable key exists: --use-login-token, or picked at the key prompt.
+	useLoginToken bool
+	// noLoginToken hides the login-token choice: setup exists to create the durable key.
+	noLoginToken bool
 	// onConnectSuccess runs setup persistence after a real connect completes,
 	// before connect emits its machine-readable success result.
 	onConnectSuccess func(*reporter) error
@@ -171,29 +173,26 @@ type keyChoice int
 const (
 	keyCreate keyChoice = iota
 	keySession
-	keyThird
+	keyOther
 	keyAborted
 )
 
-const (
-	noDurableKeyMessage = "No durable API key on this machine — how should it authenticate?"
-	loginTokenLabel     = "Use my login token (expires in about an hour)"
-)
+const loginTokenLabel = "Use my login token (expires in about an hour)"
 
-// askKey offers: create a durable key, use the login token (session), or the
-// caller's own way out (third).
-func askKey(opts *setupOptions, session, third string) keyChoice {
-	switch opts.choose(noDurableKeyMessage, []string{
+// askKey offers: create a durable key, use the login token, or the caller's
+// own way out (other).
+func askKey(opts *setupOptions, message, session, other string) keyChoice {
+	switch opts.choose(message, []string{
 		fmt.Sprintf("Create a %d-day API key", int(gatewayKeyLifetime.Hours()/24)),
 		session,
-		third,
+		other,
 	}) {
 	case 0:
 		return keyCreate
 	case 1:
 		return keySession
 	case 2:
-		return keyThird
+		return keyOther
 	}
 	return keyAborted
 }
@@ -273,7 +272,7 @@ type agentResult struct {
 }
 
 func NewSetupCommand() *cobra.Command {
-	opts := setupOptions{}
+	opts := setupOptions{noLoginToken: true}
 
 	cmd := &cobra.Command{
 		Use:   "setup",
