@@ -123,12 +123,15 @@ controls on surface changes, whichever side they originate from.
 **Changed:** `orq connect <agent> otel` (today: `claude`) now needs a durable
 API key. When none is saved, or the only one is the login session's hour-long
 token, it offers to log in and create one, the same prompt `orq connect` uses
-for the gateway, instead of saving exporter settings that cannot authenticate.
-`orq launch` offers the same key when it would hand the agent (and its trace
-export) the session token.
-Runs with `--yes` or `--no-input` (and non-interactive launches) still never
-create a key; connect saves the settings and the warning points at `orq setup`
-or `--api-key`.
+for the gateway. Without a key it writes nothing and says so, instead of saving
+an exporter that cannot authenticate. Runs with `--yes` or `--no-input` never
+create a key. Every connect leg now picks its key from one place, in one order:
+`--api-key`, the saved key, `ORQ_API_KEY`, then an `orq auth login --api-key`
+login; that last one is now reused instead of minting a second key.
+
+**Changed:** `orq launch` offers the same key when it would hand the agent (and
+its trace export) the session token. Declining remembers the answer for that
+directory only; `orq setup` creates the key whenever you want it.
 
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 

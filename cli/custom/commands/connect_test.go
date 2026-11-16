@@ -2724,23 +2724,22 @@ func TestSetupConnectsOtelAndReportsItOnTheFinalScreen(t *testing.T) {
 	}
 }
 
-func TestSetupReportsOtelWithoutCredential(t *testing.T) {
-	otelMachine(t)
+func TestSetupSkipsOtelWithoutCredential(t *testing.T) {
+	settings := otelMachine(t)
 	ResetUserEnvAPIKey()
 	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
 	var progress strings.Builder
 	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
-	if len(results) != 1 || results[0].OtelError != "" {
-		t.Fatalf("missing credential should not fail native setup: %+v", results)
+	if len(results) != 0 {
+		t.Fatalf("a skipped otel leg reached setup's results: %+v", results)
 	}
 	if !setupComplete(true, results) {
-		t.Fatal("offline native settings marked setup incomplete")
+		t.Fatal("a skipped otel leg marked setup incomplete")
 	}
-	var screen strings.Builder
-	printFinalScreen(&reporter{w: &screen}, results, nil, true, opts)
-	if !strings.Contains(screen.String(), capOtel) || strings.Contains(screen.String(), capGateway) {
-		t.Fatalf("setup's final screen omitted native settings: %s", screen.String())
+	if !strings.Contains(progress.String(), "skipped: no durable Orq API key") {
+		t.Errorf("setup did not say why otel was skipped:\n%s", progress.String())
 	}
+	assertNoOtelExporter(t, settings)
 }
 
 func TestScopedDisconnectPreviewListsOnlyThatScope(t *testing.T) {
@@ -2913,7 +2912,7 @@ func TestConnectOtelRepairsEndpointAndAuthorizationHeader(t *testing.T) {
 	}
 }
 
-func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *testing.T) {
+func TestConnectOtelWithoutCredentialWritesNothingAndWarns(t *testing.T) {
 	settings := otelMachine(t)
 	ResetUserEnvAPIKey()
 	t.Setenv("ORQ_API_KEY", "")
@@ -2921,39 +2920,50 @@ func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *
 		c := NewConnectCommand()
 		c.SetArgs([]string{"claude", "otel"})
 		if err := c.Execute(); err != nil {
-			t.Fatalf("offline native settings should not require login: %v", err)
+			t.Fatalf("a missing key should skip otel, not fail connect: %v", err)
 		}
 	})
-	_, env := claudeSettings(t, settings)
-	for key, want := range claudeOtelSettings {
-		if env[key] != want {
-			t.Errorf("settings env[%q] = %v, want %q", key, env[key], want)
-		}
-	}
-	if _, exists := env["OTEL_EXPORTER_OTLP_HEADERS"]; exists {
-		t.Errorf("missing credential produced an Authorization header: %#v", env)
-	}
-	if !strings.Contains(out, "no durable Orq credential") || !strings.Contains(out, "will not authenticate") {
-		t.Errorf("missing credential warning was absent or unclear:\n%s", out)
+	assertNoOtelExporter(t, settings)
+	if !strings.Contains(out, "skipped: no durable Orq API key") || !strings.Contains(out, "ORQ_API_KEY") {
+		t.Errorf("missing-key warning was absent or named no fix:\n%s", out)
 	}
 	if strings.Contains(out, "login") {
-		t.Errorf("credential-free native setup unexpectedly offered a login:\n%s", out)
+		t.Errorf("an unattended connect offered a login:\n%s", out)
+	}
+}
+
+// assertNoOtelExporter fails when Claude's settings carry an OTLP exporter:
+// without a key it would only collect rejected exports.
+func assertNoOtelExporter(t *testing.T, settings string) {
+	t.Helper()
+	data, err := os.ReadFile(settings)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "OTEL_EXPORTER_OTLP_ENDPOINT") {
+		t.Errorf("an exporter was written without a key:\n%s", data)
 	}
 }
 
 func TestOtelWantsKey(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		agents []string
-		envKey string
-		opts   setupOptions
-		want   bool
+		name     string
+		agents   []string
+		envKey   string
+		savedKey string
+		opts     setupOptions
+		want     bool
 	}{
 		{name: "no key, interactive", want: true},
 		{name: "durable key present", envKey: "sk-live"},
 		// The login session's own workspace token expires within the hour, so
 		// exporting it does not count as having a key.
 		{name: "only the session token", envKey: "session-token-acme", want: true},
+		{name: "saved key is the session token", savedKey: "session-token-acme", want: true},
+		{name: "durable saved key", savedKey: "sk-saved"},
 		{name: "no-input", opts: setupOptions{noInput: true}},
 		{name: "yes", opts: setupOptions{yes: true}},
 		{name: "no agent writes otel", agents: []string{"codex"}},
@@ -2968,7 +2978,7 @@ func TestOtelWantsKey(t *testing.T) {
 			t.Cleanup(ResetUserEnvAPIKey)
 			ensureCreds(t)
 			resetSetupMemos(t)
-			saveConnectSession(t, "https://api.example.test", "acme", "", "")
+			saveConnectSession(t, "https://api.example.test", "acme", tc.savedKey, "acme")
 			agents := tc.agents
 			if agents == nil {
 				agents = []string{"claude"}
@@ -2980,9 +2990,9 @@ func TestOtelWantsKey(t *testing.T) {
 	}
 }
 
-// Declining the login connect offers for otel still writes the non-secret
-// exporter settings, and says nothing about a gateway the run never asked for.
-func TestConnectOtelDeclinedOfferStillWritesSettings(t *testing.T) {
+// Declining the login connect offers for otel writes no exporter, and says
+// nothing about a gateway the run never asked for.
+func TestConnectOtelDeclinedOfferWritesNothing(t *testing.T) {
 	settings := otelMachine(t)
 	ResetUserEnvAPIKey()
 	ensureCreds(t)
@@ -2996,10 +3006,7 @@ func TestConnectOtelDeclinedOfferStillWritesSettings(t *testing.T) {
 	if !asked {
 		t.Fatalf("otel with no key did not offer one:\n%s", out.String())
 	}
-	_, env := claudeSettings(t, settings)
-	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] == nil {
-		t.Errorf("declining dropped the exporter settings: %#v", env)
-	}
+	assertNoOtelExporter(t, settings)
 	if strings.Contains(out.String(), "gateway") {
 		t.Errorf("otel-only run reported a gateway it never asked for:\n%s", out.String())
 	}
@@ -3671,5 +3678,159 @@ func TestConnectStatusHintKeepsTheNamedCapabilities(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "`orq connect mcp`") {
 		t.Errorf("hint dropped the named capability:\n%s", out.String())
+	}
+}
+
+// durableCredential is the one order every connect leg reads: --api-key, the
+// saved key, an exported key, then an api-key login. A session token never
+// counts at any level, so the next source is tried instead.
+func TestDurableCredentialPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		flag, saved, env, login string
+		want, source            string
+	}{
+		{name: "flag wins", flag: "sk-flag", saved: "sk-saved", env: "sk-env", login: "sk-login", want: "sk-flag", source: "--api-key"},
+		{name: "saved before env", saved: "sk-saved", env: "sk-env", login: "sk-login", want: "sk-saved", source: savedKeySource},
+		{name: "env before login", env: "sk-env", login: "sk-login", want: "sk-env", source: "ORQ_API_KEY"},
+		{name: "login last", login: "sk-login", want: "sk-login", source: "api-key login"},
+		{name: "session tokens skipped", flag: "session-token-acme", saved: "session-token-acme", env: "sk-env", want: "sk-env", source: "ORQ_API_KEY"},
+		{name: "only session tokens", saved: "session-token-acme", env: "session-token-acme"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("ORQ_API_KEY", "")
+			ensureCreds(t)
+			saveConnectSession(t, "https://api.example.test", "acme", tc.saved, "acme")
+			ResetUserEnvAPIKey()
+			if tc.env != "" {
+				SetUserEnvAPIKey(tc.env)
+			}
+			t.Cleanup(ResetUserEnvAPIKey)
+			if tc.login != "" {
+				if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{Version: 1, APIBaseURL: auth.ResolveURLs("").APIBaseURL, APIKey: tc.login}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := durableCredential(&setupOptions{apiKey: tc.flag})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.key != tc.want || got.source != tc.source {
+				t.Errorf("durableCredential = %+v, want {%s %s}", got, tc.want, tc.source)
+			}
+		})
+	}
+}
+
+// keyMintServer answers connect's login-and-mint calls and counts the mints.
+func keyMintServer(t *testing.T) (*httptest.Server, *int) {
+	t.Helper()
+	mints := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "api-keys"):
+			mints++
+			fmt.Fprint(w, `{"token":"sk-orq-MINTED"}`)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &mints
+}
+
+// A durable key from an api-key login is a credential: connect must use it,
+// not ask to create another and mint one behind it.
+func TestConnectReusesAPIKeyLoginWithoutMinting(t *testing.T) {
+	srv, mints := keyMintServer(t)
+	connectHarness(t, srv)
+	saveConnectSession(t, srv.URL, "acme", "", "")
+	t.Setenv("ORQ_API_KEY", "")
+	ResetUserEnvAPIKey()
+	t.Cleanup(ResetUserEnvAPIKey)
+	resetSetupMemos(t)
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{Version: 1, APIBaseURL: auth.ResolveURLs("").APIBaseURL, APIKey: "sk-login"}); err != nil {
+		t.Fatal(err)
+	}
+	opts := &setupOptions{noProject: true, confirmFn: func(q string, _ bool) bool { t.Fatalf("asked %q with a key present", q); return false }}
+	var out strings.Builder
+	state, _, err := resolveConnectAuth(NewConnectCommand(), &reporter{w: &out}, opts)
+	if err != nil {
+		t.Fatalf("resolveConnectAuth: %v\n%s", err, out.String())
+	}
+	if state.bearer != "sk-login" || *mints != 0 {
+		t.Errorf("bearer = %q, mints = %d; want the login key and no mint\n%s", state.bearer, *mints, out.String())
+	}
+}
+
+// Unattended runs never create a key, and with none to use otel writes nothing.
+func TestConnectOtelUnattendedNeverMints(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts setupOptions
+	}{
+		{"yes", setupOptions{yes: true}},
+		{"no-input", setupOptions{noInput: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, mints := keyMintServer(t)
+			home := connectHarness(t, srv)
+			saveConnectSession(t, srv.URL, "acme", "", "")
+			t.Setenv("ORQ_API_KEY", "")
+			ResetUserEnvAPIKey()
+			t.Cleanup(ResetUserEnvAPIKey)
+			t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+			if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			resetSetupMemos(t)
+			opts := tc.opts
+			opts.confirmFn = func(q string, _ bool) bool { t.Fatalf("an unattended run asked %q", q); return false }
+			var out strings.Builder
+			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude"}, []string{capOtel}, false); err != nil {
+				t.Fatalf("connect otel: %v\n%s", err, out.String())
+			}
+			if *mints != 0 {
+				t.Errorf("an unattended run minted %d keys", *mints)
+			}
+			assertNoOtelExporter(t, filepath.Join(home, ".claude", "settings.json"))
+			if !strings.Contains(out.String(), "skipped: no durable Orq API key") {
+				t.Errorf("skip not reported:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// Declining launch's key offer silences it for that directory only.
+func TestOfferLaunchKeyRemembersDeclinePerDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ensureCreds(t)
+	prevDir := viper.GetString("config-directory")
+	viper.Set("config-directory", t.TempDir())
+	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
+
+	asked := 0
+	opts := &setupOptions{confirmFn: func(string, bool) bool { asked++; return false }}
+	offer := func() {
+		t.Helper()
+		if key, err := offerLaunchKey(NewLaunchCommand(), opts); key != "" || err != nil {
+			t.Fatalf("declined offer returned (%q, %v)", key, err)
+		}
+	}
+	scratch, other := t.TempDir(), t.TempDir()
+	t.Chdir(scratch)
+	offer()
+	offer()
+	if asked != 1 {
+		t.Fatalf("asked %d times in one directory, want once", asked)
+	}
+	t.Chdir(other)
+	offer()
+	if asked != 2 {
+		t.Fatalf("a decline in one directory silenced another (asked %d)", asked)
 	}
 }

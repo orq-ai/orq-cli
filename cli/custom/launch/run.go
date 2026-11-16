@@ -10,8 +10,26 @@ import (
 	"time"
 )
 
+// Hooks are the commands-package flows launch needs but cannot import without
+// a cycle. A nil hook means "not available": no prompt, no login, no mint.
+type Hooks struct {
+	// Login runs the interactive device login and persists the session.
+	Login func() error
+	// DurableKey offers to mint and save a durable API key and returns it; an
+	// empty key means the user declined.
+	DurableKey func() (string, error)
+	// PersistedMCP reports whether an agent's own config already carries the
+	// orq MCP entry, from the registry `orq connect` writes through.
+	PersistedMCP func(agent string) bool
+	// SkillsUpdate says whether a newer CLI is out to suggest; known=false
+	// means "cannot tell", hint="" with known=true means this is the latest.
+	SkillsUpdate func() (hint string, known bool)
+	// Interactive reports whether a human can answer a prompt.
+	Interactive func() bool
+}
+
 // Run resolves and launches an agent, returning the child exit code.
-func Run(def *AgentDef, argv []string) (int, error) {
+func Run(def *AgentDef, argv []string, hooks Hooks) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, def.ParseOptions())
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
@@ -26,7 +44,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	creds, err := resolveLaunchCredentials(os.Getenv, mayPromptLogin(flags))
+	creds, err := resolveLaunchCredentials(os.Getenv, hooks, mayPromptLogin(flags))
 	if err != nil {
 		return 1, err
 	}
@@ -39,7 +57,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		}
 	}
 
-	creds = offerDurableKey(creds, flags, os.Getenv)
+	creds = offerDurableKey(creds, flags, os.Getenv, hooks)
 
 	if flags.MCPEnvAuth {
 		if err := checkMCPEnvAuthOrigin(creds.APIBaseURL, os.Getenv); err != nil {
@@ -52,6 +70,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		Getenv:    os.Getenv,
 		Flags:     flags,
 		ExecProbe: hostExecProbe,
+		Hooks:     hooks,
 	})
 	if err != nil {
 		return 1, err
