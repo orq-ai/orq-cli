@@ -124,7 +124,8 @@ controls on surface changes, whichever side they originate from.
 API key. When none is saved, or the only one is the login session's hour-long
 token, it offers to log in and create one, the same prompt `orq connect` uses
 for the gateway, instead of saving exporter settings that cannot authenticate.
-`orq launch` makes the same offer when tracing would run on the session token.
+`orq launch` offers the same key when it would hand the agent (and its trace
+export) the session token.
 Runs with `--yes` or `--no-input` (and non-interactive launches) still never
 create a key; connect saves the settings and the warning points at `orq setup`
 or `--api-key`.

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -348,8 +347,15 @@ func resolveCredentialsOrLogin(getenv func(string) string, allowPrompt bool) (*C
 	}
 
 	fmt.Fprintln(os.Stderr, "Not logged in.")
-	if !askYes("Log in now via browser? [Y/n]: ") {
-		return nil, err // a decline or a read failure keeps the original error
+	fmt.Fprint(os.Stderr, "Log in now via browser? [Y/n]: ")
+	line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
+	if rerr != nil {
+		return nil, err // read failure falls back to the original error
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes", "":
+	default:
+		return nil, err
 	}
 	if lerr := LoginHook(); lerr != nil {
 		return nil, lerr
@@ -357,55 +363,35 @@ func resolveCredentialsOrLogin(getenv func(string) string, allowPrompt bool) (*C
 	return ResolveCredentials(getenv)
 }
 
-// MintHook, when set, mints and saves a durable API key for the logged-in
-// workspace. Injected for the same import-cycle reason as LoginHook.
-var MintHook func() error
+// DurableKeyHook, when set, offers to mint and save a durable API key for the
+// logged-in workspace and returns it; an empty key means the user declined.
+// Injected for the same import-cycle reason as LoginHook.
+var DurableKeyHook func() (string, error)
 
 // offerDurableKey swaps the login session's hour-long token for a durable key
 // when someone is there to agree. Every other outcome keeps the session token,
 // and reportCredentialNotices still explains what that costs.
 func offerDurableKey(creds *Credentials, flags GatewayFlags, getenv func(string) string) *Credentials {
 	// MCPEnvAuth hands the token to orq tools that the gateway key cannot use.
-	if creds.Kind != CredentialSessionToken || !mayPromptLogin(flags) || MintHook == nil || !canPrompt(getenv) {
+	if creds.Kind != CredentialSessionToken || !mayPromptLogin(flags) || DurableKeyHook == nil || !canPrompt(getenv) {
 		return creds
 	}
-	fmt.Fprintln(os.Stderr, "No durable API key for this workspace; the login token expires in about an hour.")
-	if !askYes("Create a 90-day API key now? [Y/n]: ") {
-		return creds
-	}
-	if err := MintHook(); err != nil {
+	key, err := DurableKeyHook()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not create an API key: %v\n", err)
+	}
+	if err != nil || key == "" {
 		return creds
 	}
-	fresh, err := ResolveCredentials(getenv)
-	if err != nil || fresh.Kind == CredentialSessionToken {
-		fmt.Fprintln(os.Stderr, "Warning: the new API key was not picked up; continuing with the login token.")
-		return creds
-	}
-	return fresh
+	durable := *creds
+	durable.APIKey, durable.Kind = key, CredentialAPIKey
+	return &durable
 }
 
 // canPrompt holds the interactivity rules every launch prompt shares.
 func canPrompt(getenv func(string) string) bool {
 	return getenv("ORQ_LAUNCH_NON_INTERACTIVE") != "1" &&
 		isTerminalFd(int(os.Stdin.Fd())) && isTerminalFd(int(os.Stderr.Fd()))
-}
-
-// promptInput is swappable in tests; a prompt reads one line from it.
-var promptInput io.Reader = os.Stdin
-
-// askYes is a [Y/n] prompt: empty means yes, a read failure means no.
-func askYes(question string) bool {
-	fmt.Fprint(os.Stderr, question)
-	line, err := bufio.NewReader(promptInput).ReadString('\n')
-	if err != nil && line == "" {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes", "":
-		return true
-	}
-	return false
 }
 
 var errNotLoggedIn = notLoggedInError{}

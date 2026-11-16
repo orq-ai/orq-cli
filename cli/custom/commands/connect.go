@@ -612,11 +612,14 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 			// provider config — could not find a key is the whole credential
 			// coupling this branch set out to remove, reintroduced one level
 			// up by the bare capability set.
-			// Without the gateway in this run, the otel leg names the missing
-			// key itself; "gateway skipped" would describe nothing asked for.
+			declined := errors.Is(err, errLoginDeclined)
 			switch {
 			case !hasCap(caps, capGateway):
-			case errors.Is(err, errLoginDeclined):
+				// The otel leg names the missing header itself; only a fault needs saying.
+				if !declined {
+					rep.warn("could not get an API key for %s: %v", capOtel, err)
+				}
+			case declined:
 				rep.info("gateway skipped: no credential — run 'orq setup' when ready, or pass --api-key")
 			default:
 				rep.warn("gateway skipped: %v", err)
@@ -886,44 +889,33 @@ func anyNativeOtelAgent(agents []string) bool {
 
 // otelKeyRemedy completes "telemetry will not authenticate until you ...".
 func otelKeyRemedy(agent string) string {
-	return "rerun 'orq connect " + agent + " otel --api-key <durable key>', or run 'orq setup' to create one"
+	return "export ORQ_API_KEY=<durable key> and rerun 'orq connect " + agent + " otel', or run 'orq setup' to create one"
 }
 
 // nativeOtelCredential selects a durable credential suitable for a persistent
 // Claude settings file. PreRun's injected short-lived browser token is excluded.
 func nativeOtelCredential(opts *setupOptions) (string, error) {
-	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if !auth.IsSessionMinted(key) {
-			return key, nil
-		}
+	if durableKey(opts.apiKey) {
+		return strings.TrimSpace(opts.apiKey), nil
+	}
+	configured, _ := ConfiguredCredential()
+	if durableKey(configured) {
+		return configured, nil
 	}
 	if profileInForce() {
-		key, _ := ConfiguredCredential()
-		if key != "" && !auth.IsSessionMinted(key) {
-			return key, nil
-		}
 		return "", nil
 	}
-	if key, _ := ConfiguredCredential(); key != "" {
-		if !auth.IsSessionMinted(key) {
-			return key, nil
-		}
-	}
-	if login, err := auth.ReadAPIKeyLogin(); err == nil && login != nil {
-		if key := strings.TrimSpace(login.APIKey); key != "" {
-			if !auth.IsSessionMinted(key) {
-				return key, nil
-			}
-		}
-	} else if err != nil {
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil {
 		return "", err
 	}
-	key, _ := savedAPIKey()
-	key = strings.TrimSpace(key)
-	if auth.IsSessionMinted(key) {
-		return "", nil
+	if login != nil && durableKey(login.APIKey) {
+		return strings.TrimSpace(login.APIKey), nil
 	}
-	return key, nil
+	if saved, _ := savedAPIKey(); durableKey(saved) {
+		return strings.TrimSpace(saved), nil
+	}
+	return "", nil
 }
 
 // mcpEntryPresent answers launch's "is this agent already wired?" from the
@@ -1099,7 +1091,7 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 		return nil, nil, err
 	}
 	client := auth.NewClient(state.apiBase)
-	if active := activeWorkspaceKey(state.session); saved != "" && keyWorkspaceMismatch(savedWS, active) {
+	if active := activeWorkspaceKey(state.session); durableKey(saved) && keyWorkspaceMismatch(savedWS, active) {
 		return nil, nil, fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
 	if !durableKey(state.suppliedKey) {
@@ -1109,22 +1101,30 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 		case durableKey(envKey):
 			state.useDurableKey(envKey)
 		default:
-			// The user accepted the offer above: mint and persist the durable
-			// key the wiring writes against, exactly as setup would. No shell
-			// profile prompt here — doctor names the source line if it's missing.
-			token, _, err := ensureDurableKey(rep, client, state, opts)
+			token, err := mintDurableKey(rep, client, state, opts)
 			if err != nil {
 				return nil, nil, err
 			}
 			state.useDurableKey(token)
-			if path, err := writeShellEnvFile(rep, token); err != nil {
-				rep.warn("could not write the shell env file: %v", err)
-			} else {
-				rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
-			}
 		}
 	}
 	return state, client, nil
+}
+
+// mintDurableKey mints and persists the durable key the wiring writes against,
+// exactly as setup would, plus the env file that exports it. No shell profile
+// prompt here — doctor names the source line if it's missing.
+func mintDurableKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (string, error) {
+	token, _, err := ensureDurableKey(rep, client, state, opts)
+	if err != nil || token == "" {
+		return token, err
+	}
+	if path, err := writeShellEnvFile(rep, token); err != nil {
+		rep.warn("could not write the shell env file: %v", err)
+	} else {
+		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
+	}
+	return token, nil
 }
 
 func NewDisconnectCommand() *cobra.Command {

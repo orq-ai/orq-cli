@@ -30,7 +30,6 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	creds = offerDurableKey(creds, flags, os.Getenv)
 
 	// Before Resolve, so no resolver probes a binary that is not there and
 	// warns about the probe ahead of the real error.
@@ -39,6 +38,8 @@ func Run(def *AgentDef, argv []string) (int, error) {
 			return 1, fmt.Errorf("%s CLI not found on PATH. Install it: %s", def.Binary, def.InstallHint)
 		}
 	}
+
+	creds = offerDurableKey(creds, flags, os.Getenv)
 
 	if flags.MCPEnvAuth {
 		if err := checkMCPEnvAuthOrigin(creds.APIBaseURL, os.Getenv); err != nil {

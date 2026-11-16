@@ -68,7 +68,7 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
 					return err
 				}
-				launch.MintHook = func() error { return mintLaunchKey(cmd) }
+				launch.DurableKeyHook = func() (string, error) { return offerLaunchKey(cmd) }
 				code, err := launch.Run(&def, args)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -87,15 +87,22 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 	return root
 }
 
-// mintLaunchKey is connect's mint for launch: the key it saves is the one
-// launch.ResolveCredentials picks up for the active workspace.
-func mintLaunchKey(cmd *cobra.Command) error {
-	rep := newReporter(false)
+// offerLaunchKey asks to replace the login session's token with a durable key
+// and mints it the way connect does. An empty key means the user declined.
+func offerLaunchKey(cmd *cobra.Command) (string, error) {
+	if !hasInteractiveTTY() { // honours the global --no-input
+		return "", nil
+	}
 	opts := &setupOptions{}
+	question := fmt.Sprintf("No durable API key for this workspace; the login token expires in about an hour. Create a %d-day API key now?",
+		int(gatewayKeyLifetime.Hours()/24))
+	if !opts.confirm(question, true) {
+		return "", nil
+	}
+	rep := newReporter(false)
 	state, err := resolveAuth(cmd.Context(), rep, opts)
 	if err != nil {
-		return err
+		return "", err
 	}
-	_, _, err = ensureDurableKey(rep, auth.NewClient(state.apiBase), state, opts)
-	return err
+	return mintDurableKey(rep, auth.NewClient(state.apiBase), state, opts)
 }
