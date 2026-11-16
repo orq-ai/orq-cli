@@ -120,12 +120,14 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-**Changed:** `orq connect <agent> otel` (today: `claude`) on a machine with no
-saved API key now offers to log in and create one, the same prompt `orq
-connect` uses for the gateway, instead of saving exporter settings that cannot
-authenticate. `orq setup` is unchanged: it already offers the key earlier. Runs
-with `--yes` or `--no-input` still never create a key; they save the settings
-and the warning now points at `orq setup` or `--api-key`.
+**Changed:** `orq connect <agent> otel` (today: `claude`) now needs a durable
+API key. When none is saved, or the only one is the login session's hour-long
+token, it offers to log in and create one, the same prompt `orq connect` uses
+for the gateway, instead of saving exporter settings that cannot authenticate.
+`orq launch` makes the same offer when tracing would run on the session token.
+Runs with `--yes` or `--no-input` (and non-interactive launches) still never
+create a key; connect saves the settings and the warning points at `orq setup`
+or `--api-key`.
 
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 

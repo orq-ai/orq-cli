@@ -2941,16 +2941,19 @@ func TestConnectOtelWithoutCredentialWritesNonSecretExporterSettingsAndWarns(t *
 	}
 }
 
-func TestOfferOtelKey(t *testing.T) {
+func TestOtelWantsKey(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		agents []string
 		envKey string
 		opts   setupOptions
-		asked  bool
+		want   bool
 	}{
-		{name: "no key, interactive", asked: true},
-		{name: "key present", envKey: "sk-live"},
+		{name: "no key, interactive", want: true},
+		{name: "durable key present", envKey: "sk-live"},
+		// The login session's own workspace token expires within the hour, so
+		// exporting it does not count as having a key.
+		{name: "only the session token", envKey: "session-token-acme", want: true},
 		{name: "no-input", opts: setupOptions{noInput: true}},
 		{name: "yes", opts: setupOptions{yes: true}},
 		{name: "no agent writes otel", agents: []string{"codex"}},
@@ -2965,35 +2968,52 @@ func TestOfferOtelKey(t *testing.T) {
 			t.Cleanup(ResetUserEnvAPIKey)
 			ensureCreds(t)
 			resetSetupMemos(t)
-			var prompts []string
-			opts := tc.opts
-			opts.confirmFn = func(message string, _ bool) bool {
-				prompts = append(prompts, message)
-				return false
-			}
+			saveConnectSession(t, "https://api.example.test", "acme", "", "")
 			agents := tc.agents
 			if agents == nil {
 				agents = []string{"claude"}
 			}
-			var out strings.Builder
-			offerOtelKey(NewConnectCommand(), &reporter{w: &out}, &opts, agents)
-			if asked := len(prompts) > 0; asked != tc.asked {
-				t.Fatalf("asked = %v (%q), want %v\n%s", asked, prompts, tc.asked, out.String())
-			}
-			if !tc.asked {
-				return
-			}
-			if !strings.Contains(out.String(), "otel needs an API key") {
-				t.Errorf("offer did not say why it is asking:\n%s", out.String())
-			}
-			if key, _ := savedAPIKey(); key != "" {
-				t.Errorf("declined offer saved a key: %q", key)
+			if got := otelWantsKey(&tc.opts, agents, []string{capOtel}); got != tc.want {
+				t.Errorf("otelWantsKey = %v, want %v", got, tc.want)
 			}
 		})
 	}
 }
 
+// Declining the login connect offers for otel still writes the non-secret
+// exporter settings, and says nothing about a gateway the run never asked for.
+func TestConnectOtelDeclinedOfferStillWritesSettings(t *testing.T) {
+	settings := otelMachine(t)
+	ResetUserEnvAPIKey()
+	ensureCreds(t)
+	resetSetupMemos(t)
+	asked := false
+	opts := &setupOptions{confirmFn: func(string, bool) bool { asked = true; return false }}
+	var out strings.Builder
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, opts, []string{"claude"}, []string{capOtel}, false); err != nil {
+		t.Fatalf("declined otel offer: %v\n%s", err, out.String())
+	}
+	if !asked {
+		t.Fatalf("otel with no key did not offer one:\n%s", out.String())
+	}
+	_, env := claudeSettings(t, settings)
+	if env["OTEL_EXPORTER_OTLP_ENDPOINT"] == nil {
+		t.Errorf("declining dropped the exporter settings: %#v", env)
+	}
+	if strings.Contains(out.String(), "gateway") {
+		t.Errorf("otel-only run reported a gateway it never asked for:\n%s", out.String())
+	}
+}
+
+// connect requires a long-lived key for otel: with no key, or with only the
+// login session's hour-long token exported, it mints one and writes that.
 func TestConnectOtelOfferMintsKeyIntoSettings(t *testing.T) {
+	for _, envKey := range []string{"", "session-token-acme"} {
+		t.Run("env="+envKey, func(t *testing.T) { testConnectOtelMints(t, envKey) })
+	}
+}
+
+func testConnectOtelMints(t *testing.T, envKey string) {
 	const minted = "sk-orq-MINTED-FOR-OTEL"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -3011,6 +3031,10 @@ func TestConnectOtelOfferMintsKeyIntoSettings(t *testing.T) {
 	saveConnectSession(t, srv.URL, "acme", "", "")
 	t.Setenv("ORQ_API_KEY", "")
 	ResetUserEnvAPIKey()
+	if envKey != "" {
+		SetUserEnvAPIKey(envKey)
+	}
+	t.Cleanup(ResetUserEnvAPIKey)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)

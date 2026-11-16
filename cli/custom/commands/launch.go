@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
 
@@ -67,6 +68,7 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
 					return err
 				}
+				launch.MintHook = func() error { return mintLaunchKey(cmd) }
 				code, err := launch.Run(&def, args)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -83,4 +85,17 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 	}
 
 	return root
+}
+
+// mintLaunchKey is connect's mint for launch: the key it saves is the one
+// launch.ResolveCredentials picks up for the active workspace.
+func mintLaunchKey(cmd *cobra.Command) error {
+	rep := newReporter(false)
+	opts := &setupOptions{}
+	state, err := resolveAuth(cmd.Context(), rep, opts)
+	if err != nil {
+		return err
+	}
+	_, _, err = ensureDurableKey(rep, auth.NewClient(state.apiBase), state, opts)
+	return err
 }

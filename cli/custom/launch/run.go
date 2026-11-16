@@ -30,6 +30,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	creds = offerDurableKey(creds, flags, os.Getenv)
 
 	// Before Resolve, so no resolver probes a binary that is not there and
 	// warns about the probe ahead of the real error.

@@ -908,3 +908,53 @@ func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
 		})
 	}
 }
+
+// An interactive launch on the login session's hour-long token offers a durable
+// key first; anything but a clean accept and mint keeps the session token.
+func TestOfferDurableKey(t *testing.T) {
+	origTTY, origHook, origInput := isTerminalFd, MintHook, promptInput
+	t.Cleanup(func() { isTerminalFd, MintHook, promptInput = origTTY, origHook, origInput })
+	t.Setenv("HOME", t.TempDir())
+	session := &Credentials{APIKey: "session-token", Kind: CredentialSessionToken}
+
+	for _, tc := range []struct {
+		name    string
+		creds   *Credentials
+		flags   GatewayFlags
+		answer  string
+		tty     bool
+		mintErr error
+		minted  bool // MintHook must run
+		durable bool // the returned credential is the new key
+	}{
+		{name: "accept", creds: session, answer: "\n", tty: true, minted: true, durable: true},
+		{name: "decline", creds: session, answer: "n\n", tty: true},
+		{name: "mint fails", creds: session, answer: "y\n", tty: true, mintErr: errors.New("boom"), minted: true},
+		{name: "no terminal", creds: session, answer: "y\n"},
+		{name: "mcp env auth needs the session token", creds: session, flags: GatewayFlags{MCPEnvAuth: true}, answer: "y\n", tty: true},
+		{name: "already durable", creds: &Credentials{APIKey: "sk-orq-old", Kind: CredentialAPIKey}, answer: "y\n", tty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isTerminalFd = func(int) bool { return tc.tty }
+			promptInput = strings.NewReader(tc.answer)
+			ran := false
+			MintHook = func() error { ran = true; return tc.mintErr }
+			getenv := func(k string) string {
+				if k == "ORQ_API_KEY" && ran && tc.mintErr == nil {
+					return "sk-orq-new"
+				}
+				return ""
+			}
+			got := offerDurableKey(tc.creds, tc.flags, getenv)
+			if ran != tc.minted {
+				t.Errorf("MintHook ran = %v, want %v", ran, tc.minted)
+			}
+			if isNew := got.APIKey == "sk-orq-new"; isNew != tc.durable {
+				t.Errorf("returned key %q, want new durable key = %v", got.APIKey, tc.durable)
+			}
+			if !tc.durable && got != tc.creds {
+				t.Errorf("credential changed without a successful mint: %+v", got)
+			}
+		})
+	}
+}

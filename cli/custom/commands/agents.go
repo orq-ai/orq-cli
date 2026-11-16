@@ -297,6 +297,9 @@ type claudeOtelOwnership struct {
 	Written  map[string]*string         `json:"written"`
 }
 
+// nativeOtel reports whether connect can write this agent's OTel exporter settings.
+func (s agentSpec) nativeOtel() bool { return s.writeOtel != nil && s.otelConfig != nil }
+
 func claudeOtelOwnershipPath(path string) string { return path + ".orq-otel.json" }
 
 func readClaudeOtelOwnership(path string) (*claudeOtelOwnership, []byte, error) {
