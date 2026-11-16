@@ -232,7 +232,7 @@ func registerbatchesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().String("file", "", "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output. (one of: output, errors)")
+		cmd.Flags().String("file", "", "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output, and answers the errors file when the batch produced no output file. Requesting errors on a batch with no error file returns 409 output_unavailable. (one of: output, errors)")
 		_ = cmd.RegisterFlagCompletionFunc("file", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"output", "errors"}, cobra.ShellCompDirectiveNoFileComp
 		})
@@ -278,8 +278,8 @@ func registerbatchesCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Maximum number of batches to return, 1 to 100. Defaults to 20.")
-		cmd.Flags().String("after", "", "Cursor: return batches after this batch id.")
-		cmd.Flags().String("before", "", "Cursor: return batches before this batch id. Cannot be combined with after.")
+		cmd.Flags().String("after", "", "Cursor: return batches older than this batch id, still newest first.")
+		cmd.Flags().String("before", "", "Cursor: return batches newer than this batch id. Cannot be combined with after.")
 		cmd.Flags().String("search", "", "Case-insensitive match on batch id, model, or endpoint.")
 		cmd.Flags().String("status", "", "Comma-separated statuses to include: validating, in_progress, finalizing, completed, failed, expired, cancelling, cancelled.")
 		cmd.Flags().String("endpoint", "", "Comma-separated endpoints to include: /v1/responses, /v1/chat/completions, /v1/embeddings, /v1/completions, /v1/moderations, /v3/router/decisions.")
