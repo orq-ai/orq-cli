@@ -3048,7 +3048,7 @@ func testConnectOtelMints(t *testing.T, envKey string) {
 	}
 	resetSetupMemos(t)
 
-	opts := &setupOptions{noProject: true, confirmFn: func(string, bool) bool { return true }}
+	opts := &setupOptions{noProject: true, chooseFn: func(string, []string) int { return int(keyCreate) }}
 	var out strings.Builder
 	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, opts, []string{"claude"}, []string{capOtel}, false); err != nil {
 		t.Fatalf("connect otel: %v\n%s", err, out.String())
@@ -3812,7 +3812,7 @@ func TestConnectOtelSessionTokenOptIn(t *testing.T) {
 		name string
 		opts setupOptions
 	}{
-		{"picked", setupOptions{chooseFn: func(string, []string) int { return keyChoiceSession }}},
+		{"picked", setupOptions{chooseFn: func(string, []string) int { return int(keySession) }}},
 		{"flag", setupOptions{noInput: true, useSessionToken: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3854,13 +3854,163 @@ func TestConnectOtelSessionTokenOptIn(t *testing.T) {
 	}
 }
 
+// sessionOtelHarness is a logged-in machine with no durable key and a Claude
+// config directory: the setup the login-token paths start from.
+func sessionOtelHarness(t *testing.T, srv *httptest.Server) (settings string) {
+	t.Helper()
+	home := connectHarness(t, srv)
+	saveConnectSession(t, srv.URL, "acme", "", "")
+	t.Setenv("ORQ_API_KEY", "")
+	ResetUserEnvAPIKey()
+	t.Cleanup(ResetUserEnvAPIKey)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
+// gatewayMintServer is keyMintServer plus the model catalogue the gateway needs.
+func gatewayMintServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, codingModelCatalogueJSON)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestConnectGatewayAndOtelSessionTokenFlag(t *testing.T) {
+	settings := sessionOtelHarness(t, gatewayMintServer(t))
+	opts := setupOptions{noInput: true, noProject: true, useSessionToken: true,
+		chooseFn: func(string, []string) int { t.Fatal("the flag must not prompt"); return -1 }}
+	var out strings.Builder
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude", "kimi"}, []string{capGateway, capOtel}, false); err != nil {
+		t.Fatalf("connect: %v\n%s", err, out.String())
+	}
+	if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer session-token-acme" {
+		t.Errorf("otel header = %v\n%s", env["OTEL_EXPORTER_OTLP_HEADERS"], out.String())
+	}
+	if !strings.Contains(out.String(), "gateway skipped: it needs a durable API key") || strings.Contains(out.String(), "no credential") {
+		t.Errorf("gateway skip not reported:\n%s", out.String())
+	}
+}
+
+func TestConnectGatewayAndOtelPromptLabelsAndChoices(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		pick      keyChoice
+		wantOtel  bool
+		wantNoted string
+	}{
+		{"session", keySession, true, "gateway skipped: it needs a durable API key"},
+		{"skip", keyThird, false, "gateway skipped: no credential"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := sessionOtelHarness(t, gatewayMintServer(t))
+			var labels []string
+			opts := setupOptions{noProject: true, chooseFn: func(_ string, options []string) int {
+				labels = options
+				return int(tc.pick)
+			}}
+			var out strings.Builder
+			if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &opts, []string{"claude", "kimi"}, []string{capGateway, capOtel}, false); err != nil {
+				t.Fatalf("connect: %v\n%s", err, out.String())
+			}
+			if len(labels) != 3 || labels[1] != "Use my login token for otel only (gateway is skipped)" || labels[2] != "Skip otel and gateway" {
+				t.Errorf("labels = %q", labels)
+			}
+			if !strings.Contains(out.String(), tc.wantNoted) {
+				t.Errorf("missing %q:\n%s", tc.wantNoted, out.String())
+			}
+			if tc.wantOtel {
+				if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer session-token-acme" {
+					t.Errorf("otel header = %v", env["OTEL_EXPORTER_OTLP_HEADERS"])
+				}
+			} else {
+				assertNoOtelExporter(t, settings)
+			}
+		})
+	}
+}
+
+func TestConnectSessionTokenFlagNeedsOtel(t *testing.T) {
+	srv, _ := keyMintServer(t)
+	sessionOtelHarness(t, srv)
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"claude", "mcp", "--use-session-token", "--yes"})
+	var errOut strings.Builder
+	cmd.SetErr(&errOut)
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--use-session-token") {
+		t.Fatalf("err = %v, want a usage error naming the flag", err)
+	}
+}
+
+// Swapping the login token for a durable key is a change, not "already configured".
+func TestConnectOtelRerunWithDurableKeyIsNotAlready(t *testing.T) {
+	srv, _ := keyMintServer(t)
+	settings := sessionOtelHarness(t, srv)
+	var out strings.Builder
+	if err := connectSelected(NewConnectCommand(), &reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useSessionToken: true}, []string{"claude"}, []string{capOtel}, false); err != nil {
+		t.Fatalf("connect: %v\n%s", err, out.String())
+	}
+	status := &reporter{w: &out}
+	out.Reset()
+	reportUnreadableOtelConfigs(status, []string{"claude"})
+	if !strings.Contains(out.String(), "login token") {
+		t.Errorf("status did not flag the login token:\n%s", out.String())
+	}
+
+	SetUserEnvAPIKey("sk-durable")
+	out.Reset()
+	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, noProject: true, useSessionToken: true}, []string{"claude"})
+	if failed || len(results) != 1 || results[0].Already || strings.Contains(out.String(), "already configured") {
+		t.Fatalf("swap reported already: %+v\n%s", results, out.String())
+	}
+	if !strings.Contains(out.String(), "--use-session-token is ignored") {
+		t.Errorf("ignored flag not mentioned:\n%s", out.String())
+	}
+	if _, env := claudeSettings(t, settings); env["OTEL_EXPORTER_OTLP_HEADERS"] != "Authorization=Bearer sk-durable" {
+		t.Errorf("header = %v", env["OTEL_EXPORTER_OTLP_HEADERS"])
+	}
+	out.Reset()
+	if results, _ := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true}, []string{"claude"}); len(results) != 1 || !results[0].Already {
+		t.Errorf("same key rerun not already: %+v", results)
+	}
+}
+
+func TestConnectSessionTokenRefusedUnderProfile(t *testing.T) {
+	srv, _ := keyMintServer(t)
+	settings := sessionOtelHarness(t, srv)
+	ensureCreds(t)
+	bartolocli.Creds.Set("profiles.work.type", "apikey")
+	viper.Set("profile", "work")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	var out strings.Builder
+	results, failed := connectOtel(&reporter{w: &out}, &setupOptions{noInput: true, useSessionToken: true}, []string{"claude"})
+	if !failed || len(results) != 1 || !strings.Contains(results[0].Error, `profile "work"`) {
+		t.Fatalf("results = %+v failed = %v\n%s", results, failed, out.String())
+	}
+	assertNoOtelExporter(t, settings)
+}
+
 // Taking the login token at launch's prompt is for this run: it asks again.
 func TestOfferLaunchKeyLoginTokenChoiceAsksAgain(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	ensureCreds(t)
 	t.Chdir(t.TempDir())
 	asked := 0
-	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return keyChoiceSession }}
+	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return int(keySession) }}
 	for range 2 {
 		if key, err := offerLaunchKey(NewLaunchCommand(), opts); key != "" || err != nil {
 			t.Fatalf("login token choice returned (%q, %v)", key, err)
@@ -3880,7 +4030,7 @@ func TestOfferLaunchKeyRemembersDeclinePerDirectory(t *testing.T) {
 	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
 
 	asked := 0
-	opts := &setupOptions{confirmFn: func(string, bool) bool { asked++; return false }}
+	opts := &setupOptions{chooseFn: func(string, []string) int { asked++; return int(keyThird) }}
 	offer := func() {
 		t.Helper()
 		if key, err := offerLaunchKey(NewLaunchCommand(), opts); key != "" || err != nil {

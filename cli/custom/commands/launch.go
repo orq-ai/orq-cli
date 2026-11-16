@@ -105,11 +105,11 @@ func offerLaunchKey(cmd *cobra.Command, opts *setupOptions) (string, error) {
 	if keyOfferDeclined(dir) {
 		return "", nil
 	}
-	switch opts.choose(noDurableKeyMessage, keyChoices("Use my login token, and don't ask again in this directory")) {
-	case keyChoiceCreate:
-	case keyChoiceSession, -1:
+	switch askKey(opts, loginTokenLabel, "Use my login token, and don't ask again in this directory") {
+	case keyCreate:
+	case keySession, keyAborted:
 		return "", nil
-	default:
+	case keyThird:
 		if rememberKeyOfferDeclined(dir) == nil {
 			fmt.Fprintln(os.Stderr, "Not asking again in this directory; 'orq setup' creates the key whenever you want it.")
 		}

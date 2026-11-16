@@ -133,7 +133,8 @@ login; that last one is now reused instead of minting a second key.
 token instead of a durable key: pick "Use my login token" at the key prompt, or
 pass `--use-session-token` (the only way in `--yes`/`--no-input` runs). It warns
 that traces stop when the token expires, in about an hour, and the next connect
-run with a durable key replaces it.
+run with a durable key replaces it. The gateway still needs a durable key, so
+it is skipped when the login token is picked.
 
 **Changed:** `orq launch` offers the same key when it would hand the agent (and
 its trace export) the session token, with the same three choices: create the

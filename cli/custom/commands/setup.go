@@ -148,20 +148,15 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 	return answer
 }
 
-// choose asks for one of options and returns its index; -1 means the prompt was
-// abandoned. --yes and an unattended run take the first option. With only the
-// confirm seam set, yes is the first option and no the last.
+// choose asks for one of options and returns its index; -1 means no answer was
+// given: the prompt was abandoned, or --yes / an unattended run, which must
+// never pick an option that creates something.
 func (o *setupOptions) choose(message string, options []string) int {
 	switch {
 	case o.chooseFn != nil:
 		return o.chooseFn(message, options)
-	case o.confirmFn != nil:
-		if o.confirmFn(message, true) {
-			return 0
-		}
-		return len(options) - 1
 	case o.yes || o.noInput:
-		return 0
+		return -1
 	}
 	picked := 0
 	if err := survey.AskOne(&survey.Select{Message: message, Options: options}, &picked, promptStdio()); err != nil {
@@ -170,20 +165,37 @@ func (o *setupOptions) choose(message string, options []string) int {
 	return picked
 }
 
-// The key prompt connect and launch share: create a durable key, or use the
-// login token. The third option is each caller's own way out.
+// keyChoice is the answer to the key prompt connect and launch share.
+type keyChoice int
+
 const (
-	noDurableKeyMessage = "No durable API key for this workspace"
-	keyChoiceCreate     = 0
-	keyChoiceSession    = 1
+	keyCreate keyChoice = iota
+	keySession
+	keyThird
+	keyAborted
 )
 
-func keyChoices(third string) []string {
-	return []string{
+const (
+	noDurableKeyMessage = "No durable API key on this machine — how should it authenticate?"
+	loginTokenLabel     = "Use my login token (expires in about an hour)"
+)
+
+// askKey offers: create a durable key, use the login token (session), or the
+// caller's own way out (third).
+func askKey(opts *setupOptions, session, third string) keyChoice {
+	switch opts.choose(noDurableKeyMessage, []string{
 		fmt.Sprintf("Create a %d-day API key", int(gatewayKeyLifetime.Hours()/24)),
-		"Use my login token (expires in about an hour)",
+		session,
 		third,
+	}) {
+	case 0:
+		return keyCreate
+	case 1:
+		return keySession
+	case 2:
+		return keyThird
 	}
+	return keyAborted
 }
 
 // confirmPersistent is confirm for a change that outlives the run. --yes does
