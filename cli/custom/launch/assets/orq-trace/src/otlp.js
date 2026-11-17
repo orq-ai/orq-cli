@@ -103,17 +103,19 @@ function getHeaders() {
   return headers;
 }
 
-// A queued batch belongs to the workspace and endpoint it was meant for. The
-// queue is one directory shared by every traced session, launcher-started or
-// not, so draining a file against whatever key the current session happens to
-// hold posts one workspace's session content to another. The key itself is
-// never written to disk: a fingerprint is all that is needed to tell two
-// destinations apart.
+// A queued batch belongs to the endpoint and the credentials the request will
+// actually use. OTEL_EXPORTER_OTLP_HEADERS may override Authorization or
+// supply another auth header, so getApiKey() alone does not identify the
+// workspace that receives the spans. Hash normalized outgoing headers without
+// Content-Type: the credential values never reach disk. This intentionally
+// gives older key-only queue entries a different fingerprint; their actual
+// authorization cannot be known after an update, so they must not be replayed.
 export function currentDestination() {
-  const apiKey = getApiKey();
+  const headers = new Headers(getHeaders());
+  headers.delete("Content-Type");
   return {
     endpoint: getEndpoint(),
-    key: apiKey ? createHash("sha256").update(apiKey).digest("hex").slice(0, 16) : null,
+    key: createHash("sha256").update(JSON.stringify([...headers])).digest("hex").slice(0, 16),
   };
 }
 
@@ -298,12 +300,13 @@ export async function drainQueue() {
     await debugLog(`[otlp] DRAIN skipped ${skipped} queued file(s) for another destination\n`);
     // A file this session cannot deliver is usually another workspace's. It can
     // also be this session's own, after the key was rotated: the fingerprint no
-    // longer matches. Either way the spans sit there until a later session
-    // start prunes them, which is why the line says that rather than promising
-    // they expire on a timer. Say it on stderr, like the other failure paths
-    // here, or the loss is invisible without ORQ_DEBUG. Rate limited through
-    // the state directory rather than a module flag, because every hook is its
-    // own process and the condition lasts as long as the files do.
+    // longer matches, or it can be a legacy file with no recorded destination.
+    // Either way the spans sit there until a later session start prunes them,
+    // which is why the line says that rather than promising they expire on a
+    // timer. Say it on stderr, like the other failure paths here, or the loss is
+    // invisible without ORQ_DEBUG. The warning is rate limited per draining
+    // destination through the state directory, because every hook is its own
+    // process and the condition lasts as long as the files do.
     if (await shouldWarnUndeliverable(destination)) {
       process.stderr.write(
         `[orq-trace] WARN: ${skipped} queued batch(es) have no recorded destination or belong to a different endpoint or API key, ` +
