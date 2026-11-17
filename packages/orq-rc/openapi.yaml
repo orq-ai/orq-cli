@@ -2591,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m7mj8qcm74rjq25y73zyv7dw"
+              default: "reasoning_01m7mrvqh26ykxk2cjc5tz0qs3"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -12296,6 +12296,10 @@ components:
         assume_role_external_id:
           type: "string"
         auth_mode:
+          description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires."
+          enum:
+            - "integration"
+            - "pod-identity"
           type: "string"
         autorouter_id:
           description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
@@ -12329,11 +12333,12 @@ components:
           format: "int64"
           type: "integer"
         model_developer:
+          description: "Developer of the model behind the inference profile, such as anthropic or amazon."
           type: "string"
         model_family:
           type: "string"
         model_id:
-          description: "Immutable workspace-unique slug when configuration.model_id is supplied."
+          description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id."
           type: "string"
         model_type:
           type: "string"
@@ -12341,6 +12346,7 @@ components:
           format: "double"
           type: "number"
         region:
+          description: "AWS region that serves the inference profile, such as us-east-1."
           type: "string"
         supports_adaptive_reasoning:
           type: "boolean"
@@ -28434,7 +28440,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M7MJ8QBM2RKH54F09H4RZE5M"
+                                default: "01M7MRVQG40XYH233JEG7SADGS"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -31899,6 +31905,12 @@ paths:
       x-speakeasy-name-override: "list"
       x-cli-group: "agents"
       x-cli-name: "list"
+      x-cli-list-fields:
+        - "key"
+        - "model.id"
+        - "settings.tools[].display_name"
+        - "team_of_agents[].key"
+        - "updated"
       x-speakeasy-max-method-params: 4
       operationId: "ListAgents"
       summary: "List agents"
@@ -37833,7 +37845,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7MJ8QDVW5QKET2F0GF9SZ9Z"
+                                          default: "01M7MRVQJC28N9JC8EV5W9QDHC"
                                         name:
                                           type: "string"
                                         description:
@@ -39459,7 +39471,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7MJ8QE8P79FBSHSK2BZ0K50"
+                                          default: "01M7MRVQJSE1A9MWT7R5C0JY26"
                                         name:
                                           type: "string"
                                         description:
@@ -48516,7 +48528,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MJ8QF998H6XJYHGJDKT346"
+                              default: "tool_01M7MRVQKYBPN5TWGX1WZFCKTV"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48617,7 +48629,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MJ8QFA885HZW2C72YBWX87"
+                              default: "tool_01M7MRVQKY6W3S82JEDD01828T"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48720,7 +48732,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MJ8QFA8EN9S8EWM9S4HWG9"
+                              default: "tool_01M7MRVQKZ519GQ66TC2MF7J51"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48864,7 +48876,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MJ8QFB38WGWG6SKJ94FW42"
+                              default: "tool_01M7MRVQM0FAB64A9SBCWVBZJV"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49351,7 +49363,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFEPZXCSG02ZST8V8EZ"
+                        default: "tool_01M7MRVQM24DWQX87YEDM6KNK9"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49452,7 +49464,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFE2F485FSYZKVMGTSA"
+                        default: "tool_01M7MRVQM34QFMFJE5YVVP28M3"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49555,7 +49567,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFFG1RYCSEQCP57Z362"
+                        default: "tool_01M7MRVQM30YAAEF07XQSA6EWC"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49699,7 +49711,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFF2XJNN4KZ9QABQV69"
+                        default: "tool_01M7MRVQM42VRVVW47C1K0QMWE"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50203,7 +50215,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFHA0QS3HC7T0VX01T1"
+                        default: "tool_01M7MRVQM60AHVF7TS5EGYKQGQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50304,7 +50316,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFH7DEWW441GKPS4KF7"
+                        default: "tool_01M7MRVQM6QGA2R147WACGVPZM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50407,7 +50419,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFJ9DGR7DK44DWQ81KP"
+                        default: "tool_01M7MRVQM6QC0DGAABKDPRFCBA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50551,7 +50563,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFJMBCQB2QA2FB81GEY"
+                        default: "tool_01M7MRVQM7PCRFZE2EZFGXE0BT"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50718,7 +50730,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFPPG1EPFM7HYM9FNAJ"
+                        default: "tool_01M7MRVQMBQBMZ8V1CZ92DJYH3"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50819,7 +50831,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFP19SSH0W458GCJW3B"
+                        default: "tool_01M7MRVQMB06605YDBM62SW40Z"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50922,7 +50934,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFQAPEJKYG0TEFW8AWC"
+                        default: "tool_01M7MRVQMF2ZX7PVJTKQKV8J5J"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51066,7 +51078,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MJ8QFQQ62YP0Z3T2SRM84C"
+                        default: "tool_01M7MRVQMF0QCAXSNAJRNDS6V8"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -63523,12 +63535,6 @@ paths:
                   - "domains"
                 type: "object"
           description: "The capability catalog"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
       summary: "List capability catalog"
       tags:
         - "API keys"
@@ -64354,6 +64360,12 @@ paths:
       x-speakeasy-name-override: "search"
       x-cli-group: "logs"
       x-cli-name: "search"
+      x-cli-list-fields:
+        - "timestamp"
+        - "severity_text"
+        - "service_name"
+        - "trace_id"
+        - "body"
       security:
         - ApiKey: []
   /v3/logs/{id}:
@@ -64471,6 +64483,12 @@ paths:
       x-speakeasy-name-override: "listTraceLogs"
       x-cli-group: "logs"
       x-cli-name: "listTrace"
+      x-cli-list-fields:
+        - "timestamp"
+        - "severity_text"
+        - "service_name"
+        - "span_id"
+        - "body"
       security:
         - ApiKey: []
   /v2/reporting:
@@ -65011,6 +65029,13 @@ paths:
       x-speakeasy-name-override: "search"
       x-cli-group: "traces"
       x-cli-name: "search"
+      x-cli-list-fields:
+        - "trace_id"
+        - "name"
+        - "status"
+        - "models"
+        - "usage.total_tokens"
+        - "cost.total"
       security:
         - ApiKey: []
   /v3/traces/{trace_id}:
@@ -65147,6 +65172,14 @@ paths:
       x-speakeasy-name-override: "list_spans"
       x-cli-group: "traces"
       x-cli-name: "listSpans"
+      x-cli-list-fields:
+        - "span_id"
+        - "name"
+        - "type"
+        - "status"
+        - "model"
+        - "usage.total_tokens"
+        - "duration_ms"
       security:
         - ApiKey: []
   /v3/traces/{trace_id}/spans/{span_id}:
@@ -66667,7 +66700,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Set an annotation cell"
-          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/annotations/<annotation_column_id>/cells/<row_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"task_id\": \"<task_id>\", \"value\": { \"type\": \"range\", \"value\": 4 } }'\n"
+          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/annotations/<annotation_column_id>/cells/<datapoint_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"task_id\": \"<task_id>\", \"value\": { \"type\": \"range\", \"value\": 4 } }'\n"
       security:
         - ApiKey: []
   /v3/experiments/{experiment_id}/runs/{run_id}/cancel:
@@ -67685,6 +67718,10 @@ paths:
                 assume_role_external_id:
                   type: "string"
                 auth_mode:
+                  description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires."
+                  enum:
+                    - "integration"
+                    - "pod-identity"
                   type: "string"
                 autorouter_id:
                   description: "Smart Router catalog identifier of the model. Set it together with autorouter_version to make the private model eligible for Smart Router pools."
@@ -67718,11 +67755,12 @@ paths:
                   format: "int64"
                   type: "integer"
                 model_developer:
+                  description: "Developer of the model behind the inference profile, such as anthropic or amazon."
                   type: "string"
                 model_family:
                   type: "string"
                 model_id:
-                  description: "Immutable workspace-unique slug when configuration.model_id is supplied."
+                  description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id."
                   type: "string"
                 model_type:
                   type: "string"
@@ -67730,6 +67768,7 @@ paths:
                   format: "double"
                   type: "number"
                 region:
+                  description: "AWS region that serves the inference profile, such as us-east-1."
                   type: "string"
                 supports_adaptive_reasoning:
                   type: "boolean"
@@ -67889,6 +67928,9 @@ paths:
         - label: "Node.js"
           lang: "typescript"
           source: "await orq.models.createAwsBedrock({\n  displayName: \"My Bedrock Model\",\n  modelId: \"arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0\",\n  region: \"us-east-1\",\n  modelDeveloper: \"anthropic\",\n  authMode: \"integration\",\n  integrationId: \"int_...\",\n});"
+        - label: "Node.js: Pod identity"
+          lang: "typescript"
+          source: "await orq.models.createAwsBedrock({\n  displayName: \"My Bedrock Model\",\n  modelId: \"arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0\",\n  region: \"us-east-1\",\n  modelDeveloper: \"anthropic\",\n  authMode: \"pod-identity\",\n  assumeRoleArn: \"arn:aws:iam::123456789012:role/bedrock-access-role\",\n});"
       x-speakeasy-group: "models"
       x-speakeasy-name-override: "createAwsBedrock"
       security:
@@ -72458,8 +72500,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateMcpGatewayResponse"
+        "400":
+          description: "The gateway is invalid: the key is empty, longer than 64 characters or not a slug, the tool naming or mode is unknown, a server link repeats a server or an alias, or a linked server is missing, has no synced tools, or is shared more narrowly than the gateway."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "A gateway with this key already exists in the workspace."
           content:
             application/json:
               schema:
@@ -72471,13 +72525,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create MCP gateway"
-          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"support-desk\",\n    \"display_name\": \"Support Desk\",\n    \"description\": \"Tools the support agent is allowed to call.\",\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n      }\n    ],\n    \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    \"mode\": \"MCP_GATEWAY_MODE_DIRECT\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"support-desk\",\n    \"display_name\": \"Support Desk\",\n    \"description\": \"Tools the support agent is allowed to call.\",\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n      }\n    ],\n    \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    \"mode\": \"MCP_GATEWAY_MODE_DIRECT\"\n  }'\n"
         - lang: "python"
           label: "Python - Create MCP gateway"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Each link needs an alias and a tool_exposure; both are required.\nresult = client.mcp_gateways.create(\n    key=\"support-desk\",\n    display_name=\"Support Desk\",\n    description=\"Tools the support agent is allowed to call.\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"},\n        },\n    ],\n    tool_naming=\"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    mode=\"MCP_GATEWAY_MODE_DIRECT\",\n)\n\nprint(result.mcp_gateway.public_url)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Each link needs an alias and a tool_exposure; both are required.\nresult = client.mcp_gateways.create(\n    key=\"support-desk\",\n    display_name=\"Support Desk\",\n    description=\"Tools the support agent is allowed to call.\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"},\n        },\n    ],\n    tool_naming=\"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    mode=\"MCP_GATEWAY_MODE_DIRECT\",\n)\n\nprint(result.mcp_gateway.public_url)\n"
         - lang: "typescript"
           label: "Node.js - Create MCP gateway"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Each link needs an alias and a toolExposure; both are required.\nconst result = await client.mcpGateways.create({\n  key: 'support-desk',\n  displayName: 'Support Desk',\n  description: 'Tools the support agent is allowed to call.',\n  serverLinks: [\n    {\n      mcpServerId: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n      alias: 'github',\n      enabled: true,\n      toolExposure: { mode: 'MCP_TOOL_EXPOSURE_MODE_ALL' },\n    },\n  ],\n  toolNaming: 'MCP_TOOL_NAMING_PREFIX_ON_COLLISION',\n  mode: 'MCP_GATEWAY_MODE_DIRECT',\n});\n\nconsole.log(result.mcpGateway.publicUrl);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Each link needs an alias and a toolExposure; both are required.\nconst result = await client.mcpGateways.create({\n  key: 'support-desk',\n  displayName: 'Support Desk',\n  description: 'Tools the support agent is allowed to call.',\n  serverLinks: [\n    {\n      mcpServerId: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n      alias: 'github',\n      enabled: true,\n      toolExposure: { mode: 'MCP_TOOL_EXPOSURE_MODE_ALL' },\n    },\n  ],\n  toolNaming: 'MCP_TOOL_NAMING_PREFIX_ON_COLLISION',\n  mode: 'MCP_GATEWAY_MODE_DIRECT',\n});\n\nconsole.log(result.mcpGateway.publicUrl);\n"
       security:
         - ApiKey: []
   /v2/mcp-gateways/{gateway_id}/tools:
@@ -72541,16 +72595,16 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List the tools a gateway exposes"
-          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=100'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=100'\n"
         - lang: "curl"
           label: "Core - List the tools contributed by one server"
-          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'mcp_server_id=01JQ0K5R8N2ZC7X4M9T3V6HWBD'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'mcp_server_id=mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD'\n"
         - lang: "python"
           label: "Python - List the tools a gateway exposes"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list_tools(\n    gateway_id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    limit=100,\n)\n\n# exposed_name is what MCP clients call; upstream_tool_name is the original.\nfor tool in page.data:\n    print(tool.exposed_name, \"->\", tool.upstream_tool_name)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list_tools(\n    gateway_id=\"mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    limit=100,\n)\n\n# exposed_name is what MCP clients call; upstream_tool_name is the original.\nfor tool in page.data:\n    print(tool.exposed_name, \"->\", tool.upstream_tool_name)\n"
         - lang: "typescript"
           label: "Node.js - List the tools a gateway exposes"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.mcpGateways.listTools({\n  gatewayId: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  limit: 100,\n});\n\n// exposedName is what MCP clients call; upstreamToolName is the original.\nfor (const tool of page.data) {\n  console.log(tool.exposedName, '->', tool.upstreamToolName);\n}\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.mcpGateways.listTools({\n  gatewayId: 'mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  limit: 100,\n});\n\n// exposedName is what MCP clients call; upstreamToolName is the original.\nfor (const tool of page.data) {\n  console.log(tool.exposedName, '->', tool.upstreamToolName);\n}\n"
       security:
         - ApiKey: []
   /v2/mcp-gateways/{id}:
@@ -72593,13 +72647,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve an MCP gateway"
-          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an MCP gateway"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_gateways.retrieve(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n\n# public_url is the endpoint MCP clients connect to.\nprint(result.mcp_gateway.public_url)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_gateways.retrieve(id=\"mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n\n# public_url is the endpoint MCP clients connect to.\nprint(result.mcp_gateway.public_url)\n"
         - lang: "typescript"
           label: "Node.js - Retrieve an MCP gateway"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpGateways.retrieve({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n});\n\n// publicUrl is the endpoint MCP clients connect to.\nconsole.log(result.mcpGateway.publicUrl);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpGateways.retrieve({\n  id: 'mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n});\n\n// publicUrl is the endpoint MCP clients connect to.\nconsole.log(result.mcpGateway.publicUrl);\n"
       security:
         - ApiKey: []
     delete:
@@ -72635,13 +72689,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an MCP gateway"
-          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an MCP gateway"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Connected MCP clients start receiving \"gateway not found\".\nclient.mcp_gateways.delete(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Connected MCP clients start receiving \"gateway not found\".\nclient.mcp_gateways.delete(id=\"mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n"
         - lang: "typescript"
           label: "Node.js - Delete an MCP gateway"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Connected MCP clients start receiving \"gateway not found\".\nawait client.mcpGateways.delete({ id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC' });\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Connected MCP clients start receiving \"gateway not found\".\nawait client.mcpGateways.delete({ id: 'mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC' });\n"
       security:
         - ApiKey: []
     patch:
@@ -72670,8 +72724,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpdateMcpGatewayResponse"
+        "400":
+          description: "The update is invalid: the key is immutable, the tool naming or mode is unknown, clear_server_links or clear_skill_ids is combined with a replacement, a server link repeats a server or an alias, a link lacks its tool exposure, a link supplies an exposure without expected_updated, or a newly linked server is missing or has no synced tools."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The gateway does not exist."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "expected_updated does not match the current updated timestamp of the gateway because another change landed first, or a server-links replacement re-enables a disabled link that carries stored exposures without sending expected_updated."
           content:
             application/json:
               schema:
@@ -72683,13 +72755,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Narrow the tools a gateway exposes"
-          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": {\n          \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n          \"tool_ids\": [\n            \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n            \"01JQ0KB5P9WF2G7H4J6K8L1NQD\"\n          ]\n        }\n      }\n    ]\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": {\n          \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n          \"tool_ids\": [\n            \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n            \"01JQ0KB5P9WF2G7H4J6K8L1NQD\"\n          ]\n        }\n      }\n    ]\n  }'\n"
         - lang: "python"
           label: "Python - Narrow the tools a gateway exposes"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_ids come from McpTool.id. A tool renamed upstream gets a new id\n# on the next sync, which drops it from this allowlist.\nresult = client.mcp_gateways.update(\n    id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\n                \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n                \"tool_ids\": [\n                    \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n                    \"01JQ0KB5P9WF2G7H4J6K8L1NQD\",\n                ],\n            },\n        },\n    ],\n)\n\nprint(result.mcp_gateway.exposed_tools_count)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_ids come from McpTool.id. A tool renamed upstream gets a new id\n# on the next sync, which drops it from this allowlist.\nresult = client.mcp_gateways.update(\n    id=\"mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\n                \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n                \"tool_ids\": [\n                    \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n                    \"01JQ0KB5P9WF2G7H4J6K8L1NQD\",\n                ],\n            },\n        },\n    ],\n)\n\nprint(result.mcp_gateway.exposed_tools_count)\n"
         - lang: "typescript"
           label: "Node.js - Narrow the tools a gateway exposes"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolIds come from McpTool.id. A tool renamed upstream gets a new id\n// on the next sync, which drops it from this allowlist.\nconst result = await client.mcpGateways.update({\n  id: '01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  updateMcpGatewayRequest: {\n    serverLinks: [\n      {\n        mcpServerId: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n        alias: 'github',\n        enabled: true,\n        toolExposure: {\n          mode: 'MCP_TOOL_EXPOSURE_MODE_SELECTED',\n          toolIds: [\n            '01JQ0KA2M7VD9E4R6T8Y1U3XSB',\n            '01JQ0KB5P9WF2G7H4J6K8L1NQD',\n          ],\n        },\n      },\n    ],\n  },\n});\n\nconsole.log(result.mcpGateway.exposedToolsCount);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolIds come from McpTool.id. A tool renamed upstream gets a new id\n// on the next sync, which drops it from this allowlist.\nconst result = await client.mcpGateways.update({\n  id: 'mcp_gateway_01JQ0M8W4T5YB2Q7N1F6K3PZRC',\n  updateMcpGatewayRequest: {\n    serverLinks: [\n      {\n        mcpServerId: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n        alias: 'github',\n        enabled: true,\n        toolExposure: {\n          mode: 'MCP_TOOL_EXPOSURE_MODE_SELECTED',\n          toolIds: [\n            '01JQ0KA2M7VD9E4R6T8Y1U3XSB',\n            '01JQ0KB5P9WF2G7H4J6K8L1NQD',\n          ],\n        },\n      },\n    ],\n  },\n});\n\nconsole.log(result.mcpGateway.exposedToolsCount);\n"
       security:
         - ApiKey: []
   /v2/mcp-servers:
@@ -72836,13 +72908,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve an MCP server"
-          source: "curl --get 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an MCP server"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.retrieve(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nfor tool in result.mcp_server.tools:\n    print(tool.name, tool.status)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.retrieve(id=\"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nfor tool in result.mcp_server.tools:\n    print(tool.name, tool.status)\n"
         - lang: "typescript"
           label: "Node.js - Retrieve an MCP server"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpServers.retrieve({\n  id: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n});\n\nfor (const tool of result.mcpServer.tools) {\n  console.log(tool.name, tool.status);\n}\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpServers.retrieve({\n  id: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n});\n\nfor (const tool of result.mcpServer.tools) {\n  console.log(tool.name, tool.status);\n}\n"
       security:
         - ApiKey: []
     delete:
@@ -72878,13 +72950,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an MCP server"
-          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an MCP server"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Fails while any gateway still links this server.\nclient.mcp_servers.delete(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Fails while any gateway still links this server.\nclient.mcp_servers.delete(id=\"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n"
         - lang: "typescript"
           label: "Node.js - Delete an MCP server"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Fails while any gateway still links this server.\nawait client.mcpServers.delete({ id: '01JQ0K5R8N2ZC7X4M9T3V6HWBD' });\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// Fails while any gateway still links this server.\nawait client.mcpServers.delete({ id: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD' });\n"
       security:
         - ApiKey: []
     patch:
@@ -72913,8 +72985,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpdateMcpServerResponse"
+        "400":
+          description: "The update is invalid: the key is immutable, the connection type is stdio or unknown, a required field is missing, the upstream server is unreachable, or its OpenAPI document is missing, invalid or too large."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The MCP server does not exist."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "The server changed while the update ran, so the new values were not stored."
           content:
             application/json:
               schema:
@@ -72926,13 +73016,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update an MCP server"
-          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GitHub (read only)\",\n    \"default_tool_exposure\": {\n      \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n      \"read_only\": true\n    }\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GitHub (read only)\",\n    \"default_tool_exposure\": {\n      \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n      \"read_only\": true\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Update an MCP server"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# The key is immutable; sending a different one is rejected.\nresult = client.mcp_servers.update(\n    id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    display_name=\"GitHub (read only)\",\n    default_tool_exposure={\n        \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n        \"read_only\": True,\n    },\n)\n\nprint(result.mcp_server.display_name)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# The key is immutable; sending a different one is rejected.\nresult = client.mcp_servers.update(\n    id=\"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    display_name=\"GitHub (read only)\",\n    default_tool_exposure={\n        \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n        \"read_only\": True,\n    },\n)\n\nprint(result.mcp_server.display_name)\n"
         - lang: "typescript"
           label: "Node.js - Update an MCP server"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// The key is immutable; sending a different one is rejected.\nconst result = await client.mcpServers.update({\n  id: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n  displayName: 'GitHub (read only)',\n  defaultToolExposure: {\n    mode: 'MCP_TOOL_EXPOSURE_MODE_ALL',\n    readOnly: true,\n  },\n});\n\nconsole.log(result.mcpServer.displayName);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// The key is immutable; sending a different one is rejected.\nconst result = await client.mcpServers.update({\n  id: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n  displayName: 'GitHub (read only)',\n  defaultToolExposure: {\n    mode: 'MCP_TOOL_EXPOSURE_MODE_ALL',\n    readOnly: true,\n  },\n});\n\nconsole.log(result.mcpServer.displayName);\n"
       security:
         - ApiKey: []
   /v2/mcp-servers/{id}/tools:test:
@@ -72975,13 +73065,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Test a single tool"
-          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD/tools:test' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tool_name\": \"search_issues\",\n    \"arguments\": { \"query\": \"repo:orq-ai/orq-cli is:open label:bug\" }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD/tools:test' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tool_name\": \"search_issues\",\n    \"arguments\": { \"query\": \"repo:orq-ai/orq-cli is:open label:bug\" }\n  }'\n"
         - lang: "python"
           label: "Python - Test a single tool"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_name is the upstream name, not a gateway's namespaced exposed_name.\nresult = client.mcp_servers.test_tool(\n    id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    tool_name=\"search_issues\",\n    arguments={\"query\": \"repo:orq-ai/orq-cli is:open label:bug\"},\n)\n\nprint(result.result.ok, result.result.latency_ms)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_name is the upstream name, not a gateway's namespaced exposed_name.\nresult = client.mcp_servers.test_tool(\n    id=\"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    tool_name=\"search_issues\",\n    arguments={\"query\": \"repo:orq-ai/orq-cli is:open label:bug\"},\n)\n\nprint(result.result.ok, result.result.latency_ms)\n"
         - lang: "typescript"
           label: "Node.js - Test a single tool"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolName is the upstream name, not a gateway's namespaced exposedName.\nconst { result } = await client.mcpServers.testTool({\n  id: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n  toolName: 'search_issues',\n  arguments: { query: 'repo:orq-ai/orq-cli is:open label:bug' },\n});\n\nconsole.log(result.ok, result.latencyMs);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\n// toolName is the upstream name, not a gateway's namespaced exposedName.\nconst { result } = await client.mcpServers.testTool({\n  id: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n  toolName: 'search_issues',\n  arguments: { query: 'repo:orq-ai/orq-cli is:open label:bug' },\n});\n\nconsole.log(result.ok, result.latencyMs);\n"
       security:
         - ApiKey: []
   /v2/mcp-servers/{id}:sync:
@@ -72989,7 +73079,7 @@ paths:
       tags:
         - "MCP Gateway"
       summary: "Sync an MCP server"
-      description: "Syncs the upstream catalogs and returns discovery outcomes. Resource catalogs and capabilities discovered with user-specific credentials or discovery variables are returned only to the caller."
+      description: "Syncs the upstream catalogs and returns discovery outcomes. Resource catalogs and capabilities discovered with user-specific credentials or discovery variables are returned only to the caller. A discovery failure that comes from the upstream server, such as a refused connection or rejected credentials, does not fail the request: the call answers 200 with sync_state.status SYNC_STATUS_FAILED and the reason in sync_state.errors, and the server's tools stay out of every gateway until a sync succeeds."
       operationId: "McpServerSync"
       parameters:
         - name: "id"
@@ -73011,8 +73101,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncMcpServerResponse"
+        "400":
+          description: "The sync cannot run: the server has no stored connection, is a stdio server, lacks a discovery variable the upstream requires, or has a missing or invalid OpenAPI document."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The MCP server does not exist."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "The server changed while the sync ran, so the discovered tools were not stored."
           content:
             application/json:
               schema:
@@ -73024,16 +73132,16 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Sync the tool catalog"
-          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
         - lang: "curl"
           label: "Core - Sync a server that uses template variables"
-          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"discovery_variables\": { \"github_token\": \"ghp_example_token\" }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"discovery_variables\": { \"github_token\": \"ghp_example_token\" }\n  }'\n"
         - lang: "python"
           label: "Python - Sync the tool catalog"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.sync(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nstate = result.mcp_server.sync_state\n# A sync that discovers nothing still reports SYNCED with tools_total 0.\nprint(state.status, state.tools_added, state.tools_removed)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.sync(id=\"mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nstate = result.mcp_server.sync_state\n# A sync that discovers nothing still reports SYNCED with tools_total 0.\nprint(state.status, state.tools_added, state.tools_removed)\n"
         - lang: "typescript"
           label: "Node.js - Sync the tool catalog"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpServers.sync({\n  id: '01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n});\n\nconst state = result.mcpServer.syncState;\n// A sync that discovers nothing still reports SYNCED with toolsTotal 0.\nconsole.log(state.status, state.toolsAdded, state.toolsRemoved);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.mcpServers.sync({\n  id: 'mcp_server_01JQ0K5R8N2ZC7X4M9T3V6HWBD',\n});\n\nconst state = result.mcpServer.syncState;\n// A sync that discovers nothing still reports SYNCED with toolsTotal 0.\nconsole.log(state.status, state.toolsAdded, state.toolsRemoved);\n"
       security:
         - ApiKey: []
   /v2/model-catalog:
@@ -73143,12 +73251,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListModelCatalogResponse"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "modelCatalog"
       x-speakeasy-name-override: "list"
       x-cli-group: "model-catalog"
@@ -73276,12 +73378,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListModelCatalogOfferingsResponse"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "modelCatalog"
       x-speakeasy-name-override: "listOfferings"
       x-cli-group: "model-catalog"
@@ -73315,12 +73411,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GetModelCatalogModelResponse"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: "The resource does not exist. See https://docs.orq.ai/reference/errors for the error codes."
           content:
