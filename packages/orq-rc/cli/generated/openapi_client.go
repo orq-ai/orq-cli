@@ -11487,6 +11487,11 @@ func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Respo
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramFactoryId := params.GetString("factory-id")
+	if bartolocli.FlagPassed(params, "factory-id") || paramFactoryId != "" {
+		req = req.AddQuery("factory_id", fmt.Sprintf("%v", paramFactoryId))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -11667,6 +11672,14 @@ func OpenapiSkillList(params *viper.Viper) (*gentleman.Response, map[string]inte
 	paramEndingBefore := params.GetString("ending-before")
 	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
 		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramSearch := params.GetString("search")
+	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramProjectId := params.GetString("project-id")
+	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
