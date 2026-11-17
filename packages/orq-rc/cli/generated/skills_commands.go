@@ -194,11 +194,11 @@ func registerskillsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "delete-file skill-id",
+			Use:     "delete-file skill-id path",
 			Short:   "Delete a skill file",
-			Long:    bartolocli.Markdown("Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update."),
+			Long:    bartolocli.Markdown("Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update.\n- `path` — Relative path of the file to delete within the skill bundle (for example `references/guide.md`)."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
+			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
@@ -206,7 +206,7 @@ func registerskillsCommands(root *cobra.Command) {
 					return err
 				}
 
-				_, decoded, err := OpenapiSkillDeleteFile(args[0], params)
+				_, decoded, err := OpenapiSkillDeleteFile(args[0], args[1], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -221,8 +221,6 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
-
-		cmd.Flags().String("path", "", "Relative path of the file to delete within the skill bundle.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -320,21 +318,21 @@ func registerskillsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "get-file-content skill-id",
+			Use:     "get-file-content skill-id path",
 			Short:   "Get a presigned URL for a skill file",
-			Long:    bartolocli.Markdown("Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name."),
+			Long:    bartolocli.Markdown("Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name.\n- `path` — Relative path of the file within the skill bundle (for example `references/guide.md`)."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
+			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
 
-				_, decoded, err := OpenapiSkillGetFileContent(args[0], params)
+				_, decoded, err := OpenapiSkillGetFileContent(args[0], args[1], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
@@ -343,8 +341,6 @@ func registerskillsCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
-
-		cmd.Flags().String("path", "", "Relative path of the file within the skill bundle.")
 
 		bartolocli.SetCustomFlags(cmd)
 

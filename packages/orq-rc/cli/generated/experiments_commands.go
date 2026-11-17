@@ -1979,7 +1979,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {\n      \"model\": \"model\"\n    }\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[3:], params,
