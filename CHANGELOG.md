@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.9.9](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.9) — 2026-11-17
+
 **Fixed:** `orq projects use`, `orq switch`, `orq setup` and `orq auth login` no
 longer overwrite what another `orq` command saved to the session while they were
 waiting on the network, such as a gateway key from a parallel `orq setup`.
