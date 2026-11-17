@@ -768,7 +768,7 @@ func TestDisconnectSaysTheKeySurvives(t *testing.T) {
 	}
 	credsHarness(t)
 	ensureFormatter(t)
-	if err := saveGatewayKeyProfile("sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	resetSetupMemos(t)
@@ -854,7 +854,7 @@ func TestDisconnectPayloadNamesCodingAgentsAndTheRetainedKey(t *testing.T) {
 	}
 	credsHarness(t)
 	ensureFormatter(t)
-	if err := saveGatewayKeyProfile("sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
+	if err := saveGatewayKeyProfile(diskLogin(t), "sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	resetSetupMemos(t)

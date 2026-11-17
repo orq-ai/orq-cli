@@ -120,6 +120,15 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Fixed:** `orq projects use`, `orq switch`, `orq setup` and `orq auth login` no
+longer overwrite what another `orq` command saved to the session while they were
+waiting on the network, such as a gateway key from a parallel `orq setup`.
+
+**Changed:** if your login is replaced or removed while `orq projects use`,
+`orq switch` or `orq setup` is running, the command now fails with "the login
+changed while this command ran" and saves nothing. Before, it wrote the old
+login's session back over the new one.
+
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 
 **Changed:** `orq setup` and `orq connect skills` install the current orq
