@@ -1322,6 +1322,19 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if profileInForce() {
 		return "", false, profileInForceError("create a gateway key")
 	}
+	// Also before the prompt, for the same reason. `orq connect` builds a state
+	// with no session, yet the key still lands on the login on disk. With none, a
+	// minted key could not be saved and would stay live on the platform with
+	// nothing pointing at it.
+	login := state.session
+	if login == nil {
+		if login, err = auth.ReadSession(); err != nil {
+			return "", false, err
+		}
+		if login == nil {
+			return "", false, errNoLoginForGatewayKey
+		}
+	}
 	if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
 		rep.ok("skipped creating an API key")
 		return "", false, nil
@@ -1348,18 +1361,6 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID), auth.WithProject(state.projectID))
 	if err != nil {
 		return "", false, err
-	}
-	// `orq connect` builds a state with no session, yet the key still lands on the
-	// login on disk. With none, stop here, before the mint: a key that cannot be
-	// saved would stay live on the platform with nothing pointing at it.
-	login := state.session
-	if login == nil {
-		if login, err = auth.ReadSession(); err != nil {
-			return "", false, err
-		}
-		if login == nil {
-			return "", false, errNoLoginForGatewayKey
-		}
 	}
 	minted, keyID, scopedToProject, err := client.CreateAPIKey(state.bearer, req)
 	if err != nil {
@@ -2188,6 +2189,13 @@ func recordedInActiveWorkspace(state *authState, token string) bool {
 // bare setup mints without a prompt, but discarding a credential the user may
 // have wired somewhere else is an exceptional, destructive transition.
 func reconcileRejectedSavedKey(rep *reporter, state *authState, opts *setupOptions) bool {
+	// Under an API-key profile there is no replacement to offer: ensureDurableKey
+	// refuses the mint because the save would fail. Asking here would have the
+	// user say yes to a key they cannot get.
+	if profileInForce() {
+		rep.warn("the profile's API key was rejected: it has been revoked or deleted")
+		return false
+	}
 	_, savedWS := savedAPIKey()
 	active := activeWorkspaceKey(state.session)
 	where := active

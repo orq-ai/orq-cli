@@ -269,16 +269,43 @@ func TestNoLoginMeansNoMint(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	state := &authState{apiBase: srv.URL, bearer: "t"}
-	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
-	// The guard returns the sentinel itself; a save failure after a mint wraps it,
-	// so identity, not errors.Is, is what tells the two apart.
-	if err != errNoLoginForGatewayKey { //nolint:errorlint // identity is the point
-		t.Fatalf("error = %v, want errNoLoginForGatewayKey from the guard", err)
+	// Both modes: the refusal must not depend on whether a prompt is drawn, and
+	// when one could be, it must come first. Saying yes to a key that is then
+	// refused is the order this guards against.
+	for _, mode := range promptModes {
+		t.Run(mode.name, func(t *testing.T) {
+			mints.Store(0)
+			var prompts []string
+			state := &authState{apiBase: srv.URL, bearer: "t"}
+			_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, mode.options(&prompts))
+			// The guard returns the sentinel itself; a save failure after a mint wraps it,
+			// so identity, not errors.Is, is what tells the two apart.
+			if err != errNoLoginForGatewayKey { //nolint:errorlint // identity is the point
+				t.Fatalf("error = %v, want errNoLoginForGatewayKey from the guard", err)
+			}
+			if len(prompts) != 0 {
+				t.Errorf("asked %q before refusing for want of a login", prompts)
+			}
+			if got := mints.Load(); got != 0 {
+				t.Errorf("minted %d keys with no login to save them on", got)
+			}
+		})
 	}
-	if got := mints.Load(); got != 0 {
-		t.Errorf("minted %d keys with no login to save them on", got)
-	}
+}
+
+// promptModes runs a refusal with and without a terminal. The interactive mode
+// answers yes to everything and records what was asked.
+var promptModes = []struct {
+	name    string
+	options func(prompts *[]string) *setupOptions
+}{
+	{"no input", func(*[]string) *setupOptions { return &setupOptions{noInput: true} }},
+	{"interactive", func(prompts *[]string) *setupOptions {
+		return &setupOptions{interactive: true, confirmFn: func(message string, def bool) bool {
+			*prompts = append(*prompts, message)
+			return true
+		}}
+	}},
 }
 
 // An API-key profile in force refuses the save, so a mint under one would leave
@@ -308,25 +335,25 @@ func TestAProfileInForceMeansNoMint(t *testing.T) {
 	login := &auth.Session{Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
 		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp}}
 
-	state := &authState{apiBase: srv.URL, bearer: "t", session: login}
-	// Interactive, so the order is under test: the refusal must come before any
-	// "create a key?" question, not after the user has said yes.
-	var prompts []string
-	opts := &setupOptions{interactive: true, confirmFn: func(message string, def bool) bool {
-		prompts = append(prompts, message)
-		return true
-	}}
-	_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+	// Both modes: the guard must not hang on a prompt being drawn. Interactive puts
+	// the order under test: the refusal returns before any question, so nothing at
+	// all may be asked, neither "create a key?" nor "replace the rejected key?".
+	for _, mode := range promptModes {
+		t.Run(mode.name, func(t *testing.T) {
+			mints.Store(0)
+			var prompts []string
+			state := &authState{apiBase: srv.URL, bearer: "t", session: login}
+			_, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, mode.options(&prompts))
 
-	for _, p := range prompts {
-		if strings.Contains(p, "Create a workspace API key") {
-			t.Errorf("asked %q before refusing the profile", p)
-		}
-	}
-	if err == nil || !strings.Contains(err.Error(), `profile "work" is an API key`) {
-		t.Fatalf("error = %v, want the profile refusal", err)
-	}
-	if got := mints.Load(); got != 0 {
-		t.Errorf("minted %d keys under a profile that refuses the save", got)
+			if len(prompts) != 0 {
+				t.Errorf("asked %q before refusing the profile", prompts)
+			}
+			if err == nil || !strings.Contains(err.Error(), `profile "work" is an API key`) {
+				t.Fatalf("error = %v, want the profile refusal", err)
+			}
+			if got := mints.Load(); got != 0 {
+				t.Errorf("minted %d keys under a profile that refuses the save", got)
+			}
+		})
 	}
 }
