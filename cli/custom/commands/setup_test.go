@@ -600,6 +600,10 @@ func TestCredentialFreeConnectReportsWiringWhenServerSaveFails(t *testing.T) {
 	_, _ = mcpMachine(t, ".claude")
 	settings := filepath.Join(os.Getenv("HOME"), ".claude", "settings.json")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Dir(settings))
+	// otel writes nothing without a durable key; give it one so the save-failure path runs.
+	t.Setenv("ORQ_API_KEY", "")
+	SetUserEnvAPIKey("sk-live")
+	t.Cleanup(ResetUserEnvAPIKey)
 	wantErr := errors.New("server configuration is not writable")
 	opts := &setupOptions{yes: true, onConnectSuccess: func(*reporter) error { return wantErr }}
 	var gotErr error
