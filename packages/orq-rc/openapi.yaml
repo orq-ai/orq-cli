@@ -2591,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m7dk7h7nr9g5266z7rtg44qr"
+              default: "reasoning_01m7kyxnpg2hh55cng3n0xf9d7"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -4903,7 +4903,7 @@ components:
                       minimum: 1
                       maximum: 100
                       default: 5
-                      description: "The number of results to return by the reranking model"
+                      description: "The number of results to return by the reranking model, 1 to 100. Stored as the knowledge base rerank setting, 5 when omitted."
                     rerank_threshold:
                       type: "number"
                       minimum: 0
@@ -5049,7 +5049,7 @@ components:
                       minimum: 1
                       maximum: 100
                       default: 5
-                      description: "The number of results to return by the reranking model"
+                      description: "The number of results to return by the reranking model, 1 to 100. Stored as the knowledge base rerank setting, 5 when omitted."
                     rerank_threshold:
                       type: "number"
                       minimum: 0
@@ -5155,7 +5155,7 @@ components:
                       minimum: 1
                       maximum: 100
                       default: 5
-                      description: "The number of results to return by the reranking model"
+                      description: "The number of results to return by the reranking model, 1 to 100. Stored as the knowledge base rerank setting, 5 when omitted."
                     rerank_threshold:
                       type: "number"
                       minimum: 0
@@ -5243,7 +5243,7 @@ components:
                       minimum: 1
                       maximum: 100
                       default: 5
-                      description: "The number of results to return by the reranking model"
+                      description: "The number of results to return by the reranking model, 1 to 100. Stored as the knowledge base rerank setting, 5 when omitted."
                     rerank_threshold:
                       type: "number"
                       minimum: 0
@@ -5337,7 +5337,7 @@ components:
                       minimum: 1
                       maximum: 100
                       default: 5
-                      description: "The number of results to return by the reranking model"
+                      description: "The number of results to return by the reranking model, 1 to 100. Stored as the knowledge base rerank setting, 5 when omitted."
                     rerank_threshold:
                       type: "number"
                       minimum: 0
@@ -6451,8 +6451,7 @@ components:
           maximum: 100
           minimum: 1
           type: "integer"
-          default: 10
-          description: "The number of top results to return after reranking. If not provided, will default to the knowledge base configured `top_k`."
+          description: "The number of top results to return after reranking, 1 to 100. Without a `rerank_config` in the request, the knowledge base setting applies (5 by default); with one, omitting `top_k` here falls back to 10."
           format: "int32"
     SearchRetrievalConfig:
       type: "object"
@@ -10909,6 +10908,7 @@ components:
           type: "array"
           items:
             type: "string"
+          minItems: 1
     DeleteDatapointsResponse:
       type: "object"
       properties: {}
@@ -11691,9 +11691,9 @@ components:
       type: "object"
       properties:
         prompt_config:
-          type: "object"
-          additionalProperties: true
-          description: "Prompt to execute. Execution reads `model` (required), `provider`,\n `messages` and `model_parameters` such as `temperature`, `max_tokens` and\n `response_format`."
+          allOf:
+            - $ref: "#/components/schemas/PromptConfig"
+          description: "Prompt to execute."
         messages_source:
           description: "Messages sent to the model. `MESSAGES_SOURCE_PROMPT_CONFIG`: the prompt's\n messages only. `MESSAGES_SOURCE_MESSAGES_COLUMN`: the row's dataset\n messages only. `MESSAGES_SOURCE_COMBINED`: the prompt's messages followed\n by the row's messages. Defaults to `MESSAGES_SOURCE_PROMPT_CONFIG`."
           $ref: "#/components/schemas/MessagesSource"
@@ -12009,6 +12009,42 @@ components:
         - "ROW_STATUS_COMPLETED"
         - "ROW_STATUS_FAILED"
         - "ROW_STATUS_CANCELED"
+    PromptConfig:
+      required:
+        - "model"
+      type: "object"
+      properties:
+        model:
+          type: "string"
+          description: "Model to call: `provider/model` such as `openai/gpt-4o-mini`, or the bare\n model name together with `provider`. The model must be enabled in the\n workspace and available to the experiment's project."
+        provider:
+          type: "string"
+          description: "Provider of the model, when `model` does not already carry it."
+        messages:
+          type: "array"
+          items:
+            type: "object"
+          description: "Messages of the prompt, as `{role, content}`. `content` is a string or an\n array of typed content parts."
+        model_parameters:
+          type: "object"
+          additionalProperties: true
+          description: "Model parameters such as `temperature`, `max_tokens` and\n `response_format`."
+        model_db_id:
+          type: "string"
+          description: "ID of the model in the workspace's model garden."
+        model_type:
+          type: "string"
+          description: "Type of the model, such as `chat`."
+        integration_id:
+          type: "string"
+          description: "ID of the provider integration to call the model with."
+        stream:
+          type: "boolean"
+          description: "Whether the model response is streamed."
+        version:
+          type: "string"
+          description: "Version of the prompt the configuration was taken from."
+      description: "Prompt a prompt task column executes."
     MessagesSource:
       type: "string"
       enum:
@@ -15049,7 +15085,7 @@ components:
         requests:
           type: "integer"
           format: "int32"
-      description: "BudgetUsage is the latest available current-period consumption used\n for budget enforcement, not an exact billing ledger. Each dimension is\n the consumed side of the matching limit dimension: `amount` is the\n accumulated cost in USD (vs limits.amount), `tokens` is the accumulated\n token count (vs limits.token_limit), and `requests` is the count in the\n rolling 60-second window (vs rate_limit.requests_per_minute). All three\n are explicit-presence so the triple is always emitted in full, zeros\n included — a never-spent budget serializes {amount:0, tokens:0,\n requests:0} rather than dropping its zero dimensions."
+      description: "BudgetUsage is the latest available current-period consumption used\n for budget enforcement, not an exact billing ledger. Each dimension is\n the consumed side of the matching limit dimension: `amount` is the\n accumulated cost in USD (vs limits.amount), `tokens` is the accumulated\n token count (vs limits.token_limit), and `requests` is the count in the\n fixed 60-second window that starts with the first request (vs\n rate_limit.requests_per_minute). All three\n are explicit-presence so the triple is always emitted in full, zeros\n included — a never-spent budget serializes {amount:0, tokens:0,\n requests:0} rather than dropping its zero dimensions."
     WorkspaceBudgetScope:
       type: "object"
       properties: {}
@@ -16396,6 +16432,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/McpResourceExposure"
           description: "Which upstream resources and templates this gateway exposes. Omission preserves an existing link's selection and exposes none on a new link."
+        prompt_exposure:
+          $ref: "#/components/schemas/McpPromptExposure"
     McpToolNaming:
       type: "string"
       enum:
@@ -16543,6 +16581,17 @@ components:
           items:
             type: "string"
           description: "`McpResourceTemplate.selection_id` values to expose when mode is SELECTED."
+    McpPromptExposure:
+      required:
+        - "mode"
+      type: "object"
+      properties:
+        mode:
+          $ref: "#/components/schemas/McpToolExposureMode"
+        prompt_ids:
+          type: "array"
+          items:
+            type: "string"
     McpToolAnnotations:
       type: "object"
       properties:
@@ -16794,6 +16843,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/McpResourceCatalog"
           description: "Get returns the shared catalog. Sync returns the caller's catalog for user-specific credentials or discovery variables. List omits this field."
+        prompt_catalog:
+          $ref: "#/components/schemas/McpPromptCatalog"
     McpConnection:
       required:
         - "type"
@@ -16801,7 +16852,7 @@ components:
       type: "object"
       properties:
         type:
-          description: "Transport the gateway uses to dial the upstream server."
+          description: "Transport the gateway uses to dial the upstream server: `HTTP` or `SSE`.\n `STDIO` is rejected with `MCPGATEWAY_STDIO_NOT_SUPPORTED`; `OPENAPI` serves tools from an OpenAPI document."
           $ref: "#/components/schemas/McpConnectionType"
         url:
           type: "string"
@@ -16995,6 +17046,15 @@ components:
           $ref: "#/components/schemas/McpDiscoveryStatus"
         resource_templates_status:
           $ref: "#/components/schemas/McpDiscoveryStatus"
+    McpPromptCatalog:
+      type: "object"
+      properties:
+        prompts:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpPrompt"
+        status:
+          $ref: "#/components/schemas/McpDiscoveryStatus"
     McpConnectionType:
       type: "string"
       enum:
@@ -17162,6 +17222,28 @@ components:
         - "MCP_DISCOVERY_STATUS_SYNCED"
         - "MCP_DISCOVERY_STATUS_UNSUPPORTED"
         - "MCP_DISCOVERY_STATUS_FAILED"
+    McpPrompt:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        arguments:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpPromptArgument"
+        icons:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpIcon"
+        meta:
+          type: "object"
+        selection_id:
+          readOnly: true
+          type: "string"
     McpResourceAnnotations:
       type: "object"
       properties:
@@ -17175,6 +17257,15 @@ components:
           type: "number"
           format: "double"
       description: "Upstream annotations shared by resource and resource template descriptors."
+    McpPromptArgument:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        description:
+          type: "string"
+        required:
+          type: "boolean"
     ListModelCatalogResponse:
       required:
         - "object"
@@ -20637,7 +20728,7 @@ components:
           description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
         timeout:
           $ref: "#/components/schemas/ClassifyTimeoutConfig"
-          description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
+          description: "Timeout for each model call. Each retry and fallback gets a fresh timeout. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
       required:
         - "model"
         - "state"
@@ -22878,6 +22969,7 @@ components:
             - "completed"
             - "failed"
             - "incomplete"
+            - "cancelled"
           type: "string"
         store:
           type: "boolean"
@@ -28324,7 +28416,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M7DK7H7563Y0HVH40W8RYRVS"
+                                default: "01M7KYXNNYFDQGP40FYFP86JJY"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -37723,7 +37815,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7DK7H8AECR06AW1Q6S7YA29"
+                                          default: "01M7KYXNQBG9ZT200YYFRQP8QW"
                                         name:
                                           type: "string"
                                         description:
@@ -39349,7 +39441,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7DK7H8GZMGR48RFBT214REA"
+                                          default: "01M7KYXNQHQ2H0PEP25Q2W75A6"
                                         name:
                                           type: "string"
                                         description:
@@ -48406,7 +48498,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7DK7H93TXA4KBR256PJZ81B"
+                              default: "tool_01M7KYXNR4JB9465MY49HTT0RT"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48507,7 +48599,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7DK7H9348FXZ6C0KT6E94E6"
+                              default: "tool_01M7KYXNR4G2HP5J534XSVFA4A"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48610,7 +48702,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7DK7H93D2TGM77VCNZXB0VF"
+                              default: "tool_01M7KYXNR5TB0428QKC0Z9DDSC"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48754,7 +48846,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7DK7H93FM61Y39SNXKQ9H0A"
+                              default: "tool_01M7KYXNR5B7G7YHGW5CQD1QSN"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49241,7 +49333,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H95W51JYFMQ2RYGYE12"
+                        default: "tool_01M7KYXNR6E1ET7MNN33VMSP96"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49342,7 +49434,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H95C1NE9NQWNA3N1SNR"
+                        default: "tool_01M7KYXNR7B71BJ7FNE6S76R48"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49445,7 +49537,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H95SSNG7RRKZ6HEZS1F"
+                        default: "tool_01M7KYXNR7WK08PS18Q5M9A2D4"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49589,7 +49681,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H96ZND20Q4MTMANJ0KB"
+                        default: "tool_01M7KYXNR72W144SE50W4PNJ14"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50093,7 +50185,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H96SZ0T12F3NKAVH8NY"
+                        default: "tool_01M7KYXNR8G5N5ZQQMA3B9GVJC"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50194,7 +50286,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H96YE83NJ7H91CKF6AB"
+                        default: "tool_01M7KYXNR8TAFMGDECXR250EMW"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50297,7 +50389,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H9738KXBWWDXJZT6ZWQ"
+                        default: "tool_01M7KYXNR8RM2NG70809HXMSQP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50441,7 +50533,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H97J5BN43A46YYPXMQK"
+                        default: "tool_01M7KYXNR9WC8DW5AZYG0YHWNP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50608,7 +50700,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H99ZV89BBYQZBRQ0NT9"
+                        default: "tool_01M7KYXNRA1Q4A2SK5TXJAYCP9"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50709,7 +50801,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H994V54Z9EFT0XGCMCZ"
+                        default: "tool_01M7KYXNRB1SPERYYVMF3DYW7M"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50812,7 +50904,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H99QXG90WQ4QHV6DCZP"
+                        default: "tool_01M7KYXNRB8J8AQJNQEHYS8C4G"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50956,7 +51048,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7DK7H994JCTVGK8WN5W9PMF"
+                        default: "tool_01M7KYXNRBD4RQA5FSBKNQ9BE0"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -64531,10 +64623,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "telemetryDestinations"
       x-speakeasy-name-override: "list"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_MANAGEMENT_KEY });\nconst result = await orq.telemetryDestinations.list({ limit: 100 });\n"
       security:
         - ApiKey: []
     post:
@@ -64563,10 +64651,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "telemetryDestinations"
       x-speakeasy-name-override: "create"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_MANAGEMENT_KEY });\nconst result = await orq.telemetryDestinations.create({ destination: { displayName: 'Production', provider: 'custom', endpointUrl: 'https://otel.example.com/v1/traces', requestHeaders: {}, settings: {}, contentMode: 'TELEMETRY_CONTENT_MODE_METADATA_ONLY', projectScope: 'TELEMETRY_PROJECT_SCOPE_ALL', projectIds: [], enabled: true } });\n"
       security:
         - ApiKey: []
   /v3/telemetry-destinations/{destination_id}:
@@ -64596,10 +64680,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "telemetryDestinations"
       x-speakeasy-name-override: "get"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_MANAGEMENT_KEY });\nconst result = await orq.telemetryDestinations.get({ destinationId: '01HZXW2K7Y8Q9M0N1P2R3S4T5V' });\n"
       security:
         - ApiKey: []
     put:
@@ -64634,10 +64714,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "telemetryDestinations"
       x-speakeasy-name-override: "update"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_MANAGEMENT_KEY });\n// Updates replace the whole destination. Send every header key to keep, with an empty value to retain its stored secret.\nconst result = await orq.telemetryDestinations.update({ destinationId: '01HZXW2K7Y8Q9M0N1P2R3S4T5V', destination: { displayName: 'Production', provider: 'custom', endpointUrl: 'https://otel.example.com/v1/traces', requestHeaders: { authorization: '' }, contentMode: 'TELEMETRY_CONTENT_MODE_METADATA_ONLY', projectScope: 'TELEMETRY_PROJECT_SCOPE_ALL', enabled: true } });\n"
       security:
         - ApiKey: []
     delete:
@@ -64666,10 +64742,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "telemetryDestinations"
       x-speakeasy-name-override: "delete"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_MANAGEMENT_KEY });\nconst result = await orq.telemetryDestinations.delete({ destinationId: '01HZXW2K7Y8Q9M0N1P2R3S4T5V' });\n"
       security:
         - ApiKey: []
   /v3/traces/aggregate:
@@ -65351,13 +65423,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List datasets"
-          source: "curl --get 'https://api.orq.ai/v2/datasets' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://api.orq.ai/v2/datasets' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List datasets"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.datasets.list(\n    limit=25,\n)\n\nfor dataset in page.data:\n    print(dataset.dataset_id, dataset.display_name)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.datasets.list(\n    limit=25,\n)\n\nfor dataset in page.data:\n    print(dataset.id, dataset.display_name)\n"
         - lang: "typescript"
           label: "Node.js - List datasets"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.datasets.list({\n  limit: 25,\n});\n\nfor (const dataset of page.data) {\n  console.log(dataset.datasetId, dataset.displayName);\n}\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.datasets.list({\n  limit: 25,\n});\n\nfor (const dataset of page.data) {\n  console.log(dataset.id, dataset.displayName);\n}\n"
       security:
         - ApiKey: []
     post:
@@ -65392,13 +65464,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create dataset"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"support_quality_eval\",\n    \"path\": \"/customer-success/datasets/support-quality-eval\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"support_quality_eval\",\n    \"path\": \"/customer-success/datasets/support-quality-eval\"\n  }'\n"
         - lang: "python"
           label: "Python - Create dataset"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ndataset = client.datasets.create(\n    display_name=\"support_quality_eval\",\n    path=\"/customer-success/datasets/support-quality-eval\",\n)\n\nprint(dataset.dataset_id)\n"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ndataset = client.datasets.create(\n    display_name=\"support_quality_eval\",\n    path=\"/customer-success/datasets/support-quality-eval\",\n)\n\nprint(dataset.id)\n"
         - lang: "typescript"
           label: "Node.js - Create dataset"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst dataset = await client.datasets.create({\n  displayName: 'support_quality_eval',\n  path: '/customer-success/datasets/support-quality-eval',\n});\n\nconsole.log(dataset.datasetId);\n"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst dataset = await client.datasets.create({\n  displayName: 'support_quality_eval',\n  path: '/customer-success/datasets/support-quality-eval',\n});\n\nconsole.log(dataset.id);\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}:
@@ -65440,7 +65512,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve dataset"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve dataset"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ndataset = client.datasets.retrieve(\n    dataset_id=\"01J6V6G8M4F5N8P9Q0R1S2T3U4\",\n)\n\nprint(dataset.display_name)\n"
@@ -65477,7 +65549,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete dataset"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -65518,7 +65590,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update dataset"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"support_quality_eval_v2\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"support_quality_eval_v2\"\n  }'\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}/clear:
@@ -65550,7 +65622,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Clear dataset"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/clear' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/clear' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}/datapoints:
@@ -65605,7 +65677,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List datapoints"
-          source: "curl --get 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
       security:
         - ApiKey: []
     post:
@@ -65652,7 +65724,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create datapoints"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '[\n    {\n      \"inputs\": {\n        \"ticket\": \"Customer cannot reset their password.\"\n      },\n      \"expected_output\": \"Ask the customer to use the reset link and verify delivery.\"\n    }\n  ]'\n"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '[\n    {\n      \"inputs\": {\n        \"ticket\": \"Customer cannot reset their password.\"\n      },\n      \"expected_output\": \"Ask the customer to use the reset link and verify delivery.\"\n    }\n  ]'\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}/datapoints-bulk-delete:
@@ -65690,7 +65762,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete datapoints"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints-bulk-delete' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"item_ids\": [\n      \"01J6V6H1Z2A3B4C5D6E7F8G9H0\"\n    ]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints-bulk-delete' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"item_ids\": [\n      \"01J6V6H1Z2A3B4C5D6E7F8G9H0\"\n    ]\n  }'\n"
+        - lang: "python"
+          label: "Python - Delete datapoints"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.datasets.delete_datapoints(\n    dataset_id=\"01J6V6G8M4F5N8P9Q0R1S2T3U4\",\n    item_ids=[\n        \"01J6V6H1Z2A3B4C5D6E7F8G9H0\",\n    ],\n)\n"
+        - lang: "typescript"
+          label: "Node.js - Delete datapoints"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nawait client.datasets.deleteDatapoints({\n  datasetId: '01J6V6G8M4F5N8P9Q0R1S2T3U4',\n  deleteDatapointsRequest: {\n    itemIds: ['01J6V6H1Z2A3B4C5D6E7F8G9H0'],\n  },\n});\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}/datapoints/bulk:
@@ -65734,7 +65812,13 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Bulk create datapoints"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/bulk' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"items\": [\n      {\n        \"inputs\": {\n          \"ticket\": \"Customer asks for an invoice copy.\"\n        },\n        \"expected_output\": \"Explain where invoices are available and offer to resend it.\"\n      }\n    ]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/bulk' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"items\": [\n      {\n        \"inputs\": {\n          \"ticket\": \"Customer asks for an invoice copy.\"\n        },\n        \"expected_output\": \"Explain where invoices are available and offer to resend it.\"\n      }\n    ]\n  }'\n"
+        - lang: "python"
+          label: "Python - Bulk create datapoints"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ndatapoints = client.datasets.create_datapoints(\n    dataset_id=\"01J6V6G8M4F5N8P9Q0R1S2T3U4\",\n    items=[\n        {\n            \"inputs\": {\"ticket\": \"Customer asks for an invoice copy.\"},\n            \"expected_output\": \"Explain where invoices are available and offer to resend it.\",\n        }\n    ],\n)\n\nfor datapoint in datapoints:\n    print(datapoint.id)\n"
+        - lang: "typescript"
+          label: "Node.js - Bulk create datapoints"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst datapoints = await client.datasets.createDatapoints({\n  datasetId: '01J6V6G8M4F5N8P9Q0R1S2T3U4',\n  bulkCreateDatapointsRequest: {\n    items: [\n      {\n        inputs: { ticket: 'Customer asks for an invoice copy.' },\n        expectedOutput: 'Explain where invoices are available and offer to resend it.',\n      },\n    ],\n  },\n});\n\nfor (const datapoint of datapoints) {\n  console.log(datapoint.id);\n}\n"
       security:
         - ApiKey: []
   /v2/datasets/{dataset_id}/datapoints/{datapoint_id}:
@@ -65781,7 +65865,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve datapoint"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -65817,7 +65901,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete datapoint"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -65863,7 +65947,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update datapoint"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"expected_output\": \"Confirm the invoice email address before resending the invoice.\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/datasets/01J6V6G8M4F5N8P9Q0R1S2T3U4/datapoints/01J6V6H1Z2A3B4C5D6E7F8G9H0' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"expected_output\": \"Confirm the invoice email address before resending the invoice.\"\n  }'\n"
       security:
         - ApiKey: []
   /v3/experiments:
@@ -65915,7 +65999,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List experiments"
-          source: "curl --get 'https://my.orq.ai/v3/experiments' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v3/experiments' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List experiments"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.experiments.list(limit=25)\n\nfor experiment in page.data:\n    print(experiment.experiment_id, experiment.display_name)\n"
@@ -65956,7 +66040,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create an experiment"
-          source: "curl 'https://my.orq.ai/v3/experiments' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Support replies v2\",\n    \"project_id\": \"<project_id>\",\n    \"dataset_id\": \"<dataset_id>\"\n  }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Support replies v2\",\n    \"project_id\": \"<project_id>\",\n    \"dataset_id\": \"<dataset_id>\"\n  }'\n"
         - lang: "python"
           label: "Python - Create an experiment"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nexperiment = client.experiments.create(\n    display_name=\"Support replies v2\",\n    project_id=\"<project_id>\",\n    dataset_id=\"<dataset_id>\",\n)\n\nprint(experiment.experiment_id, experiment.selected_run_id)\n"
@@ -65999,7 +66083,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Get an experiment"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Get an experiment"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nexperiment = client.experiments.get(experiment_id=\"<experiment_id>\")\n\nprint(experiment.display_name)\n"
@@ -66037,7 +66121,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an experiment"
-          source: "curl --request DELETE 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --request DELETE 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an experiment"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.experiments.delete(experiment_id=\"<experiment_id>\")\n"
@@ -66085,7 +66169,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Rename an experiment"
-          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"display_name\": \"Support replies v3\" }'\n"
+          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"display_name\": \"Support replies v3\" }'\n"
         - lang: "python"
           label: "Python - Rename an experiment"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nexperiment = client.experiments.update(\n    experiment_id=\"<experiment_id>\",\n    display_name=\"Support replies v3\",\n)\n"
@@ -66149,7 +66233,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List runs"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - List runs"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.experiments.list_runs(experiment_id=\"<experiment_id>\")\n\nfor run in page.data:\n    print(run.run_id, run.status, run.cell_status_counts)\n"
@@ -66162,7 +66246,7 @@ paths:
       tags:
         - "Experiments"
       summary: "Create a run"
-      description: "Creates a new run, copying columns from the selected run when present. A rerun is a new run."
+      description: "Creates a new run, copying columns from the selected run when present. A new run starts with empty output cells; executing cells on an existing run does not create one."
       operationId: "ExperimentRunCreate"
       parameters:
         - name: "experiment_id"
@@ -66197,7 +66281,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create a run"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"key\": \"Run 2\", \"settings\": { \"concurrency\": 5 } }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"key\": \"Run 2\", \"settings\": { \"concurrency\": 5 } }'\n"
         - lang: "python"
           label: "Python - Create a run"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrun = client.experiments.create_run(\n    experiment_id=\"<experiment_id>\",\n    key=\"Run 2\",\n    settings={\"concurrency\": 5},\n)\n\nprint(run.run_id, run.row_count)\n"
@@ -66246,7 +66330,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Get a run"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Get a run"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrun = client.experiments.get_run(experiment_id=\"<experiment_id>\", run_id=\"<run_id>\")\n\nprint(run.status, run.cell_status_counts.completed)\n"
@@ -66565,13 +66649,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Set an annotation cell"
-          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/annotations/<annotation_column_id>/cells/<row_id>' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"task_id\": \"<task_id>\", \"value\": { \"type\": \"range\", \"value\": 4 } }'\n"
-        - lang: "python"
-          label: "Python - Set an annotation cell"
-          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ncell = client.experiments.patch_annotation_cell(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    annotation_column_id=\"<annotation_column_id>\",\n    datapoint_id=\"<row_id>\",\n    task_id=\"<task_id>\",\n    value={\"type\": \"range\", \"value\": 4},\n)\n\nprint(cell.cell_id, cell.value)\n"
-        - lang: "typescript"
-          label: "Node.js - Set an annotation cell"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\n\nconst cell = await client.experiments.patchAnnotationCell({\n  experimentId: '<experiment_id>',\n  runId: '<run_id>',\n  annotationColumnId: '<annotation_column_id>',\n  datapointId: '<row_id>',\n  taskId: '<task_id>',\n  value: { type: 'range', value: 4 },\n});\n\nconsole.log(cell.cellId, cell.value);\n"
+          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/annotations/<annotation_column_id>/cells/<row_id>' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"task_id\": \"<task_id>\", \"value\": { \"type\": \"range\", \"value\": 4 } }'\n"
       security:
         - ApiKey: []
   /v3/experiments/{experiment_id}/runs/{run_id}/cancel:
@@ -66620,7 +66698,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Cancel a run"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/cancel' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/cancel' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
         - lang: "python"
           label: "Python - Cancel a run"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrun = client.experiments.cancel_run(experiment_id=\"<experiment_id>\", run_id=\"<run_id>\")\n\nprint(run.status)\n"
@@ -66675,7 +66753,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Reorder and resize columns"
-          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/columns/layout' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"columns\": [{ \"column_id\": \"<column_id>\", \"position\": 3, \"width\": 320 }] }'\n"
+          source: "curl --request PATCH 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/columns/layout' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"columns\": [{ \"column_id\": \"<column_id>\", \"position\": 3, \"width\": 320 }] }'\n"
         - lang: "python"
           label: "Python - Reorder and resize columns"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrun = client.experiments.update_run_column_layout(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    columns=[{\"column_id\": \"<column_id>\", \"position\": 3, \"width\": 320}],\n)\n\nprint([column.display_name for column in run.columns])\n"
@@ -66768,7 +66846,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Add an evaluator column"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/evaluators' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"evaluator_id\": \"<evaluator_id>\" }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/evaluators' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"evaluator_id\": \"<evaluator_id>\" }'\n"
         - lang: "python"
           label: "Python - Add an evaluator column"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ncolumn = client.experiments.create_eval(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    evaluator_id=\"<evaluator_id>\",\n)\n"
@@ -66864,7 +66942,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Execute a run"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/execute' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"scope\": \"EXECUTE_SCOPE_FULL\",\n    \"constraints\": { \"llm\": { \"concurrency\": 5, \"timeout\": \"300s\" } }\n  }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/execute' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"scope\": \"EXECUTE_SCOPE_FULL\",\n    \"constraints\": { \"llm\": { \"concurrency\": 5, \"timeout\": \"300s\" } }\n  }'\n"
         - lang: "python"
           label: "Python - Execute a run"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrun = client.experiments.execute_run(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    scope=\"EXECUTE_SCOPE_FULL\",\n    constraints={\"llm\": {\"concurrency\": 5, \"timeout\": \"300s\"}},\n)\n\nprint(run.status)\n"
@@ -66918,7 +66996,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Get run metrics"
-          source: "curl --get 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/metrics' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+          source: "curl --get 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/metrics' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Get run metrics"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nsummary = client.experiments.get_run_metrics(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n)\n\nfor key, metric in summary.metrics.items():\n    print(key, metric)\n"
@@ -66973,7 +67051,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Query run cells"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/query' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"columns\": [\"GPT-4o reply\"], \"limit\": 50 }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/query' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"columns\": [\"GPT-4o reply\"], \"limit\": 50 }'\n"
         - lang: "python"
           label: "Python - Query run cells"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.experiments.query_run(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    columns=[\"GPT-4o reply\"],\n    limit=50,\n)\n\nfor row in page.rows:\n    for cell in row.cells:\n        print(row.row_id, cell.status, cell.value)\n"
@@ -67024,7 +67102,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete rows"
-          source: "curl --request POST 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/rows/bulk-delete' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"row_ids\": [\"<row_id>\"] }'\n"
+          source: "curl --request POST 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/rows/bulk-delete' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"row_ids\": [\"<row_id>\"] }'\n"
         - lang: "python"
           label: "Python - Delete rows"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.experiments.delete_rows(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    row_ids=[\"<row_id>\"],\n)\n"
@@ -67038,7 +67116,7 @@ paths:
       tags:
         - "Experiments"
       summary: "Duplicate a row"
-      description: "Copies a row into a new row at the end of the run. Dataset and annotation cells keep their values; task, evaluator and metric cells start empty."
+      description: "Copies a row into a new row at the end of the run. Dataset and annotation cells keep their values; response, agent response, open response, evaluator and metric cells start empty."
       operationId: "ExperimentRunRowDuplicate"
       parameters:
         - name: "experiment_id"
@@ -67085,7 +67163,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Duplicate a row"
-          source: "curl --request POST 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/rows/<row_id>/duplicate' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
+          source: "curl --request POST 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/rows/<row_id>/duplicate' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
         - lang: "python"
           label: "Python - Duplicate a row"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrow = client.experiments.duplicate_row(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    row_id=\"<row_id>\",\n)\n\nprint(row.row_id, len(row.cells))\n"
@@ -67178,7 +67256,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Add a prompt task column"
-          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/tasks' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GPT-4o reply\",\n    \"prompt\": {\n      \"messages_source\": \"MESSAGES_SOURCE_MESSAGES_COLUMN\",\n      \"prompt_config\": { \"model\": \"openai/gpt-4o\", \"messages\": [] }\n    }\n  }'\n"
+          source: "curl 'https://my.orq.ai/v3/experiments/<experiment_id>/runs/<run_id>/tasks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GPT-4o reply\",\n    \"prompt\": {\n      \"messages_source\": \"MESSAGES_SOURCE_MESSAGES_COLUMN\",\n      \"prompt_config\": { \"model\": \"openai/gpt-4o\", \"messages\": [] }\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Add a prompt task column"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ncolumn = client.experiments.create_task(\n    experiment_id=\"<experiment_id>\",\n    run_id=\"<run_id>\",\n    display_name=\"GPT-4o reply\",\n    prompt={\n        \"messages_source\": \"MESSAGES_SOURCE_MESSAGES_COLUMN\",\n        \"prompt_config\": {\"model\": \"openai/gpt-4o\", \"messages\": []},\n    },\n)\n\nprint(column.column_id)\n"
@@ -68390,7 +68468,7 @@ paths:
         - ApiKey: []
   /v2/models/openai-like/{id}:
     patch:
-      description: "Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides)."
+      description: "Updates an OpenAI-compatible custom model. `display_name`, `region` and `model_type` are required on every update. Live-re-probes the target API when `base_url` or `configuration.model_id` changes, using the stored encrypted api_key. The body carries no `metadata` field: metadata keys already stored on the model are preserved."
       operationId: "ModelUpdateOpenAILike"
       parameters:
         - description: "The ID of the model"
@@ -74875,86 +74953,6 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.skills.create({\n  displayName: 'summarize_support_ticket',\n  description: 'Summarize support tickets into concise resolution notes.',\n  projectId: 'proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  path: '/customer-success/skills/summarize-support-ticket',\n  tags: ['support', 'summarization'],\n  instructions:\n    'Read the ticket conversation and return the problem, customer sentiment, and proposed next step.',\n});\n\nconsole.log(result.skill.skillId);\n"
       security:
         - ApiKey: []
-  /v2/skills/**:
-    delete:
-      tags:
-        - "Skills"
-      summary: "Delete a skill file"
-      description: "Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted."
-      operationId: "SkillDeleteFile"
-      parameters:
-        - name: "skill_id"
-          in: "path"
-          description: "Skill ID or display name to update."
-          required: true
-          schema:
-            type: "string"
-        - name: "path"
-          in: "query"
-          description: "Relative path of the file to delete within the skill bundle."
-          schema:
-            type: "string"
-      responses:
-        "200":
-          description: "OK"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteSkillFileResponse"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-speakeasy-group: "skills"
-      x-speakeasy-name-override: "deleteFile"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js - Delete a skill file"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\nawait orq.skills.deleteFile({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  path: 'references/guide.md',\n});\n"
-      security:
-        - ApiKey: []
-  /v2/skills/**:presign:
-    get:
-      tags:
-        - "Skills"
-      summary: "Get a presigned URL for a skill file"
-      description: "Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle."
-      operationId: "SkillGetFileContent"
-      parameters:
-        - name: "skill_id"
-          in: "path"
-          description: "Skill ID or display name."
-          required: true
-          schema:
-            type: "string"
-        - name: "path"
-          in: "query"
-          description: "Relative path of the file within the skill bundle."
-          schema:
-            type: "string"
-      responses:
-        "200":
-          description: "OK"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GetSkillFileContentResponse"
-        "401":
-          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-speakeasy-group: "skills"
-      x-speakeasy-name-override: "getFileContent"
-      x-code-samples:
-        - lang: "typescript"
-          label: "Node.js - Download a skill file"
-          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await orq.skills.getFileContent({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  path: 'references/guide.md',\n});\nconst response = await fetch(result.downloadUrl);\nconsole.log(await response.text());\n"
-      security:
-        - ApiKey: []
   /v2/skills/import:
     post:
       tags:
@@ -75442,6 +75440,88 @@ paths:
         - lang: "typescript"
           label: "Node.js - RestoreVersion"
           source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await orq.skills.restoreVersion({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  versionId: '01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n});\nconsole.log(result);\n"
+      security:
+        - ApiKey: []
+  /v2/skills/{skill_id}/files/{path}:
+    delete:
+      tags:
+        - "Skills"
+      summary: "Delete a skill file"
+      description: "Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted."
+      operationId: "SkillDeleteFile"
+      parameters:
+        - name: "skill_id"
+          in: "path"
+          description: "Skill ID or display name to update."
+          required: true
+          schema:
+            type: "string"
+        - name: "path"
+          in: "path"
+          description: "Relative path of the file to delete within the skill bundle (for example `references/guide.md`)."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSkillFileResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "skills"
+      x-speakeasy-name-override: "deleteFile"
+      x-code-samples:
+        - lang: "typescript"
+          label: "Node.js - Delete a skill file"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\nawait orq.skills.deleteFile({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  path: 'references/guide.md',\n});\n"
+      security:
+        - ApiKey: []
+  /v2/skills/{skill_id}/files/{path}:presign:
+    get:
+      tags:
+        - "Skills"
+      summary: "Get a presigned URL for a skill file"
+      description: "Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle."
+      operationId: "SkillGetFileContent"
+      parameters:
+        - name: "skill_id"
+          in: "path"
+          description: "Skill ID or display name."
+          required: true
+          schema:
+            type: "string"
+        - name: "path"
+          in: "path"
+          description: "Relative path of the file within the skill bundle (for example `references/guide.md`)."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetSkillFileContentResponse"
+        "401":
+          description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-speakeasy-group: "skills"
+      x-speakeasy-name-override: "getFileContent"
+      x-code-samples:
+        - lang: "typescript"
+          label: "Node.js - Download a skill file"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await orq.skills.getFileContent({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  path: 'references/guide.md',\n});\nconst response = await fetch(result.downloadUrl);\nconsole.log(await response.text());\n"
       security:
         - ApiKey: []
   /v2/smart-routers:
@@ -77908,19 +77988,19 @@ paths:
             description: "Maximum number of batches to return, 1 to 100. Defaults to 20."
             format: "int64"
             type: "integer"
-        - description: "Cursor: return batches after this batch id."
+        - description: "Cursor: return batches older than this batch id, still newest first."
           explode: false
           in: "query"
           name: "after"
           schema:
-            description: "Cursor: return batches after this batch id."
+            description: "Cursor: return batches older than this batch id, still newest first."
             type: "string"
-        - description: "Cursor: return batches before this batch id. Cannot be combined with after."
+        - description: "Cursor: return batches newer than this batch id. Cannot be combined with after."
           explode: false
           in: "query"
           name: "before"
           schema:
-            description: "Cursor: return batches before this batch id. Cannot be combined with after."
+            description: "Cursor: return batches newer than this batch id. Cannot be combined with after."
             type: "string"
         - description: "Case-insensitive match on batch id, model, or endpoint."
           explode: false
@@ -78016,10 +78096,6 @@ paths:
         - "Batches"
       x-cli-group: "batches"
       x-cli-name: "list"
-      x-code-samples:
-        - label: "Node.js"
-          lang: "typescript"
-          source: "const batches = await orq.batches.list({ limit: 20, status: \"in_progress\" });"
       x-orq-gateway-group: true
       x-speakeasy-group: "batches"
       x-speakeasy-name-override: "list"
@@ -78232,10 +78308,6 @@ paths:
         - "Batches"
       x-cli-group: "batches"
       x-cli-name: "create"
-      x-code-samples:
-        - label: "Node.js"
-          lang: "typescript"
-          source: "const batch = await orq.batches.create({\n  inputFileId: \"file-abc123\",\n  endpoint: \"/v1/chat/completions\",\n  completionWindow: \"24h\",\n});"
       x-orq-gateway-group: true
       x-speakeasy-group: "batches"
       x-speakeasy-name-override: "create"
@@ -78410,10 +78482,6 @@ paths:
         - "Batches"
       x-cli-group: "batches"
       x-cli-name: "retrieve"
-      x-code-samples:
-        - label: "Node.js"
-          lang: "typescript"
-          source: "const batch = await orq.batches.retrieve({ batchId: \"batch_abc123\" });"
       x-orq-gateway-group: true
       x-speakeasy-group: "batches"
       x-speakeasy-name-override: "retrieve"
@@ -78588,10 +78656,6 @@ paths:
         - "Batches"
       x-cli-group: "batches"
       x-cli-name: "cancel"
-      x-code-samples:
-        - label: "Node.js"
-          lang: "typescript"
-          source: "const batch = await orq.batches.cancel({ batchId: \"batch_abc123\" });"
       x-orq-gateway-group: true
       x-speakeasy-group: "batches"
       x-speakeasy-name-override: "cancel"
@@ -78609,12 +78673,12 @@ paths:
           schema:
             description: "The batch's identifier, as returned from create."
             type: "string"
-        - description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output."
+        - description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output, and answers the errors file when the batch produced no output file. Requesting errors on a batch with no error file returns 409 output_unavailable."
           explode: false
           in: "query"
           name: "file"
           schema:
-            description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output."
+            description: "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output, and answers the errors file when the batch produced no output file. Requesting errors on a batch with no error file returns 409 output_unavailable."
             enum:
               - "output"
               - "errors"
@@ -78673,7 +78737,7 @@ paths:
                 required:
                   - "error"
                 type: "object"
-          description: "The batch has not reached a terminal status yet, or it has no result file."
+          description: "The batch has not reached a terminal status yet (`invalid_request`), or it has no result file (`output_unavailable` for a missing error or output file)."
         "500":
           content:
             application/json:
@@ -78691,10 +78755,6 @@ paths:
         - "Batches"
       x-cli-group: "batches"
       x-cli-name: "downloadResults"
-      x-code-samples:
-        - label: "Node.js"
-          lang: "typescript"
-          source: "const results = await orq.batches.downloadResults({ batchId: \"batch_abc123\", file: \"output\" });"
       x-orq-gateway-group: true
       x-speakeasy-group: "batches"
       x-speakeasy-name-override: "downloadResults"
@@ -79042,7 +79102,7 @@ paths:
                   description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
                 timeout:
                   $ref: "#/components/schemas/ClassifyTimeoutConfig"
-                  description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
+                  description: "Timeout for each model call. Each retry and fallback gets a fresh timeout. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
               required:
                 - "model"
                 - "state"
@@ -79633,7 +79693,7 @@ paths:
                   description: "The content to evaluate. A string, an object or an array. For TypeSafe models, reference images declared in assets by writing their reference string. Native OpenAI accepts messages and function/custom-tool history. User messages support input_text, input_image and input_json; images can use inline base64 data URLs or public HTTP(S) URLs. At most 128 images across state and question instructions. Shared text/image parts support explicit prompt_cache_breakpoint markers. File IDs, audio, item references and bare content parts are unsupported. Other objects and arrays are serialized as text."
                 timeout:
                   $ref: "#/components/schemas/ClassifyTimeoutConfig"
-                  description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
+                  description: "Timeout for each model call. Each retry and fallback gets a fresh timeout. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted."
               required:
                 - "model"
                 - "state"
@@ -80901,6 +80961,7 @@ paths:
                       - "completed"
                       - "failed"
                       - "incomplete"
+                      - "cancelled"
                     type: "string"
                   store:
                     type: "boolean"
@@ -81141,6 +81202,7 @@ paths:
                       - "completed"
                       - "failed"
                       - "incomplete"
+                      - "cancelled"
                     type: "string"
                   store:
                     type: "boolean"
