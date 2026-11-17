@@ -9,7 +9,7 @@ import (
 )
 
 func TestBuildGeminiSettingsJSON(t *testing.T) {
-	settings := BuildGeminiSettingsJSON("https://api.orq.ai/v2/mcp")
+	settings := BuildGeminiSettingsJSON("https://api.orq.ai/v2/mcp", false)
 	encoded, err := json.Marshal(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestBuildGeminiSettingsJSON(t *testing.T) {
 }
 
 func TestBuildGeminiSettingsJSONNoMCP(t *testing.T) {
-	settings := BuildGeminiSettingsJSON("")
+	settings := BuildGeminiSettingsJSON("", false)
 	if _, ok := settings["mcpServers"]; ok {
 		t.Fatal("mcpServers must be omitted when no MCP URL is given")
 	}

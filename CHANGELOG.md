@@ -130,6 +130,53 @@ controls on surface changes, whichever side they originate from.
   `ENABLE_TOOL_SEARCH` or any `ANTHROPIC_DEFAULT_*_MODEL` still wins, and
   `--dry-run` shows them.
 
+## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
+
+**Changed:** `orq setup` and `orq connect skills` install the current orq
+skills, from [assistant-plugins](https://github.com/orq-ai/assistant-plugins)
+4.0.0; until now the CLI shipped a copy from 2026-07-29. The set grows from 14
+to 20 skills: `orq-analyze-trace-failures` and `orq-optimize-prompt` are
+replaced by `orq-analyze-traces` and `orq-improve-agent`, and `create-skill`,
+`orq-cli`, `orq-quickstart`, `orq-recommend-evaluators`, `orq-review-agent` and
+`orq-shared` are new. An existing install drops the two retired skills on its
+next skills command; run `orq connect skills` again to install the new ones.
+From now on a scheduled workflow opens a PR whenever assistant-plugins
+releases, so the embedded skills no longer go stale between CLI releases.
+
+**Changed:** `orq launch claude --trace` loads orq-trace 0.6.1 (was 0.5.0) and
+pins its destination with `ORQ_OTLP_ENDPOINT`, which 0.6 reads in place of a
+config file, so a traced staging session keeps exporting to staging.
+
+## [12.9.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.0) — 2026-11-10
+
+**Added:** `orq launch` can authenticate the orq MCP server in a run with no
+browser. `--mcp-auth env` (claude, codex, opencode, kilo, gemini) makes the
+session's entry name `ORQ_API_KEY`; the key itself is still never written. The
+default stays `oauth`. This reverses two earlier decisions, both only under this
+flag: "launch writes no credential" now means no credential value, and a session
+entry takes precedence over a persisted one, which may never have finished its
+browser login. Tools need a workspace API key with their permissions, since the
+key `orq setup` saves holds only gateway access and model read. Tool approval
+stays with the agent, so a headless codex or gemini run also approves each tool.
+An `ORQ_MCP_URL` whose scheme, host or port differs from the API base is
+refused under this flag, because the credential would go there. The flag never offers a browser
+login, so log in first or export a key.
+
+**Added:** `orq launch --thread-id <id>` and `--metadata <key=value>` (same
+agents) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on the agent's model
+calls, so a caller can find or tag one run. Values and keys the gateway would
+drop, truncate or read for itself are refused at parse time, and so is a thread
+id over 256 characters. A claude launch with these flags while a provider switch
+such as `CLAUDE_CODE_USE_BEDROCK` is on fails before claude starts, because that
+provider never sees the headers. `--mcp-auth`,
+`--thread-id` and `--metadata` are now launcher flags on every agent, so an agent's
+own flag of that name goes after `--`.
+
+**Changed:** a gemini launch with no thread id now sends a generated
+`X-ORQ-THREAD-ID` and prints it on stderr, because gemini-cli sends no session id
+and each of its model calls was otherwise a separate trace. An id you export in
+`GEMINI_CLI_CUSTOM_HEADERS` or pass with `--thread-id` is used instead.
+
 ## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
 
 **Added:** `orq auth token` prints the access token of your browser login for
