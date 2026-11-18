@@ -345,6 +345,7 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f := cmd.Flags()
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key for this run instead of the saved one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
+	f.BoolVar(&opts.useLoginToken, "use-login-token", false, "otel: with no durable API key, write the login token instead (traces stop when it expires, in about an hour)")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
 	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
 	f.BoolVar(&opts.subscription, "subscription", false, "Wire codex to bill model calls to your ChatGPT subscription through orq (openai/ models only); claude uses it via orq launch")
@@ -422,7 +423,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		reportBrokenSkillLinks(rep, agents)
 	}
 	if hasCap(caps, capOtel) {
-		reportUnreadableOtelConfigs(rep, agents)
+		reportOtelWarnings(rep, agents)
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
@@ -463,11 +464,15 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	return nil
 }
 
-// reportUnreadableOtelConfigs names why an otel row carries a warn glyph, the
-// way reportBrokenSkillLinks does for skills. The table has room for a state
+// loginTokenConfigured is the status of an exporter whose bearer is the login
+// session's token.
+const loginTokenConfigured = "configured with a login token, which stops working about an hour after it was written — rerun with a durable key"
+
+// reportOtelWarnings names why an otel row carries a warn glyph (an unreadable
+// config or a login-token bearer), the way reportBrokenSkillLinks does for skills. The table has room for a state
 // but not a cause, and a warned row without one is a warning nobody can act
 // on.
-func reportUnreadableOtelConfigs(rep *reporter, agents []string) {
+func reportOtelWarnings(rep *reporter, agents []string) {
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok || spec.otelConfig == nil || spec.otelPresent == nil {
@@ -477,8 +482,12 @@ func reportUnreadableOtelConfigs(rep *reporter, agents []string) {
 		if err != nil || path == "" {
 			continue
 		}
-		if _, err := spec.otelPresent(path); err != nil {
+		on, err := spec.otelPresent(path)
+		switch {
+		case err != nil:
 			rep.warn("%-8s %-9s %v", id, capOtel, err)
+		case on && otelLoginToken(path):
+			rep.warn("%-8s %-9s %s", id, capOtel, loginTokenConfigured)
 		}
 	}
 }
@@ -567,7 +576,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			// when something in this run actually needs a credential:
 			// warning a skills-only run about a key it will never ask for
 			// is the same false network dependency, stated in advance.
-			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
+			if cred, _ := durableCredential(opts); capsNeedCredential(caps) && cred.key == "" {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
 			agents, err = promptForAgents(rep, caps)
@@ -601,7 +610,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	// must never demand a key, prompt for a login, or fail without one.
 	var state *authState
 	var client *auth.Client
-	if capsNeedCredential(caps) {
+	if capsNeedCredential(caps) || otelWantsKey(opts, agents, caps) {
 		var err error
 		state, client, err = resolveConnectAuth(cmd, rep, opts)
 		switch {
@@ -612,9 +621,22 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 			// provider config — could not find a key is the whole credential
 			// coupling this branch set out to remove, reintroduced one level
 			// up by the bare capability set.
-			if errors.Is(err, errLoginDeclined) {
+			declined := errors.Is(err, errLoginDeclined)
+			useLogin := errors.Is(err, errUseLoginToken)
+			if useLogin {
+				opts.useLoginToken = true
+			}
+			switch {
+			case !hasCap(caps, capGateway):
+				// The otel leg names the missing header itself; only a fault needs saying.
+				if !declined && !useLogin {
+					rep.warn("could not get an API key for %s: %v", capOtel, err)
+				}
+			case useLogin:
+				rep.info("gateway skipped: it needs a durable API key — run 'orq setup' when ready, or pass --api-key")
+			case declined:
 				rep.info("gateway skipped: no credential — run 'orq setup' when ready, or pass --api-key")
-			} else {
+			default:
 				rep.warn("gateway skipped: %v", err)
 			}
 			caps = credentialFreeCaps(caps)
@@ -792,17 +814,25 @@ type otelResult struct {
 	// Skipped is the entry that was never attempted, as opposed to Error's
 	// entry that was attempted and failed.
 	Skipped string `json:"skipped,omitempty"`
+	// LoginToken is set when the bearer written is the login token, which expires within the hour.
+	LoginToken bool `json:"login_token,omitempty"`
 }
 
 // connectOtel configures Claude Code's native metrics and logs exporters. It
 // writes only the user's settings file and never invokes Claude's plugin CLI.
 func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []otelResult, failed bool) {
+	cred, credErr := durableCredential(opts)
+	if credErr == nil && cred.key == "" && opts.useLoginToken {
+		cred, credErr = sessionCredential()
+	} else if credErr == nil && cred.key != "" && opts.useLoginToken {
+		rep.info("%-8s using the durable API key (%s); --use-login-token is ignored", capOtel, cred.source)
+	}
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
 			continue
 		}
-		if spec.writeOtel == nil || spec.otelConfig == nil {
+		if !spec.nativeOtel() {
 			rep.info("%-8s %-9s native OTel settings are not supported for this agent", id, capOtel)
 			results = append(results, otelResult{Agent: id, Skipped: "native OTel settings are not supported for this agent"})
 			continue
@@ -825,17 +855,29 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 			failed = true
 			continue
 		}
-		endpoint := launch.OTLPEndpoint(launch.APIBaseFor(os.Getenv))
-		already, _ := spec.otelPresent(path)
-		key, keyErr := nativeOtelCredential(opts)
-		if keyErr != nil {
-			rep.fail("%-8s %-9s could not read the saved API-key login: %v", id, capOtel, keyErr)
-			results = append(results, otelResult{Agent: id, Error: keyErr.Error()})
+		if credErr != nil {
+			rep.fail("%-8s %-9s %v", id, capOtel, credErr)
+			results = append(results, otelResult{Agent: id, Error: credErr.Error()})
 			failed = true
 			continue
 		}
-		values := claudeNativeOtelEnv(endpoint, key)
-		if err := spec.writeOtel(path, values); err != nil {
+		// An exporter without an Authorization header only collects rejections,
+		// so no key means nothing is written.
+		if cred.key == "" {
+			rep.warn("%-8s %-9s skipped: no durable Orq API key — %s", id, capOtel, otelKeyRemedy(id))
+			results = append(results, otelResult{Agent: id, Skipped: "no durable Orq API key"})
+			continue
+		}
+		endpoint := launch.OTLPEndpoint(launch.APIBaseFor(os.Getenv))
+		// Already means the header holds this exact key: a login token swapped
+		// for a durable key is a change.
+		present, _ := spec.otelPresent(path)
+		already := present && otelBearer(path) == cred.key
+		err = spec.writeOtel(path, claudeNativeOtelEnv(endpoint, cred.key))
+		if err == nil {
+			err = setOtelLoginToken(path, cred.source == sessionTokenSource)
+		}
+		if err != nil {
 			rep.fail("%-8s %-9s %v", id, capOtel, err)
 			results = append(results, otelResult{Agent: id, Error: err.Error()})
 			failed = true
@@ -848,52 +890,99 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 				rep.ok("%-8s %-9s %s", id, capOtel, tilde(path))
 			}
 		}
-		if key == "" {
-			rep.warn("%-8s %-9s exporter settings are saved, but no durable Orq credential is available; telemetry will not authenticate until you run 'orq connect claude otel' with a configured credential", id, capOtel)
+		if cred.source == sessionTokenSource {
+			rep.warn("%-8s %-9s uses your login token: traces stop when it expires, in about an hour — %s", id, capOtel, otelKeyRemedy(id))
 		}
 		sh := detectShell(viper.GetString("config-directory"))
 		results = append(results, otelResult{
-			Agent: id, Path: path, Already: already, ShellExportsKey: envFileExports(sh),
+			Agent: id, Path: path, Already: already, ShellExportsKey: envFileExports(sh) && cred.source != sessionTokenSource, LoginToken: cred.source == sessionTokenSource,
 		})
 	}
 	return results, failed
 }
 
-// nativeOtelCredential selects a durable credential suitable for a persistent
-// Claude settings file. PreRun's injected short-lived browser token is excluded.
-func nativeOtelCredential(opts *setupOptions) (string, error) {
-	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if !auth.IsSessionMinted(key) {
-			return key, nil
+// otelWantsKey puts the otel leg behind connect's credential gate when it would
+// otherwise write an exporter with no Authorization header. The gateway key is
+// enough: OTLP ingest checks no permission domain, only that the key is valid.
+// Unattended runs never mint: otel then skips its agents and names the fix.
+func otelWantsKey(opts *setupOptions, agents, caps []string) bool {
+	if !hasCap(caps, capOtel) || opts.noInput || opts.yes || opts.useLoginToken || !anyNativeOtelAgent(agents) {
+		return false
+	}
+	cred, err := durableCredential(opts)
+	return err == nil && cred.key == ""
+}
+
+func anyNativeOtelAgent(agents []string) bool {
+	for _, id := range agents {
+		if spec, ok := lookupAgent(id); ok && spec.nativeOtel() {
+			return true
 		}
+	}
+	return false
+}
+
+// otelKeyRemedy is the fix for a missing otel key, as a clause.
+func otelKeyRemedy(agent string) string {
+	return "export ORQ_API_KEY=<durable key> and rerun 'orq connect " + agent + " otel', or run 'orq setup' to create one"
+}
+
+// credential is the durable API key connect wires into agent configs, and
+// where it came from.
+type credential struct{ key, source string }
+
+const (
+	savedKeySource     = "saved key"
+	sessionTokenSource = "login token"
+)
+
+func loginTokenProfileError() error {
+	name, _, _ := ProfileSelection()
+	return fmt.Errorf("the login token cannot be used under profile %q — add a key to the profile or pass --profile \"\"", name)
+}
+
+// sessionCredential is the login session's workspace token, which otel writes
+// only when the user asked for it. A rerun with a durable key overwrites it.
+func sessionCredential() (credential, error) {
+	// The login session may belong to another workspace than the profile's key.
+	if profileInForce() {
+		return credential{}, loginTokenProfileError()
+	}
+	active, err := auth.NewClient(apiBaseFromEnv()).GetActiveWorkspaceAccessToken()
+	if err != nil {
+		return credential{}, fmt.Errorf("could not get the login token: %w — run 'orq auth login'", err)
+	}
+	return credential{active.AccessToken, sessionTokenSource}, nil
+}
+
+// durableCredential is connect's one answer to "which API key do the agents
+// get": --api-key, then (under a profile, only) the profile's key, then the
+// saved key, then an exported key, then an api-key login. The login session's
+// hour-long token never counts, so finding nothing means "offer to mint".
+func durableCredential(opts *setupOptions) (credential, error) {
+	if auth.IsDurableKey(opts.apiKey) {
+		return credential{strings.TrimSpace(opts.apiKey), "--api-key"}, nil
 	}
 	if profileInForce() {
-		key, _ := ConfiguredCredential()
-		if key != "" && !auth.IsSessionMinted(key) {
-			return key, nil
+		if key, source := ConfiguredCredential(); auth.IsDurableKey(key) {
+			return credential{key, source}, nil
 		}
-		return "", nil
+		return credential{}, nil
 	}
-	if key, _ := ConfiguredCredential(); key != "" {
-		if !auth.IsSessionMinted(key) {
-			return key, nil
-		}
+	if saved, _ := savedAPIKey(); auth.IsDurableKey(saved) {
+		return credential{strings.TrimSpace(saved), savedKeySource}, nil
 	}
-	if login, err := auth.ReadAPIKeyLogin(); err == nil && login != nil {
-		if key := strings.TrimSpace(login.APIKey); key != "" {
-			if !auth.IsSessionMinted(key) {
-				return key, nil
-			}
-		}
-	} else if err != nil {
-		return "", err
+	if key, source := ConfiguredCredential(); auth.IsDurableKey(key) {
+		return credential{key, source}, nil
 	}
-	key, _ := savedAPIKey()
-	key = strings.TrimSpace(key)
-	if auth.IsSessionMinted(key) {
-		return "", nil
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil {
+		return credential{}, fmt.Errorf("could not read the saved API-key login: %w", err)
 	}
-	return key, nil
+	if login != nil && auth.IsDurableKey(login.APIKey) {
+		return credential{strings.TrimSpace(login.APIKey), "api-key login"}, nil
+	}
+	return credential{}, nil
 }
 
 // mcpEntryPresent answers launch's "is this agent already wired?" from the
@@ -1001,7 +1090,14 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 						if on, perr := spec.otelPresent(path); perr != nil {
 							what = "native OTel check: " + perr.Error()
 						} else if on {
-							what = "native OTel settings are already configured for this server"
+							// The rule connectOtel uses: the stored bearer is the key it would write.
+							cred, _ := durableCredential(opts)
+							switch {
+							case cred.key != "" && otelBearer(path) == cred.key:
+								what = "native OTel settings are already configured for this server"
+							case cred.key == "" && otelLoginToken(path):
+								what = loginTokenConfigured
+							}
 						}
 					}
 					rep.info("%-8s otel      %s  (%s)", id, tilde(path), what)
@@ -1021,32 +1117,61 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 // fault, so the caller turns it into a hint and exit 0.
 var errLoginDeclined = errors.New("login declined")
 
-// resolveConnectAuth is connect's credential path. It reuses whatever exists —
-// saved key, ORQ_API_KEY, --api-key, session — and when nothing does, an
-// interactive run offers to log in and mint one right here, so the selection
-// already made is never wasted. Non-interactive runs never create credentials.
+// errUseLoginToken is the answer "write the login token for otel": --use-login-token
+// or the third choice at the key prompt. Not a fault; the caller drops what needs a durable key.
+var errUseLoginToken = errors.New("use the login token")
+
+// resolveConnectAuth is connect's credential path. It reuses the durable key
+// durableCredential finds, and when there is none an interactive run offers to
+// log in and mint one right here, so the selection already made is never
+// wasted. Non-interactive runs never create credentials.
 func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (*authState, *auth.Client, error) {
-	saved, savedWS := savedAPIKey()
-	envKey := UserEnvAPIKey()
-	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
+	cred, err := durableCredential(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cred.key == "" {
+		if opts.useLoginToken {
+			return nil, nil, errUseLoginToken
+		}
 		if opts.noInput || opts.yes {
 			return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
 		}
-		message := "No API key on this machine — log in now?"
-		if session, _ := auth.ReadSession(); session != nil {
-			message = "No API key on this machine — create one now?"
-		}
-		if !opts.confirm(message, true) {
-			return nil, nil, errLoginDeclined
+		session, _ := auth.ReadSession()
+		offerLogin := session != nil && !opts.noLoginToken && !profileInForce() &&
+			hasCap(opts.caps, capOtel) && anyNativeOtelAgent(opts.agents)
+		switch {
+		case offerLogin:
+			// otel alone can take the login token; the gateway still skips.
+			skip := "Skip otel"
+			loginLabel := "Use my login token for otel (expires in about an hour)"
+			if hasCap(opts.caps, capGateway) {
+				loginLabel, skip = "Use my login token for otel only (gateway is skipped)", "Skip otel and gateway"
+			}
+			switch askKey(opts, "No durable API key — what should otel use?", loginLabel, skip) {
+			case keyCreate:
+			case keySession:
+				return nil, nil, errUseLoginToken
+			default:
+				return nil, nil, errLoginDeclined
+			}
+		case session != nil:
+			if !opts.confirm("No durable API key on this machine — create one now?", true) {
+				return nil, nil, errLoginDeclined
+			}
+		default:
+			if !opts.confirm("No durable API key on this machine — log in now?", true) {
+				return nil, nil, errLoginDeclined
+			}
 		}
 	}
 	// A saved key with no session must not fall into resolveAuth's login path:
 	// the credential exists, so nothing may prompt for another.
-	if strings.TrimSpace(opts.apiKey) == "" && saved != "" {
+	if cred.source == savedKeySource {
 		if session, _ := auth.ReadSession(); session == nil {
 			rep.ok("using your saved key")
 			state := &authState{apiBase: apiBaseFromEnv()}
-			state.useDurableKey(saved)
+			state.useDurableKey(cred.key)
 			return state, auth.NewClient(state.apiBase), nil
 		}
 	}
@@ -1055,32 +1180,37 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 		return nil, nil, err
 	}
 	client := auth.NewClient(state.apiBase)
-	if active := activeWorkspaceKey(state.session); saved != "" && keyWorkspaceMismatch(savedWS, active) {
+	saved, savedWS := savedAPIKey()
+	if active := activeWorkspaceKey(state.session); auth.IsDurableKey(saved) && keyWorkspaceMismatch(savedWS, active) {
 		return nil, nil, fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
-	if state.suppliedKey == "" {
-		switch {
-		case saved != "":
-			state.useDurableKey(saved)
-		case envKey != "":
-			state.useDurableKey(envKey)
-		default:
-			// The user accepted the offer above: mint and persist the durable
-			// key the wiring writes against, exactly as setup would. No shell
-			// profile prompt here — doctor names the source line if it's missing.
-			token, _, err := ensureDurableKey(rep, client, state, opts)
-			if err != nil {
-				return nil, nil, err
-			}
-			state.useDurableKey(token)
-			if path, err := writeShellEnvFile(rep, token); err != nil {
-				rep.warn("could not write the shell env file: %v", err)
-			} else {
-				rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
-			}
+	if auth.IsDurableKey(state.suppliedKey) {
+		return state, client, nil
+	}
+	key := cred.key
+	if key == "" { // the user accepted the offer above
+		if key, err = mintDurableKey(rep, client, state, opts); err != nil {
+			return nil, nil, err
 		}
 	}
+	state.useDurableKey(key)
 	return state, client, nil
+}
+
+// mintDurableKey mints and persists the durable key the wiring writes against,
+// exactly as setup would, plus the env file that exports it. No shell profile
+// prompt here — doctor names the source line if it's missing.
+func mintDurableKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (string, error) {
+	token, _, err := ensureDurableKey(rep, client, state, opts)
+	if err != nil || token == "" {
+		return token, err
+	}
+	if path, err := writeShellEnvFile(rep, token); err != nil {
+		rep.warn("could not write the shell env file: %v", err)
+	} else {
+		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
+	}
+	return token, nil
 }
 
 func NewDisconnectCommand() *cobra.Command {
@@ -1275,7 +1405,11 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 					// possibly active exporter.
 					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "warn"})
 				case on:
-					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "pass"})
+					status := "pass"
+					if otelLoginToken(path) {
+						status = "warn"
+					}
+					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: status})
 				}
 			}
 		}
@@ -1618,6 +1752,17 @@ func reportCredentialSurvives(rep *reporter) {
 // machine-wide for every agent (every provider resolver is home- or env-rooted),
 // so the flag is ignorable rather than wrong.
 func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
+	if opts.useLoginToken {
+		if profileInForce() {
+			return bartolocli.NewUsageError(loginTokenProfileError())
+		}
+		if !hasCap(caps, capOtel) {
+			return bartolocli.NewUsageError(errors.New("--use-login-token applies to otel only; add otel to the capabilities"))
+		}
+		if session, _ := auth.ReadSession(); session == nil {
+			return bartolocli.NewUsageError(errors.New("--use-login-token needs a login: run 'orq auth login'"))
+		}
+	}
 	if opts.scope != scopeLocal {
 		return nil
 	}

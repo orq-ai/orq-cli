@@ -170,6 +170,13 @@ func slotFor(session *Session, bearer string) (string, bool) {
 	return stale.Key, ok
 }
 
+// IsDurableKey reports whether key is an API key rather than a workspace token
+// this login issued, which expires within the hour.
+func IsDurableKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return key != "" && !IsSessionMinted(key)
+}
+
 // IsSessionMinted reports whether bearer is a workspace token this login
 // issued, including one another process has already replaced after a 401.
 func IsSessionMinted(bearer string) bool {
