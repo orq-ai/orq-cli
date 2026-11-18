@@ -666,8 +666,10 @@ func TestWhoAmIReportsUnreadableProfileStore(t *testing.T) {
 	bartolocli.Stdout = &out
 	t.Cleanup(func() { bartolocli.Stdout = origStdout })
 
-	if err := NewWhoAmICommand().Execute(); err != nil {
-		t.Fatalf("whoami: %v", err)
+	cmd := NewWhoAmICommand()
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "macOS Keychain") {
+		t.Fatalf("whoami err = %v, want the unreadable-store error", err)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {

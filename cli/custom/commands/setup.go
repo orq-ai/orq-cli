@@ -916,8 +916,9 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 // saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
 // handler type and the resolved server, nothing of ours. bartolo resolves it
 // from here on. SetProfile moves the key into the OS secure store and leaves an
-// api_key_store marker; with no store available the key stays in the 0600 file. Only ever writes a named, selected profile — an unselected one
-// is unreachable, so a caller with no profile in force must not reach here.
+// api_key_store marker; with no store available the key stays in the 0600
+// file. Only ever writes a named, selected profile — an unselected one is
+// unreachable, so a caller with no profile in force must not reach here.
 func saveAPIKeyProfile(key string) error {
 	name := bartoloProfileName()
 	if name == "" {

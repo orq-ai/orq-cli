@@ -494,7 +494,11 @@ func NewWhoAmICommand() *cobra.Command {
 				if check.CheckError != "" {
 					out["auth_check_error"] = check.CheckError
 				}
-				return emit(out)
+				if err := emit(out); err != nil {
+					return err
+				}
+				// Exit non-zero like the human view: scripts key off the code.
+				return storeErr
 			}
 			// PreRun exports the active stored login into ORQ_API_KEY. When it
 			// outranks a browser session on the same host, report that login.

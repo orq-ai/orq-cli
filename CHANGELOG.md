@@ -130,8 +130,9 @@ unreadable, with the store named, rather than as a missing key.
 **Added:** `orq doctor -o json` reports `auth.api_key_store` and, when the store
 cannot be read, `auth.store_error`. It adds an `api_key_store` check and the
 `auth.status` value `profile-store-unreadable`. `orq status -o json` adds
-`api_key_store` and `store_error`. `orq auth profile list` shows `in <store>` in
-the KEY column for a stored key.
+`api_key_store` and `store_error`, and `orq status` exits non-zero in both
+output modes when the store cannot be read. `orq auth profile list` shows
+`in <store>` in the KEY column for a stored key.
 
 **Downgrade caution:** an older `orq` sees a profile whose key is only in the
 store as keyless, and its layout migration can delete that profile. Do not run

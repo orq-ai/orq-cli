@@ -445,9 +445,9 @@ func ProfileKeyUnreadable() error {
 // key is returned with an unknowable workspace and the login session is ignored
 // completely. With a profile in force, an empty key can mean the store could
 // not be read, not that the key is missing; callers that report a missing key
-// check ProfileKeyUnreadable first. With no profile in force, the gateway key belongs to the login
-// session. It lives here because launch needs it too and launch cannot import
-// commands.
+// check ProfileKeyUnreadable first. With no profile in force, the gateway key
+// belongs to the login session. It lives here because launch needs it too and
+// launch cannot import commands.
 func SavedAgentKey() (key, workspace string) {
 	if bartolocli.ActiveProfileName() != "" {
 		if bartolocli.Creds == nil {
