@@ -34,15 +34,6 @@ func restoreAnonymousAuth(root *cobra.Command) {
 	bartolocli.UseAuth("", handler)
 }
 
-// hideGeneratedMCP keeps the generated `orq mcp` server out of help. orq's MCP
-// path is the hosted server `orq connect` wires up; this one ships with
-// generation, not by choice, and still runs when typed.
-func hideGeneratedMCP(root *cobra.Command) {
-	if mcp := childCommand(root, "mcp"); mcp != nil {
-		mcp.Hidden = true
-	}
-}
-
 func commandAt(root *cobra.Command, path ...string) *cobra.Command {
 	cmd := root
 	for _, name := range path {

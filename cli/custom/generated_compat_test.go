@@ -51,13 +51,3 @@ func TestGeneratedAuthIsAnonymous(t *testing.T) {
 		t.Errorf("auth profile add should be one command, not a parent of %q", generatedAuthType)
 	}
 }
-
-func TestGeneratedMCPIsHiddenButRuns(t *testing.T) {
-	mcp := childCommand(buildRoot(t), "mcp")
-	if mcp == nil {
-		t.Skip("this build generates no mcp command")
-	}
-	if !mcp.Hidden {
-		t.Error("the generated mcp server shows in help")
-	}
-}
