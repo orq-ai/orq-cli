@@ -10,6 +10,7 @@ import (
 	neturl "net/url"
 
 	"github.com/orq-ai/bartolo/apikey"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
@@ -29,7 +30,8 @@ func servers() []map[string]string {
 func initGeneratedRuntime() {
 	bartolocli.RegisterServers(servers())
 
-	apikey.InitBearer("Authorization")
+	apikey.InitBearerWithType("ApiKey", "Authorization")
+	bartolocli.SetDefaultAuthType("ApiKey")
 
 }
 
