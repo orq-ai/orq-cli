@@ -48,12 +48,14 @@ func kiloAgent() AgentDef {
 
 func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 	return AgentDef{
-		Name:          family.name,
-		Binary:        family.binary,
-		Label:         family.label,
-		InstallHint:   family.installHint,
-		FetchesModels: true,
-		AllowModels:   true,
+		Name:           family.name,
+		Binary:         family.binary,
+		Label:          family.label,
+		InstallHint:    family.installHint,
+		FetchesModels:  true,
+		AllowModels:    true,
+		MCPEnvAuth:     true,
+		RequestHeaders: true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"run", v} },
@@ -95,11 +97,8 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		return nil, err
 	}
 
-	mcpServerURL := mcpURL(ctx)
-	if mcpServerURL != "" && persistedMCPConfigured(family.name) {
-		mcpServerURL = ""
-	}
-	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpServerURL)
+	configJSON, err := buildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos,
+		sessionMCPURL(ctx, family.name), ctx.Flags.MCPEnvAuth, threadHeaders(ctx.Flags))
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +120,7 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 type openCodeProvider struct {
 	Npm     string                    `json:"npm"`
 	Name    string                    `json:"name"`
-	Options map[string]string         `json:"options"`
+	Options map[string]any            `json:"options"`
 	Models  map[string]map[string]any `json:"models"`
 }
 
@@ -129,7 +128,17 @@ type openCodeProvider struct {
 // The api key stays out of the file via {env:ORQ_API_KEY} interpolation.
 // A non-empty mcpServerURL adds the orq MCP server as a remote entry.
 func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo, mcpServerURL string) (string, error) {
-	options := map[string]string{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
+	return buildOpenCodeConfigContent(baseURL, gatewayModel, gatewayModels, infos, mcpServerURL, false, nil)
+}
+
+// buildOpenCodeConfigContent adds what only a launch sets: --mcp-auth env and
+// request headers. `orq connect` writes through the exported form, so neither
+// can reach a persisted config.
+func buildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo, mcpServerURL string, mcpEnvAuth bool, headers []RequestHeader) (string, error) {
+	options := map[string]any{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
+	if len(headers) > 0 {
+		options["headers"] = headerMap(headers)
+	}
 	toModelMap := func(models []string) map[string]map[string]any {
 		out := make(map[string]map[string]any, len(models))
 		for _, m := range models {
@@ -169,6 +178,9 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	var mcp map[string]any
 	if mcpServerURL != "" {
 		mcp = openCodeMCPBlock(mcpServerURL)
+		if mcpEnvAuth {
+			mcp = openCodeMCPEnvAuthBlock(mcpServerURL)
+		}
 	}
 
 	encoded, err := json.Marshal(struct {

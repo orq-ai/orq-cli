@@ -30,7 +30,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "azure-foundry-deployments",
 			Short:   "List Azure Foundry deployments under a resource",
-			Long:    bartolocli.Markdown("Lists Azure Foundry deployments under the given base_url and merges each entry with the matching Orq model catalog entry. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string, required)\n- `provider` (string, required)\n\nRequired fields: `api_key`, `base_url`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Lists Azure Foundry deployments under the given base_url and merges each entry with the matching model catalog entry. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string, required)\n- `provider` (string, required)\n\nRequired fields: `api_key`, `base_url`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -368,7 +368,7 @@ func registermodelsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"integration\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -388,8 +388,12 @@ func registermodelsCommands(root *cobra.Command) {
 						{
 							Name:        "auth_mode",
 							FlagName:    "auth-mode",
-							Type:        "string",
-							Description: "",
+							Type:        "enum-string",
+							Description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires.",
+							Enum: []string{
+								"integration",
+								"pod-identity",
+							},
 						},
 						{
 							Name:        "autorouter_id",
@@ -467,7 +471,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_developer",
 							FlagName:    "model-developer",
 							Type:        "string",
-							Description: "",
+							Description: "Developer of the model behind the inference profile, such as anthropic or amazon.",
 						},
 						{
 							Name:        "model_family",
@@ -479,7 +483,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_id",
 							FlagName:    "model-id",
 							Type:        "string",
-							Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
+							Description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id.",
 						},
 						{
 							Name:        "model_type",
@@ -497,7 +501,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "region",
 							FlagName:    "region",
 							Type:        "string",
-							Description: "",
+							Description: "AWS region that serves the inference profile, such as us-east-1.",
 						},
 						{
 							Name:        "supports_adaptive_reasoning",
@@ -592,8 +596,12 @@ func registermodelsCommands(root *cobra.Command) {
 				{
 					Name:        "auth_mode",
 					FlagName:    "auth-mode",
-					Type:        "string",
-					Description: "",
+					Type:        "enum-string",
+					Description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires.",
+					Enum: []string{
+						"integration",
+						"pod-identity",
+					},
 				},
 				{
 					Name:        "autorouter_id",
@@ -671,7 +679,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_developer",
 					FlagName:    "model-developer",
 					Type:        "string",
-					Description: "",
+					Description: "Developer of the model behind the inference profile, such as anthropic or amazon.",
 				},
 				{
 					Name:        "model_family",
@@ -683,7 +691,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_id",
 					FlagName:    "model-id",
 					Type:        "string",
-					Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
+					Description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id.",
 				},
 				{
 					Name:        "model_type",
@@ -701,7 +709,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "region",
 					FlagName:    "region",
 					Type:        "string",
-					Description: "",
+					Description: "AWS region that serves the inference profile, such as us-east-1.",
 				},
 				{
 					Name:        "supports_adaptive_reasoning",
@@ -780,7 +788,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-openai-like",
 			Short:   "Create OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- ... and 13 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The platform calls the target API with the supplied credentials before saving the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- ... and 13 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -2078,7 +2086,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-openai-like id",
 			Short:   "Update OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- ... and 12 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. `display_name`, `region` and `model_type` are required on every update. Live-re-probes the target API when `base_url` or `configuration.model_id` changes, using the stored encrypted api_key. The body carries no `metadata` field: metadata keys already stored on the model are preserved.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `benchmark_model` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `configuration` (object)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- ... and 12 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

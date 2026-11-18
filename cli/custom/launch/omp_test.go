@@ -2,6 +2,7 @@ package launch
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,9 +13,9 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func TestWriteOmpConfigDir(t *testing.T) {
+func TestWritePiLikeConfigDir(t *testing.T) {
 	const content = `{"providers":{"orq":{}}}`
-	dir, cleanup, err := writeOmpConfigDir(content)
+	dir, cleanup, err := writePiLikeConfigDir("orq-omp-", "models.yml", content)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +49,15 @@ func dirEntries(t *testing.T, dir string) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func planEnvKeys(plan *LaunchPlan) string {
+	var keys []string
+	for key := range plan.Env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
 }
 
 func TestOmpResolvePlan(t *testing.T) {
@@ -277,6 +287,141 @@ func TestOmpSymlinkFailureDiscardsPartialOverlay(t *testing.T) {
 		if got, err := os.ReadFile(filepath.Join(user, name)); err != nil || string(got) != want {
 			t.Errorf("user file %s changed: %q, %v", name, got, err)
 		}
+	}
+}
+
+func TestOmpSymlinkFailureDropsUserProviders(t *testing.T) {
+	user := t.TempDir()
+	userModels := "providers:\n  mine:\n    baseUrl: https://private.example\n"
+	if err := os.WriteFile(filepath.Join(user, "models.yml"), []byte(userModels), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := sessionSkillsCtx(GatewayFlags{NoSkills: true})
+	ctx.Getenv = env(map[string]string{"PI_CODING_AGENT_DIR": user})
+	ctx.Symlink = func(string, string) error { return os.ErrPermission }
+	plan, err := resolveOmp(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Cleanup()
+	models, err := os.ReadFile(filepath.Join(plan.Env["PI_CODING_AGENT_DIR"], "models.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Providers map[string]any `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(models, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Providers) != 1 || doc.Providers[OmpProvider] == nil {
+		t.Fatalf("isolated models.yml kept user providers: %s", models)
+	}
+}
+
+func TestOmpFailedLaunchLeavesNoTempDir(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		file    string
+		content string
+		subdir  string // PI_CODING_AGENT_DIR below the user dir
+		wantErr string
+	}{
+		{name: "state", file: "sessions", content: "not a dir", wantErr: "create omp sessions dir"},
+		{name: "models", file: "models.yml", content: "providers: [unclosed", wantErr: "models.yml"},
+		{name: "agent dir", file: "file", content: "not a dir", subdir: "file", wantErr: "is not a directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			t.Setenv("TMP", tmp)
+			user := t.TempDir()
+			if err := os.WriteFile(filepath.Join(user, tc.file), []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			ctx := sessionSkillsCtx(GatewayFlags{NoSkills: true})
+			ctx.Getenv = env(map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(user, tc.subdir)})
+			_, err := resolveOmp(ctx)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.wantErr)
+			}
+			if left := dirEntries(t, tmp); len(left) != 0 {
+				t.Fatalf("failed launch left %v behind", left)
+			}
+		})
+	}
+}
+
+func TestOmpGatewayErrorBeatsAgentDirError(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADir, []byte("not a dir"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := sessionSkillsCtx(GatewayFlags{Models: "[unclosed", NoSkills: true})
+	ctx.Getenv = env(map[string]string{"PI_CODING_AGENT_DIR": notADir})
+	if _, err := resolveOmp(ctx); !errors.Is(err, errModelList) {
+		t.Fatalf("err = %v, want %v", err, errModelList)
+	}
+}
+
+func TestResolveOmpSessionConfig(t *testing.T) {
+	ctx := sessionSkillsCtx(GatewayFlags{NoSkills: true})
+	home := t.TempDir()
+	ctx.HomeDir = func() (string, error) { return home, nil }
+	ctx.Getenv = env(map[string]string{
+		"PI_MODEL":         "openai/gpt-5-mini",
+		"PI_MODELS":        "vendor/extra-model",
+		"ORQ_PI_BASE_URL":  "https://pi.example/router",
+		"ORQ_OMP_BASE_URL": "https://omp.example/router",
+	})
+	ctx.Fetch = fetcherOf(DefaultOmpModel, "openai/gpt-5-mini")
+	plan, err := resolveOmp(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Cleanup()
+	if got, want := strings.Join(plan.PreArgs, " "), "--provider orq --model "+DefaultOmpModel; got != want {
+		t.Fatalf("omp reads no model env vars: PreArgs = %q, want %q", got, want)
+	}
+	if got, want := planEnvKeys(plan), "ORQ_API_KEY,ORQ_SERVER,PI_CODING_AGENT_DIR"; got != want {
+		t.Fatalf("env keys = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(filepath.Base(plan.Env["PI_CODING_AGENT_DIR"]), "orq-omp-") {
+		t.Fatalf("dir %q is not an orq-omp- temp dir", plan.Env["PI_CODING_AGENT_DIR"])
+	}
+	config, err := os.ReadFile(filepath.Join(plan.Env["PI_CODING_AGENT_DIR"], "models.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), "https://omp.example/router") {
+		t.Fatalf("ORQ_OMP_BASE_URL not honoured:\n%s", config)
+	}
+	if strings.Contains(string(config), "vendor/extra-model") {
+		t.Fatalf("omp reads no model env vars, but PI_MODELS reached:\n%s", config)
+	}
+}
+
+func TestOmpProfileEnvIsCleared(t *testing.T) {
+	for _, set := range []string{"OMP_PROFILE", "PI_PROFILE"} {
+		t.Run(set, func(t *testing.T) {
+			ctx := sessionSkillsCtx(GatewayFlags{NoSkills: true})
+			home := t.TempDir()
+			ctx.HomeDir = func() (string, error) { return home, nil }
+			ctx.Getenv = env(map[string]string{set: "work"})
+			plan, err := resolveOmp(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer plan.Cleanup()
+			for _, key := range []string{"OMP_PROFILE", "PI_PROFILE"} {
+				if got, ok := plan.Env[key]; !ok || got != "" {
+					t.Fatalf("%s = %q, %v, want it set empty", key, got, ok)
+				}
+			}
+			if !strings.Contains(strings.Join(plan.Warnings, "\n"), "OMP_PROFILE/PI_PROFILE is set") {
+				t.Fatalf("warnings = %v", plan.Warnings)
+			}
+		})
 	}
 }
 

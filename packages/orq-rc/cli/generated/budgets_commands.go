@@ -51,7 +51,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "expires_at",
 							FlagName:    "expires-at",
 							Type:        "datetime",
-							Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the handler rejects past values.",
+							Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the API rejects a past value.",
 						},
 						{
 							Name:        "is_active",
@@ -117,7 +117,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "expires_at",
 					FlagName:    "expires-at",
 					Type:        "datetime",
-					Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the handler rejects past values.",
+					Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the API rejects a past value.",
 				},
 				{
 					Name:        "is_active",

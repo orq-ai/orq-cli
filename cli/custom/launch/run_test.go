@@ -20,7 +20,7 @@ func TestRunDryRun(t *testing.T) {
 		if def == nil {
 			t.Fatalf("agent %s missing from registry", name)
 		}
-		code, err := Run(def, []string{"--dry-run", "--no-fetch-models"})
+		code, err := Run(def, []string{"--dry-run", "--no-fetch-models"}, Hooks{})
 		if err != nil || code != 0 {
 			t.Fatalf("%s dry-run: code=%d err=%v", name, code, err)
 		}
@@ -46,7 +46,7 @@ func TestRunHelp(t *testing.T) {
 	def := FindAgent("claude")
 	var code int
 	var err error
-	out := captureStdout(t, func() { code, err = Run(def, []string{"-h"}) })
+	out := captureStdout(t, func() { code, err = Run(def, []string{"-h"}, Hooks{}) })
 	if err != nil || code != 0 {
 		t.Fatalf("help: code=%d err=%v", code, err)
 	}
@@ -61,7 +61,7 @@ func TestRunHelp(t *testing.T) {
 // exits 1 like any other failure rather than inventing a usage code.
 func TestRunBadFlag(t *testing.T) {
 	def := FindAgent("opencode")
-	code, err := Run(def, []string{"--model"})
+	code, err := Run(def, []string{"--model"}, Hooks{})
 	if err == nil || code != 1 {
 		t.Fatalf("missing value should exit 1: code=%d err=%v", code, err)
 	}

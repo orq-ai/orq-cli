@@ -620,7 +620,7 @@ func registerimagesCommands(root *cobra.Command) {
 							Name:        "image",
 							FlagName:    "image",
 							Type:        "string",
-							Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
+							Description: "The image to vary. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
 						},
 						{
 							Name:        "load_balancer",
@@ -736,7 +736,7 @@ func registerimagesCommands(root *cobra.Command) {
 					Name:        "image",
 					FlagName:    "image",
 					Type:        "string",
-					Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
+					Description: "The image to vary. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
 				},
 				{
 					Name:        "load_balancer",

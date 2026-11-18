@@ -76,7 +76,7 @@ func registerlogsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded, "timestamp", "total_count", "severity_counts"); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
@@ -697,7 +697,7 @@ func registerlogsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded, "timestamp", "severity_text", "service_name", "span_id", "body"); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
@@ -918,7 +918,7 @@ func registerlogsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded, "timestamp", "severity_text", "service_name", "trace_id", "body"); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 

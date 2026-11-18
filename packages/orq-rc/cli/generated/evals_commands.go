@@ -80,7 +80,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 9 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -190,6 +190,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "repetitions",
 							Type:        "int64-nullable",
 							Description: "",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "int64-nullable",
+							Description: "Maximum time in milliseconds the evaluator may run. A request can shorten it but not extend it. Defaults to 60000.",
 						},
 						{
 							Name:        "type",
@@ -324,6 +330,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "repetitions",
 					Type:        "int64-nullable",
 					Description: "",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "int64-nullable",
+					Description: "Maximum time in milliseconds the evaluator may run. A request can shorten it but not extend it. Defaults to 60000.",
 				},
 				{
 					Name:        "type",
@@ -788,7 +800,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 16 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -916,6 +928,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "schema",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "int64-nullable",
+							Description: "Maximum time in milliseconds the evaluator may run. A request can shorten it but not extend it. Defaults to 60000.",
 						},
 						{
 							Name:        "type",
@@ -1087,6 +1105,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "schema",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "int64-nullable",
+					Description: "Maximum time in milliseconds the evaluator may run. A request can shorten it but not extend it. Defaults to 60000.",
 				},
 				{
 					Name:        "type",
