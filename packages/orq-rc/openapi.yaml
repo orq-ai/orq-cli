@@ -2591,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m7mrvqh26ykxk2cjc5tz0qs3"
+              default: "reasoning_01m7pgwmy5q71jwfeszg8t7z14"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -16678,6 +16678,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/McpOpenApiConfig"
           description: "Required when `connection.type` is `MCP_CONNECTION_TYPE_OPENAPI`; set `document` or `document_url`."
+        health_check:
+          $ref: "#/components/schemas/McpHealthCheckConfig"
     CreateMcpServerResponse:
       type: "object"
       properties:
@@ -16725,6 +16727,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/McpOpenApiConfig"
           description: "Recompiles the tools of an OpenAPI server; without `document` the stored `document_url` is fetched again."
+        health_check:
+          allOf:
+            - $ref: "#/components/schemas/McpHealthCheckConfig"
+          description: "Replaces the stored health check configuration; fields left unset take their defaults."
     UpdateMcpServerResponse:
       type: "object"
       properties:
@@ -16854,6 +16860,10 @@ components:
           description: "Get returns the shared catalog. Sync returns the caller's catalog for user-specific credentials or discovery variables. List omits this field."
         prompt_catalog:
           $ref: "#/components/schemas/McpPromptCatalog"
+        health:
+          $ref: "#/components/schemas/McpServerHealth"
+        health_check:
+          $ref: "#/components/schemas/McpHealthCheckConfig"
     McpConnection:
       required:
         - "type"
@@ -16911,6 +16921,28 @@ components:
           readOnly: true
           type: "string"
           description: "`info.version` of the compiled document."
+    McpHealthCheckConfig:
+      type: "object"
+      properties:
+        enabled:
+          type: "boolean"
+        interval:
+          type: "string"
+          description: "Empty follows the plan default; the plan sets the minimum."
+        min_interval:
+          readOnly: true
+          type: "string"
+        default_interval:
+          readOnly: true
+          type: "string"
+        notifier_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "Workspace notifiers told when the server becomes unhealthy or recovers."
+        recovery_period:
+          type: "string"
+          description: "How long an unhealthy server must pass checks before it counts as recovered; empty is 3 minutes."
     McpGatewayToolTestResult:
       type: "object"
       properties:
@@ -17064,6 +17096,30 @@ components:
             $ref: "#/components/schemas/McpPrompt"
         status:
           $ref: "#/components/schemas/McpDiscoveryStatus"
+    McpServerHealth:
+      type: "object"
+      properties:
+        status:
+          $ref: "#/components/schemas/McpHealthStatus"
+        coverage:
+          $ref: "#/components/schemas/McpHealthCoverage"
+        last_checked_at:
+          type: "string"
+        last_healthy_at:
+          type: "string"
+        latency_ms:
+          type: "integer"
+          format: "int32"
+        consecutive_failures:
+          type: "integer"
+          format: "int32"
+        error_message:
+          type: "string"
+        recent_checks:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/McpHealthCheckResult"
+          description: "Oldest first."
     McpConnectionType:
       type: "string"
       enum:
@@ -17253,6 +17309,28 @@ components:
         selection_id:
           readOnly: true
           type: "string"
+    McpHealthStatus:
+      type: "string"
+      enum:
+        - "MCP_HEALTH_STATUS_HEALTHY"
+        - "MCP_HEALTH_STATUS_DEGRADED"
+        - "MCP_HEALTH_STATUS_UNHEALTHY"
+    McpHealthCoverage:
+      type: "string"
+      enum:
+        - "MCP_HEALTH_COVERAGE_FULL"
+        - "MCP_HEALTH_COVERAGE_REACHABILITY"
+        - "MCP_HEALTH_COVERAGE_NONE"
+    McpHealthCheckResult:
+      type: "object"
+      properties:
+        checked_at:
+          type: "string"
+        ok:
+          type: "boolean"
+        latency_ms:
+          type: "integer"
+          format: "int32"
     McpResourceAnnotations:
       type: "object"
       properties:
@@ -22943,7 +23021,8 @@ components:
           type: "string"
         output:
           description: "Array of output items (messages, function calls, reasoning, etc.)"
-          items: {}
+          items:
+            $ref: "#/components/schemas/ResponseOutputItem"
           type:
             - "array"
             - "null"
@@ -24211,14 +24290,92 @@ components:
         - "output_index"
       title: "MCP List Tools In Progress"
       type: "object"
+    ResponseOutputFunctionCall:
+      additionalProperties: true
+      description: "A request from the model to call one of the functions you declared."
+      properties:
+        arguments:
+          description: "The call arguments as a JSON-encoded string."
+          type: "string"
+        call_id:
+          description: "The ID that links a tool call to its output. Send it back on the matching `function_call_output` item."
+          type: "string"
+        id:
+          description: "The unique ID of the item."
+          type: "string"
+        name:
+          description: "The name of the function to call."
+          type: "string"
+        namespace:
+          description: "The namespace of the function, when the tool declares one."
+          type: "string"
+        status:
+          description: "The item status, such as `completed`, `in_progress` or `incomplete`."
+          type: "string"
+        type:
+          description: "The item type. Discriminates the item."
+          enum:
+            - "function_call"
+          type: "string"
+      required:
+        - "type"
+        - "call_id"
+        - "name"
+        - "arguments"
+      title: "Function call"
+      type: "object"
+    ResponseOutputFunctionCallOutput:
+      additionalProperties: true
+      description: "The result of a function call."
+      properties:
+        call_id:
+          description: "The ID that links a tool call to its output."
+          type: "string"
+        id:
+          description: "The unique ID of the item."
+          type: "string"
+        output:
+          anyOf:
+            - title: "Text"
+              type: "string"
+            - items:
+                additionalProperties: true
+                type: "object"
+              title: "Parts"
+              type: "array"
+          description: "The function result: a string, or an array of content parts."
+        status:
+          description: "The item status, such as `completed`, `in_progress` or `incomplete`."
+          type: "string"
+        type:
+          description: "The item type. Discriminates the item."
+          enum:
+            - "function_call_output"
+          type: "string"
+      required:
+        - "type"
+        - "call_id"
+      title: "Function call output"
+      type: "object"
+    ResponseOutputItem:
+      anyOf:
+        - $ref: "#/components/schemas/ResponseOutputMessage"
+        - $ref: "#/components/schemas/ResponseOutputFunctionCall"
+        - $ref: "#/components/schemas/ResponseOutputFunctionCallOutput"
+        - $ref: "#/components/schemas/ResponseOutputReasoning"
+        - $ref: "#/components/schemas/ResponseOutputOrqToolCall"
+        - additionalProperties: true
+          description: "Any other item, returned as an open object. Provider-specific items and item kinds added after this schema was written arrive here; read their `type` field."
+          title: "Other item"
+          type: "object"
+      description: "One item of a response's output. The `type` field says which kind it is."
+      title: "Output item"
     ResponseOutputItemAddedStreamEvent:
       additionalProperties: true
       description: "A `response.output_item.added` server-sent event."
       properties:
         item:
-          additionalProperties: true
-          description: "The output item (message, function call, reasoning, etc.)."
-          type: "object"
+          $ref: "#/components/schemas/ResponseOutputItem"
         output_index:
           description: "Index of the output item in the response output array."
           type: "integer"
@@ -24242,9 +24399,7 @@ components:
       description: "A `response.output_item.done` server-sent event."
       properties:
         item:
-          additionalProperties: true
-          description: "The output item (message, function call, reasoning, etc.)."
-          type: "object"
+          $ref: "#/components/schemas/ResponseOutputItem"
         output_index:
           description: "Index of the output item in the response output array."
           type: "integer"
@@ -24262,6 +24417,183 @@ components:
         - "output_index"
         - "item"
       title: "Output Item Done"
+      type: "object"
+    ResponseOutputMessage:
+      additionalProperties: true
+      description: "A message from the model."
+      properties:
+        content:
+          description: "The content parts of the message."
+          items:
+            anyOf:
+              - additionalProperties: true
+                description: "Text written by the model."
+                properties:
+                  annotations:
+                    description: "Annotations on the text, such as URL citations."
+                    items:
+                      additionalProperties: true
+                      type: "object"
+                    type: "array"
+                  logprobs:
+                    description: "Token log probabilities, when requested."
+                    items:
+                      additionalProperties: true
+                      type: "object"
+                    type: "array"
+                  text:
+                    description: "The text."
+                    type: "string"
+                  type:
+                    description: "The part type."
+                    enum:
+                      - "output_text"
+                    type: "string"
+                required:
+                  - "type"
+                  - "text"
+                title: "Output text"
+                type: "object"
+              - additionalProperties: true
+                description: "A refusal from the model."
+                properties:
+                  refusal:
+                    description: "The refusal text."
+                    type: "string"
+                  type:
+                    description: "The part type."
+                    enum:
+                      - "refusal"
+                    type: "string"
+                required:
+                  - "type"
+                  - "refusal"
+                title: "Refusal"
+                type: "object"
+              - additionalProperties: true
+                description: "Any other content part, returned as an open object."
+                title: "Other part"
+                type: "object"
+          type: "array"
+        id:
+          description: "The unique ID of the item."
+          type: "string"
+        phase:
+          description: "The phase of the turn this message belongs to, such as `commentary` or `final_answer`. Present only for models that report it."
+          type: "string"
+        role:
+          description: "The role of the message author. `assistant` for model output."
+          type: "string"
+        status:
+          description: "The item status, such as `completed`, `in_progress` or `incomplete`."
+          type: "string"
+        type:
+          description: "The item type. Discriminates the item."
+          enum:
+            - "message"
+          type: "string"
+      required:
+        - "type"
+        - "role"
+        - "content"
+      title: "Message"
+      type: "object"
+    ResponseOutputOrqToolCall:
+      additionalProperties: true
+      description: "A call to a tool that Orq hosts and ran for you, with its result. The `type` is `orq:` followed by the tool name, for example `orq:current_date`."
+      properties:
+        arguments:
+          description: "The call arguments as a JSON-encoded string."
+          type: "string"
+        call_id:
+          description: "The ID that links a tool call to its output."
+          type: "string"
+        id:
+          description: "The unique ID of the item."
+          type: "string"
+        name:
+          description: "The name of the tool that ran."
+          type: "string"
+        response_id:
+          description: "The ID of a response this tool produced, for example a sub-agent response."
+          type: "string"
+        result:
+          description: "The result the tool returned. Its shape depends on the tool."
+        status:
+          description: "The item status, such as `completed`, `in_progress` or `incomplete`."
+          type: "string"
+        type:
+          description: "The item type: `orq:` followed by the tool name."
+          pattern: "^orq:"
+          type: "string"
+      required:
+        - "type"
+        - "call_id"
+        - "name"
+      title: "Orq tool call"
+      type: "object"
+    ResponseOutputReasoning:
+      additionalProperties: true
+      description: "Reasoning the model did before answering."
+      properties:
+        content:
+          description: "The reasoning text, when the model returns it."
+          items:
+            additionalProperties: true
+            description: "A piece of reasoning text."
+            properties:
+              text:
+                description: "The text."
+                type: "string"
+              type:
+                description: "The part type."
+                enum:
+                  - "reasoning_text"
+                type: "string"
+            required:
+              - "type"
+              - "text"
+            type: "object"
+          type: "array"
+        encrypted_content:
+          description: "The reasoning in encrypted form. Send the item back unchanged to continue the turn."
+          type: "string"
+        id:
+          description: "The unique ID of the item."
+          type: "string"
+        signature:
+          description: "A provider signature over the reasoning content."
+          type: "string"
+        status:
+          description: "The item status, such as `completed`, `in_progress` or `incomplete`."
+          type: "string"
+        summary:
+          description: "A summary of the reasoning."
+          items:
+            additionalProperties: true
+            description: "A piece of the reasoning summary."
+            properties:
+              text:
+                description: "The text."
+                type: "string"
+              type:
+                description: "The part type."
+                enum:
+                  - "summary_text"
+                type: "string"
+            required:
+              - "type"
+              - "text"
+            type: "object"
+          type: "array"
+        type:
+          description: "The item type. Discriminates the item."
+          enum:
+            - "reasoning"
+          type: "string"
+      required:
+        - "type"
+      title: "Reasoning"
       type: "object"
     ResponseOutputTextAnnotationAddedStreamEvent:
       additionalProperties: true
@@ -28440,7 +28772,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M7MRVQG40XYH233JEG7SADGS"
+                                default: "01M7PGWMX9AV6GW9H335DMTABK"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -37845,7 +38177,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7MRVQJC28N9JC8EV5W9QDHC"
+                                          default: "01M7PGWMZCZEKPY9R1SKW9FGWX"
                                         name:
                                           type: "string"
                                         description:
@@ -39471,7 +39803,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M7MRVQJSE1A9MWT7R5C0JY26"
+                                          default: "01M7PGWMZS8M6SWXJZP452YTGA"
                                         name:
                                           type: "string"
                                         description:
@@ -48528,7 +48860,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MRVQKYBPN5TWGX1WZFCKTV"
+                              default: "tool_01M7PGWN0TF674S05SP1A1DWWY"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48629,7 +48961,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MRVQKY6W3S82JEDD01828T"
+                              default: "tool_01M7PGWN0TVG9Z22SA8QDR70YJ"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48732,7 +49064,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MRVQKZ519GQ66TC2MF7J51"
+                              default: "tool_01M7PGWN0VPM22PZN94ACN76CM"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -48876,7 +49208,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M7MRVQM0FAB64A9SBCWVBZJV"
+                              default: "tool_01M7PGWN0VSCEBKH7WVVRKH8JB"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49363,7 +49695,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM24DWQX87YEDM6KNK9"
+                        default: "tool_01M7PGWN0YJZHW4PYWWMQP19HR"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49464,7 +49796,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM34QFMFJE5YVVP28M3"
+                        default: "tool_01M7PGWN0YSWNM7SH4H86MRHF3"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49567,7 +49899,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM30YAAEF07XQSA6EWC"
+                        default: "tool_01M7PGWN0Z78GZVJC9792EMVEG"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49711,7 +50043,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM42VRVVW47C1K0QMWE"
+                        default: "tool_01M7PGWN0Z725TK85NNCGEY4W7"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50215,7 +50547,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM60AHVF7TS5EGYKQGQ"
+                        default: "tool_01M7PGWN11JAXBQNR6AN4N686J"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50316,7 +50648,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM6QGA2R147WACGVPZM"
+                        default: "tool_01M7PGWN11BJPN47HB9WHGRH04"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50419,7 +50751,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM6QC0DGAABKDPRFCBA"
+                        default: "tool_01M7PGWN125H0BZHKHM120C2TA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50563,7 +50895,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQM7PCRFZE2EZFGXE0BT"
+                        default: "tool_01M7PGWN124XQ9CX911AYN587B"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50730,7 +51062,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQMBQBMZ8V1CZ92DJYH3"
+                        default: "tool_01M7PGWN1631KMQ1K8D3WBQ9GB"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50831,7 +51163,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQMB06605YDBM62SW40Z"
+                        default: "tool_01M7PGWN1625WK1GE5HZBX1KES"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50934,7 +51266,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQMF2ZX7PVJTKQKV8J5J"
+                        default: "tool_01M7PGWN17WFMR9DHC54S2S0ZS"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51078,7 +51410,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M7MRVQMF0QCAXSNAJRNDS6V8"
+                        default: "tool_01M7PGWN1AFQMVJCEGPH015E9Y"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -81064,7 +81396,8 @@ paths:
                     type: "string"
                   output:
                     description: "Array of output items (messages, function calls, reasoning, etc.)"
-                    items: {}
+                    items:
+                      $ref: "#/components/schemas/ResponseOutputItem"
                     type:
                       - "array"
                       - "null"
@@ -81305,7 +81638,8 @@ paths:
                     type: "string"
                   output:
                     description: "Array of output items (messages, function calls, reasoning, etc.)"
-                    items: {}
+                    items:
+                      $ref: "#/components/schemas/ResponseOutputItem"
                     type:
                       - "array"
                       - "null"
