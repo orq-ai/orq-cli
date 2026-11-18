@@ -368,7 +368,7 @@ func registermodelsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"integration\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -388,8 +388,12 @@ func registermodelsCommands(root *cobra.Command) {
 						{
 							Name:        "auth_mode",
 							FlagName:    "auth-mode",
-							Type:        "string",
-							Description: "",
+							Type:        "enum-string",
+							Description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires.",
+							Enum: []string{
+								"integration",
+								"pod-identity",
+							},
 						},
 						{
 							Name:        "autorouter_id",
@@ -467,7 +471,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_developer",
 							FlagName:    "model-developer",
 							Type:        "string",
-							Description: "",
+							Description: "Developer of the model behind the inference profile, such as anthropic or amazon.",
 						},
 						{
 							Name:        "model_family",
@@ -479,7 +483,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "model_id",
 							FlagName:    "model-id",
 							Type:        "string",
-							Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
+							Description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id.",
 						},
 						{
 							Name:        "model_type",
@@ -497,7 +501,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "region",
 							FlagName:    "region",
 							Type:        "string",
-							Description: "",
+							Description: "AWS region that serves the inference profile, such as us-east-1.",
 						},
 						{
 							Name:        "supports_adaptive_reasoning",
@@ -592,8 +596,12 @@ func registermodelsCommands(root *cobra.Command) {
 				{
 					Name:        "auth_mode",
 					FlagName:    "auth-mode",
-					Type:        "string",
-					Description: "",
+					Type:        "enum-string",
+					Description: "Where the AWS credentials come from. integration reads static AWS access keys from the integration named by integration_id, which is required with it. pod-identity resolves credentials from the AWS default credential chain of the deployment, such as EKS Pod Identity, IAM Roles for Service Accounts or the instance metadata service, and ignores integration_id; set assume_role_arn to assume a role in another account and assume_role_external_id to pass the external ID that role's trust policy requires.",
+					Enum: []string{
+						"integration",
+						"pod-identity",
+					},
 				},
 				{
 					Name:        "autorouter_id",
@@ -671,7 +679,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_developer",
 					FlagName:    "model-developer",
 					Type:        "string",
-					Description: "",
+					Description: "Developer of the model behind the inference profile, such as anthropic or amazon.",
 				},
 				{
 					Name:        "model_family",
@@ -683,7 +691,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "model_id",
 					FlagName:    "model-id",
 					Type:        "string",
-					Description: "Immutable workspace-unique slug when configuration.model_id is supplied.",
+					Description: "Bedrock inference profile ARN to invoke, for example arn:aws:bedrock:us-east-1:123456789012:inference-profile/anthropic.claude-3-sonnet-20240229-v1:0. When configuration.model_id is supplied, this field is instead the immutable workspace-unique slug and the ARN comes from configuration.model_id.",
 				},
 				{
 					Name:        "model_type",
@@ -701,7 +709,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "region",
 					FlagName:    "region",
 					Type:        "string",
-					Description: "",
+					Description: "AWS region that serves the inference profile, such as us-east-1.",
 				},
 				{
 					Name:        "supports_adaptive_reasoning",

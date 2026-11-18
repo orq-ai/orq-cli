@@ -1,11 +1,17 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+
+	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
 
@@ -54,20 +60,21 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 				return nil, cobra.ShellCompDirectiveDefault
 			},
 			RunE: func(cmd *cobra.Command, args []string) error {
-				// Injected here (not at registration) so the login flow gets
-				// this invocation's context for Ctrl-C during the approval
-				// poll. Launch owns the "offer to log in" decision; this only
-				// supplies the flow it cannot import.
-				// Same reason as LoginHook: launch cannot import this package,
-				// and the registry is the one place that knows where each
-				// agent keeps its MCP entry.
-				launch.PersistedMCPHook = mcpEntryPresent
-				launch.SkillsUpdateHook = func() (string, bool) { return skillsUpdateHint(cmd) }
-				launch.LoginHook = func() error {
-					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
-					return err
+				// Built per invocation (not at registration) so the login flow
+				// gets this invocation's context for Ctrl-C during the approval
+				// poll. Launch owns every "should I ask" decision; these only
+				// supply the flows it cannot import.
+				hooks := launch.Hooks{
+					Login: func() error {
+						_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
+						return err
+					},
+					DurableKey:   func() (string, error) { return offerLaunchKey(cmd, &setupOptions{}) },
+					PersistedMCP: mcpEntryPresent,
+					SkillsUpdate: func() (string, bool) { return skillsUpdateHint(cmd) },
+					Interactive:  hasInteractiveTTY,
 				}
-				code, err := launch.Run(&def, args)
+				code, err := launch.Run(&def, args, hooks)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					if code == 0 {
@@ -83,4 +90,57 @@ Session tokens expire after an hour; run 'orq setup' to mint a durable key.`,
 	}
 
 	return root
+}
+
+// keyOfferDeclinedDirs lists the directories where the user turned down
+// launch's key offer. It is per directory, not global: a scratch checkout that
+// never needs a key should stay quiet without silencing every other project.
+const keyOfferDeclinedDirs = "launch.key_offer_declined_dirs"
+
+// offerLaunchKey asks to replace the login session's token with a durable key
+// and mints it the way connect does. An empty key means the user declined, now
+// or earlier in this directory.
+func offerLaunchKey(cmd *cobra.Command, opts *setupOptions) (string, error) {
+	dir, _ := os.Getwd()
+	if keyOfferDeclined(dir) {
+		return "", nil
+	}
+	switch askKey(opts, "No durable API key for this workspace — what should the agent use?", loginTokenLabel, "Use my login token, and don't ask again in this directory") {
+	case keyCreate:
+	case keySession, keyAborted:
+		return "", nil
+	case keyOther:
+		if rememberKeyOfferDeclined(dir) == nil {
+			fmt.Fprintln(os.Stderr, "Not asking again in this directory; 'orq setup' creates the key whenever you want it.")
+		}
+		return "", nil
+	}
+	rep := newReporter(false)
+	state, err := resolveAuth(cmd.Context(), rep, opts)
+	if err != nil {
+		return "", err
+	}
+	return mintDurableKey(rep, auth.NewClient(state.apiBase), state, opts)
+}
+
+// declinedDirs reads the list. Stored as one newline-separated string: viper
+// lower-cases and dot-splits map keys, which would mangle paths.
+func declinedDirs() []string {
+	if bartolocli.Creds == nil {
+		return nil
+	}
+	return strings.Split(bartolocli.Creds.GetString(keyOfferDeclinedDirs), "\n")
+}
+
+func keyOfferDeclined(dir string) bool {
+	return dir != "" && slices.Contains(declinedDirs(), dir)
+}
+
+func rememberKeyOfferDeclined(dir string) error {
+	if dir == "" || bartolocli.Creds == nil {
+		return errors.New("nowhere to remember the answer")
+	}
+	dirs := slices.DeleteFunc(append(declinedDirs(), dir), func(d string) bool { return d == "" })
+	bartolocli.Creds.Set(keyOfferDeclinedDirs, strings.Join(dirs, "\n"))
+	return saveCreds()
 }

@@ -77,6 +77,13 @@ type setupOptions struct {
 	// default — so the answer the user is most likely to regret (declining a
 	// replacement, accepting a workspace switch) had no way to be exercised.
 	confirmFn func(message string, def bool) bool
+	// chooseFn overrides the single-choice prompt, for tests.
+	chooseFn func(message string, options []string) int
+	// useLoginToken lets otel write the login session's hour-long token when
+	// no durable key exists: --use-login-token, or picked at the key prompt.
+	useLoginToken bool
+	// noLoginToken hides the login-token choice: setup exists to create the durable key.
+	noLoginToken bool
 	// onConnectSuccess runs setup persistence after a real connect completes,
 	// before connect emits its machine-readable success result.
 	onConnectSuccess func(*reporter) error
@@ -141,6 +148,53 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 		return false
 	}
 	return answer
+}
+
+// choose asks for one of options and returns its index; -1 means no answer was
+// given: the prompt was abandoned, or --yes / an unattended run, which must
+// never pick an option that creates something.
+func (o *setupOptions) choose(message string, options []string) int {
+	switch {
+	case o.chooseFn != nil:
+		return o.chooseFn(message, options)
+	case o.yes || o.noInput:
+		return -1
+	}
+	picked := 0
+	if err := survey.AskOne(&survey.Select{Message: message, Options: options}, &picked, promptStdio()); err != nil {
+		return -1
+	}
+	return picked
+}
+
+// keyChoice is the answer to the key prompt connect and launch share.
+type keyChoice int
+
+const (
+	keyCreate keyChoice = iota
+	keySession
+	keyOther
+	keyAborted
+)
+
+const loginTokenLabel = "Use my login token (expires in about an hour)"
+
+// askKey offers: create a durable key, use the login token, or the caller's
+// own way out (other).
+func askKey(opts *setupOptions, message, session, other string) keyChoice {
+	switch opts.choose(message, []string{
+		fmt.Sprintf("Create a %d-day API key", int(gatewayKeyLifetime.Hours()/24)),
+		session,
+		other,
+	}) {
+	case 0:
+		return keyCreate
+	case 1:
+		return keySession
+	case 2:
+		return keyOther
+	}
+	return keyAborted
 }
 
 // confirmPersistent is confirm for a change that outlives the run. --yes does
@@ -218,7 +272,7 @@ type agentResult struct {
 }
 
 func NewSetupCommand() *cobra.Command {
-	opts := setupOptions{}
+	opts := setupOptions{noLoginToken: true}
 
 	cmd := &cobra.Command{
 		Use:   "setup",

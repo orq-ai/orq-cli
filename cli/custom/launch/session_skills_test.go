@@ -246,19 +246,17 @@ func TestDifferingSkillsHintFollowsTheUpdateCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	orig := SkillsUpdateHook
-	defer func() { SkillsUpdateHook = orig }()
-
-	SkillsUpdateHook = func() (string, bool) { return "", true }
-	if got := differingSkillsHint("pi"); got == "" || strings.Contains(got, "orq update") {
+	ctx := &AgentContext{}
+	ctx.Hooks.SkillsUpdate = func() (string, bool) { return "", true }
+	if got := differingSkillsHint(ctx, "pi"); got == "" || strings.Contains(got, "orq update") {
 		t.Errorf("latest CLI: got %q, want the warning without an upgrade suggestion", got)
 	}
-	SkillsUpdateHook = func() (string, bool) { return "orq 9.9.9 is out", true }
-	if got := differingSkillsHint("pi"); !strings.Contains(got, "9.9.9") {
+	ctx.Hooks.SkillsUpdate = func() (string, bool) { return "orq 9.9.9 is out", true }
+	if got := differingSkillsHint(ctx, "pi"); !strings.Contains(got, "9.9.9") {
 		t.Errorf("behind: got %q, want the release named", got)
 	}
-	SkillsUpdateHook = func() (string, bool) { return "", false }
-	if got := differingSkillsHint("pi"); !strings.Contains(got, "orq update") {
+	ctx.Hooks.SkillsUpdate = func() (string, bool) { return "", false }
+	if got := differingSkillsHint(ctx, "pi"); !strings.Contains(got, "orq update") {
 		t.Errorf("unknown: got %q, want the generic suggestion", got)
 	}
 }

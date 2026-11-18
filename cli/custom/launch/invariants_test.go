@@ -283,7 +283,7 @@ func TestLocalDryRunRedactsKey(t *testing.T) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	code, err := Run(FindAgent("claude"), []string{"--dry-run", "--no-fetch-models"})
+	code, err := Run(FindAgent("claude"), []string{"--dry-run", "--no-fetch-models"}, Hooks{})
 	w.Close()
 	os.Stdout = old
 	out, _ := io.ReadAll(r)
