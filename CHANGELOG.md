@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.10.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.0) — 2026-11-18
+
 **Changed:** `orq connect <agent> otel` (today: `claude`) now needs a durable
 API key. When none is saved, or the only one is the login session's hour-long
 token, it offers to log in and create one, the same prompt `orq connect` uses
