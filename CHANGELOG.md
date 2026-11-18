@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.11.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.0) — 2026-11-18
+
 - **Changed:** `orq launch claude` now matches a first-party Claude Code session
   more closely (RES-1758). It turns tool search back on through the gateway
   (`ENABLE_TOOL_SEARCH=true`), which the gateway host otherwise disables; this
