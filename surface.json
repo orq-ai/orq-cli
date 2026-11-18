@@ -1582,11 +1582,7 @@
     },
     {
       "path": "orq auth profile add",
-      "use": "add"
-    },
-    {
-      "path": "orq auth profile add ApiKey",
-      "use": "ApiKey [flags] \u003cname\u003e [\u003capi-key\u003e]",
+      "use": "add [flags] \u003cname\u003e [\u003capi-key\u003e]",
       "flags": [
         {
           "name": "api-key-file",
@@ -6355,6 +6351,7 @@
     {
       "path": "orq mcp",
       "use": "mcp",
+      "hidden": true,
       "flags": [
         {
           "name": "groups",
