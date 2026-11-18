@@ -120,6 +120,23 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
+Secret Service through `secret-tool`) on first use. `credentials.json` keeps an
+`api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file` now also
+keeps profile keys in `credentials.json`, as it already did for sessions. A key
+in a store this process cannot read (locked, or no store here) is reported as
+unreadable, with the store named, rather than as a missing key.
+
+**Added:** `orq doctor -o json` reports `auth.api_key_store` and, when the store
+cannot be read, `auth.store_error`. It adds an `api_key_store` check and the
+`auth.status` value `profile-store-unreadable`. `orq status -o json` adds
+`api_key_store` and `store_error`. `orq auth profile list` shows `in <store>` in
+the KEY column for a stored key.
+
+**Downgrade caution:** an older `orq` sees a profile whose key is only in the
+store as keyless, and its layout migration can delete that profile. Do not run
+an older `orq` against a `credentials.json` written by this version.
+
 ## [12.11.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.0) — 2026-11-18
 
 - **Changed:** `orq launch claude` now matches a first-party Claude Code session
@@ -143,23 +160,6 @@ controls on surface changes, whichever side they originate from.
 ## [12.10.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.1) — 2026-11-18
 
 **Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
-
-**Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
-Secret Service through `secret-tool`) on first use. `credentials.json` keeps an
-`api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file` now also
-keeps profile keys in `credentials.json`, as it already did for sessions. A key
-in a store this process cannot read (locked, or no store here) is reported as
-unreadable, with the store named, rather than as a missing key.
-
-**Added:** `orq doctor -o json` reports `auth.api_key_store` and, when the store
-cannot be read, `auth.store_error`. It adds an `api_key_store` check and the
-`auth.status` value `profile-store-unreadable`. `orq status -o json` adds
-`api_key_store` and `store_error`. `orq auth profile list` shows `in <store>` in
-the KEY column for a stored key.
-
-**Downgrade caution:** an older `orq` sees a profile whose key is only in the
-store as keyless, and its layout migration can delete that profile. Do not run
-an older `orq` against a `credentials.json` written by this version.
 
 ## [12.10.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.0) — 2026-11-18
 
