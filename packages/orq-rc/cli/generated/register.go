@@ -5,7 +5,9 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/orq-ai/bartolo/mcpserver"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // Register wires the generated OpenAPI command tree onto the provided root.
@@ -17,7 +19,6 @@ func Register(root *cobra.Command) {
 	initGeneratedRuntime()
 	root.Short = "orq.ai API"
 	root.Long = bartolocli.Markdown("orq.ai API documentation")
-
 	registerRootCommands(root)
 	registerresponsesCommands(root)
 	registeragentsCommands(root)
@@ -46,7 +47,6 @@ func Register(root *cobra.Command) {
 	registermonitorsCommands(root)
 	registernotifiersCommands(root)
 	registerpiiCommands(root)
-	registerpoliciesCommands(root)
 	registerprojectsCommands(root)
 	registerpromptsCommands(root)
 	registerreportingCommands(root)
@@ -76,10 +76,14 @@ func Register(root *cobra.Command) {
 	registerexperimentsCommands(root)
 	registerlogsCommands(root)
 	registermodelFusionsCommands(root)
+	registerbatchesCommands(root)
 	registerclassifyCommands(root)
 	registerdecisionsCommands(root)
+	registertelemetryDestinationsCommands(root)
 	registertelemetryCommands(root)
 	registerusersCommands(root)
 	registerviewsCommands(root)
 	registerwebsearchCommands(root)
+	mcpCommand := mcpserver.Command(viper.GetString("app-name"), root.Version, mcpTools, mcpOptions()...)
+	root.AddCommand(mcpCommand)
 }

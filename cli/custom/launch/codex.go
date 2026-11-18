@@ -21,6 +21,8 @@ func codexAgent() AgentDef {
 		FetchesModels:    true,
 		AllowModels:      false,
 		SubscriptionAuth: true,
+		MCPEnvAuth:       true,
+		RequestHeaders:   true,
 		Prompt: &PromptMapping{
 			Flags: []string{"-p", "--prompt"},
 			// Only the subcommand, no approval or sandbox flag: those are
@@ -89,9 +91,13 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 		buildOverrideArgs = BuildCodexChatGPTOverrideArgs
 	}
 	plan.PreArgs = buildOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
-	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("codex") {
+	if url := sessionMCPURL(ctx, "codex"); url != "" {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
+		if ctx.Flags.MCPEnvAuth {
+			plan.PreArgs = append(plan.PreArgs, codexMCPEnvAuthArgs()...)
+		}
 	}
+	plan.PreArgs = append(plan.PreArgs, codexHeaderArgs(threadHeaders(ctx.Flags))...)
 	maybeInstallSessionSkills(ctx, plan, "codex")
 	return plan, nil
 }
@@ -120,6 +126,21 @@ func tomlOverride(key, value string) string {
 // CodexProvider is the key codex registers the orq gateway under.
 const CodexProvider = "orq"
 
+const codexProviderKey = "model_providers." + CodexProvider
+
+// codexHeaderArgs wires launch's headers as -c overrides. Session-only, so it
+// stays out of CodexProviderSettings, which `orq setup` persists. The value is
+// always a TOML string, or a thread id of 123 would become an integer in a
+// string table; the name is safe as a bare key because addMetadata's pattern
+// allows only letters, digits and hyphens.
+func codexHeaderArgs(headers []RequestHeader) []string {
+	var args []string
+	for _, h := range headers {
+		args = append(args, "-c", tomlOverride(codexProviderKey+".http_headers."+h.Name, h.Value))
+	}
+	return args
+}
+
 // CodexProviderSettings is the codex configuration that points it at the orq
 // gateway, as ordered dotted-key/value pairs with TOML-encoded values.
 //
@@ -135,7 +156,7 @@ func CodexProviderSettings(model, baseURL, modelCatalogPath string, chatGPT bool
 	if model != "" {
 		settings = append(settings, [2]string{"model", TOMLString(model)})
 	}
-	provider := "model_providers." + CodexProvider
+	provider := codexProviderKey
 	settings = append(settings,
 		[2]string{"model_provider", TOMLString(CodexProvider)},
 		[2]string{provider + ".name", TOMLString(ProviderDisplayName)},

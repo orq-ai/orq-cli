@@ -115,7 +115,7 @@ func resolveCopilot(ctx *AgentContext) (*LaunchPlan, error) {
 	// override for the same server, claude's --mcp-config file). The payload
 	// is wrapped in a top-level "mcpServers" object: a bare name-keyed map was
 	// rejected live with `mcpServers: Required`.
-	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("copilot") {
+	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured(ctx, "copilot") {
 		plan.PreArgs = append(plan.PreArgs, "--additional-mcp-config", httpMCPConfigJSON(url))
 	}
 	maybeInstallSessionSkills(ctx, plan, "copilot")

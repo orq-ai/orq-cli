@@ -16,7 +16,7 @@ Use the orq MCP server (`https://my.orq.ai/v2/mcp`) as the primary interface. Fo
 |------|---------|
 | `create_llm_eval` | Create an LLM evaluator |
 | `create_python_eval` | Create a Python evaluator for code-based checks |
-| `evaluator_get` | Retrieve any evaluator by ID |
+| `get_llm_eval` / `get_python_eval` | Retrieve an evaluator by ID |
 | `list_traces` | List and filter traces for error analysis |
 | `list_spans` | List spans within a trace |
 | `get_span` | Get detailed span information |
@@ -36,8 +36,8 @@ For operations not yet in MCP.
 ### Evaluators
 
 ```bash
-# List evaluators
-curl -s https://api.orq.ai/v2/evaluators \
+# List evaluators (paginate with starting_after=<last _id> while has_more is true; `after=` is ignored)
+curl -s "https://api.orq.ai/v2/evaluators?limit=50" \
   -H "Authorization: Bearer $ORQ_API_KEY" \
   -H "Content-Type: application/json" | jq
 
@@ -47,7 +47,7 @@ curl -s https://api.orq.ai/v2/evaluators/<ID> \
   -H "Content-Type: application/json" | jq
 
 # Invoke an evaluator
-curl -s https://api.orq.ai/v2/evaluators/<ID>/invoke \
+curl -s https://api.orq.ai/v3/evaluators/<ID>/invoke \
   -H "Authorization: Bearer $ORQ_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"output": "LLM output", "query": "Original input", "reference": "Expected answer"}' | jq
@@ -62,16 +62,11 @@ curl -s https://api.orq.ai/v2/agents \
   -H "Content-Type: application/json" | jq
 
 # Invoke an agent (for generating test traces)
-curl -s -X POST https://api.orq.ai/v2/agents/<AGENT_KEY>/responses \
-  -H "Authorization: Bearer $ORQ_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"message": {"role": "user", "parts": [{"kind": "text", "text": "Test input"}]}, "background": false}' | jq
+orq responses create --model "agent/<AGENT_KEY>" --input "Test input" -o json
 
-# Multi-turn agent testing (reuse task_id)
-curl -s -X POST https://api.orq.ai/v2/agents/<AGENT_KEY>/responses \
-  -H "Authorization: Bearer $ORQ_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"task_id": "<task_id>", "message": {"role": "user", "parts": [{"kind": "text", "text": "Step 2"}]}, "background": false}' | jq
+# Continue with the response id
+orq responses create --model "agent/<AGENT_KEY>" --input "Step 2" \
+  --previous-response-id "<response_id>" -o json
 ```
 
 ### Tools

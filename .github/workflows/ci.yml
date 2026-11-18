@@ -61,6 +61,18 @@ jobs:
           # not linted here; they carry their own shellcheck disable directives
           # for whoever adds that step.
           "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
+      - name: vendored skills match their pinned assistant-plugins ref
+        # vendor-skills.yml writes these trees; rebuilding them at the ref in
+        # SOURCE.json proves nobody edited them by hand.
+        run: |
+          set -euo pipefail
+          ./scripts/vendor-skills.sh "$(jq -r .ref cli/custom/skills/assets/SOURCE.json)"
+          git diff --exit-code -- cli/custom/skills/assets cli/custom/launch/assets/orq-trace
+          untracked="$(git ls-files --others --exclude-standard -- cli/custom/skills/assets cli/custom/launch/assets/orq-trace)"
+          if [ -n "$untracked" ]; then
+            printf 'vendored files missing from the commit:\n%s\n' "$untracked" >&2
+            exit 1
+          fi
       - name: staged installer release assets
         run: |
           set -euo pipefail

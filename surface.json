@@ -2386,6 +2386,10 @@
           "type": "bool"
         },
         {
+          "name": "use-login-token",
+          "type": "bool"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"
@@ -6343,6 +6347,61 @@
           "type": "bool"
         }
       ]
+    },
+    {
+      "path": "orq mcp",
+      "use": "mcp",
+      "hidden": true,
+      "flags": [
+        {
+          "name": "groups",
+          "type": "stringSlice"
+        },
+        {
+          "name": "http",
+          "type": "string"
+        },
+        {
+          "name": "http-allowed-origins",
+          "type": "stringSlice"
+        },
+        {
+          "name": "http-auth",
+          "type": "string"
+        },
+        {
+          "name": "http-insecure",
+          "type": "bool"
+        },
+        {
+          "name": "http-oauth-audience",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-issuer",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-jwks",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-scopes",
+          "type": "stringSlice"
+        },
+        {
+          "name": "read-only",
+          "type": "bool"
+        },
+        {
+          "name": "tools",
+          "type": "stringSlice"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp list",
+      "use": "list"
     },
     {
       "path": "orq mcp-gateways",

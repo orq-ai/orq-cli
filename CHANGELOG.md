@@ -120,6 +120,95 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.10.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.2) — 2026-11-18
+
+**Fixed:** API-key profiles saved by earlier versions authenticate again. 12.10.1 rejected them with `profile declares auth type "apikey"; this CLI registers ApiKey`; profiles 12.10.1 saved keep working too. `orq auth profile add <name>` is one command again, with no `ApiKey` subcommand. The `orq mcp` server that 12.10.1 added by accident is hidden from help.
+
+## [12.10.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.1) — 2026-11-18
+
+**Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
+
+## [12.10.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.0) — 2026-11-18
+
+**Changed:** `orq connect <agent> otel` (today: `claude`) now needs a durable
+API key. When none is saved, or the only one is the login session's hour-long
+token, it offers to log in and create one, the same prompt `orq connect` uses
+for the gateway. Without a key it writes nothing and says so, instead of saving
+an exporter that cannot authenticate. Runs with `--yes` or `--no-input` never
+create a key. Every connect leg now picks its key from one place, in one order:
+`--api-key`, the saved key, `ORQ_API_KEY`, then an `orq auth login --api-key`
+login; that last one is now reused instead of minting a second key.
+
+**Added:** for quick checks, `orq connect <agent> otel` can write the login
+token instead of a durable key: pick "Use my login token" at the key prompt, or
+pass `--use-login-token` (the only way in `--yes`/`--no-input` runs; it needs `orq auth login` and no profile). `orq setup` does not offer it. It warns
+that traces stop when the token expires, in about an hour, and the next connect
+run with a durable key replaces it. The gateway still needs a durable key, so
+it is skipped when the login token is picked.
+
+**Changed:** `orq launch` offers the same key when it would hand the agent (and
+its trace export) the session token, with three choices: create the
+key, use the login token this time, or use it and stop asking in this
+directory. `orq setup` creates the key whenever you want it.
+
+## [12.9.9](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.9) — 2026-11-17
+
+**Fixed:** `orq projects use`, `orq switch`, `orq setup` and `orq auth login` no
+longer overwrite what another `orq` command saved to the session while they were
+waiting on the network, such as a gateway key from a parallel `orq setup`.
+
+**Changed:** if your login is replaced or removed while `orq projects use`,
+`orq switch` or `orq setup` is running, the command now fails with "the login
+changed while this command ran" and saves nothing. Before, it wrote the old
+login's session back over the new one.
+
+## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
+
+**Changed:** `orq setup` and `orq connect skills` install the current orq
+skills, from [assistant-plugins](https://github.com/orq-ai/assistant-plugins)
+4.0.0; until now the CLI shipped a copy from 2026-07-29. The set grows from 14
+to 20 skills: `orq-analyze-trace-failures` and `orq-optimize-prompt` are
+replaced by `orq-analyze-traces` and `orq-improve-agent`, and `create-skill`,
+`orq-cli`, `orq-quickstart`, `orq-recommend-evaluators`, `orq-review-agent` and
+`orq-shared` are new. An existing install drops the two retired skills on its
+next skills command; run `orq connect skills` again to install the new ones.
+From now on a scheduled workflow opens a PR whenever assistant-plugins
+releases, so the embedded skills no longer go stale between CLI releases.
+
+**Changed:** `orq launch claude --trace` loads orq-trace 0.6.1 (was 0.5.0) and
+pins its destination with `ORQ_OTLP_ENDPOINT`, which 0.6 reads in place of a
+config file, so a traced staging session keeps exporting to staging.
+
+## [12.9.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.0) — 2026-11-10
+
+**Added:** `orq launch` can authenticate the orq MCP server in a run with no
+browser. `--mcp-auth env` (claude, codex, opencode, kilo, gemini) makes the
+session's entry name `ORQ_API_KEY`; the key itself is still never written. The
+default stays `oauth`. This reverses two earlier decisions, both only under this
+flag: "launch writes no credential" now means no credential value, and a session
+entry takes precedence over a persisted one, which may never have finished its
+browser login. Tools need a workspace API key with their permissions, since the
+key `orq setup` saves holds only gateway access and model read. Tool approval
+stays with the agent, so a headless codex or gemini run also approves each tool.
+An `ORQ_MCP_URL` whose scheme, host or port differs from the API base is
+refused under this flag, because the credential would go there. The flag never offers a browser
+login, so log in first or export a key.
+
+**Added:** `orq launch --thread-id <id>` and `--metadata <key=value>` (same
+agents) send `X-ORQ-THREAD-ID` and `X-ORQ-METADATA-<key>` on the agent's model
+calls, so a caller can find or tag one run. Values and keys the gateway would
+drop, truncate or read for itself are refused at parse time, and so is a thread
+id over 256 characters. A claude launch with these flags while a provider switch
+such as `CLAUDE_CODE_USE_BEDROCK` is on fails before claude starts, because that
+provider never sees the headers. `--mcp-auth`,
+`--thread-id` and `--metadata` are now launcher flags on every agent, so an agent's
+own flag of that name goes after `--`.
+
+**Changed:** a gemini launch with no thread id now sends a generated
+`X-ORQ-THREAD-ID` and prints it on stderr, because gemini-cli sends no session id
+and each of its model calls was otherwise a separate trace. An id you export in
+`GEMINI_CLI_CUSTOM_HEADERS` or pass with `--thread-id` is used instead.
+
 ## [12.4.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.4.0) — 2026-10-22
 
 **Added:** `orq auth token` prints the access token of your browser login for

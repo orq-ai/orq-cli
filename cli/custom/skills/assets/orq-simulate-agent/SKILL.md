@@ -8,10 +8,9 @@ description: >
   broken. Use when generating realistic multi-turn data for experiments,
   stress-testing conversational agents, or producing seed transcripts for
   dataset curation. Do NOT use when you have enough real production
-  conversations (use `orq-analyze-trace-failures`). Do NOT use for adversarial
-  red-teaming sweeps (use evaluatorq's built-in `red_team()` directly, see
-  `resources/redteam-mode.md`).
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, orq*
+  conversations (use `orq-analyze-traces`). Do NOT use for adversarial
+  red-teaming sweeps (use `orq-red-team`).
+allowed-tools: Read, Write, Edit, Grep, Glob, WebFetch, Task, AskUserQuestion, mcp__orq-workspace__search_entities
 ---
 
 # Simulate Agent
@@ -25,11 +24,13 @@ plays the persona, the **agent under test** responds, and a **JudgeAgent**
 decides whether to continue or terminate based on goal achievement and rule
 violations. You almost never need to hand-roll the loop.
 
+**Invocation policy (models and agents):** Default to `POST /v3/router/responses` or `orq responses create`. Set `model` to `provider/model-id` for a model or `agent/<key>` for a managed agent, and pass `input`. Use `openai/gpt-6-luna` for default model command examples unless the user specifies another model. Prefer Responses over Chat Completions; do not use v2 inference routes. Use another inference interface only when the user explicitly requests it. Legacy agent execution APIs remain deprecated. Never fall back to v2, Chat Completions, or legacy agent endpoints after a routing or model error. Use Responses for streaming and continuation too. Prefer the orq SDK for new code and when it is already imported. If orq is not imported and OpenAI already is, reuse OpenAI instead of adding a second SDK. Configuration, deployment, evaluator, and telemetry APIs retain their own contracts. When using a framework adapter, confirm its installed version routes model and agent calls through general Responses. If it uses another inference interface, upgrade it or provide a Responses-backed callable; an adapter limitation is not an implicit exception.
+
 ## Constraints
 
-- **NEVER** use the same model for the user simulator and the agent under test if a downstream LLM-as-judge is reading both. Collusion inflates scores. `simulate()` accepts one `sim_model=` kwarg that drives the simulator, judge, and first-message generator. The agent's own model lives inside `agent_key` or the `target_callback`. To customize the user simulator separately, build a `UserSimulatorAgent(model=...)` and pass it as `user_simulator=`.
+- **NEVER** use the same model for the user simulator and the agent under test if a downstream LLM-as-judge is reading both. Collusion inflates scores. `simulate()` accepts one `sim_model=` kwarg that drives the simulator, judge, and first-message generator. The agent's own model lives inside the target (`target="agent:<key>"` or the callback). To customize the user simulator separately, build a `UserSimulatorAgent(model=...)` and pass it as `user_simulator=`.
 - **NEVER** let the simulator run unbounded. `simulate()` defaults to `max_turns=10`. Lower it for cheap exploration, raise it for memory tests.
-- **NEVER** hand-roll the loop around `orq.agents.responses.create()` when `simulate()` or `wrap_simulation_agent()` covers the case. The framework already handles parallelism, judge-based termination, OTel tracing, and result conversion.
+- **NEVER** hand-roll the loop around `client.responses.create()` when `simulate()` or `wrap_simulation_agent()` covers the case. The framework already handles parallelism, judge-based termination, OTel tracing, and result conversion.
 - **NEVER** invent persona scalars from a one-line brief. `patience`, `assertiveness`, `politeness`, `technical_level` are floats `[0-1]`. Pick them deliberately and write them down.
 - **NEVER** discard the conversation log. `SimulationResult.messages` is the primary artifact, OTel spans land in orq.ai automatically, and `wrap_simulation_agent()` returns a job that auto-uploads to orq.ai when you pass it to `evaluatorq(...)` with `ORQ_API_KEY` set. Close wrapped jobs with `await job.aclose()` after the run.
 - **ALWAYS** review at least one full transcript with the user before scaling to N personas. Simulated users go off the rails in ways only humans notice.
@@ -42,7 +43,8 @@ violations. You almost never need to hand-roll the loop.
 - `orq-generate-synthetic-dataset`, turn reviewed simulation transcripts into a curated dataset
 - `orq-run-experiment`, once transcripts exist, evaluate them with conversation-level scorers
 - `orq-build-evaluator`, design a `SimulationScorer` that reads `SimulationResult`
-- `orq-analyze-trace-failures`, prefer this if real production conversations already exist
+- `orq-analyze-traces`, prefer this if real production conversations already exist
+- **orq-cli** — the same platform operations from a shell, for anything that must run again without an agent present (CI, cron, scripts, bulk): auth via `ORQ_API_KEY`, `-o json` output. See its "MCP tools or the CLI?" table before choosing.
 
 ## When to use
 
@@ -53,9 +55,11 @@ violations. You almost never need to hand-roll the loop.
 
 ## When NOT to use
 
-- Real production conversations are available, use `orq-analyze-trace-failures`
+- Real production conversations are available, use `orq-analyze-traces`
 - Single-turn input/output evaluation, use `orq-run-experiment`
-- Red-teaming sweeps with attack categories, call `evaluatorq.red_team()` directly (see [resources/redteam-mode.md](resources/redteam-mode.md))
+- Red-teaming sweeps with attack categories, use [`orq-red-team`](../orq-red-team/SKILL.md) — it owns `evaluatorq.redteam.red_team()`, the OWASP categories and the ASR reporting
+
+  Come back here when the goal is realism rather than adversarial coverage: personas spanning non-attack axes (politeness, urgency, expertise), or simulated conversations that seed an experiment dataset.
 
 ## Workflow Checklist
 
@@ -77,13 +81,13 @@ Pick one of the three target shapes that `simulate()` accepts:
 
 | Shape | When | How |
 |---|---|---|
-| `agent_key="..."` | Agent lives in orq.ai as a deployment | Pass the deployment key directly |
-| `target_callback=fn` | Agent is a local function or third-party SDK | Wrap with `from_chat_completions(...)` or write a `Callable[[list[Message]], str]` |
+| `target="agent:<key>"` | Agent lives in orq.ai | Pass the target string (`"agent:<key>"` or `"deployment:<key>"`; a bare key defaults to `agent:`). There is no `agent_key=` parameter on `simulate()` |
+| `target=fn` | Agent is a local function or third-party SDK | Wrap with `from_chat_completions(...)` or write a `Callable[[list[Message]], str]` |
 | `target=AgentTarget(...)` | Full control over memory, clone, agent context, or building a custom agent on top of the orq.ai Responses API | Implement the `AgentTarget` protocol from `evaluatorq.contracts`, or use the bundled `OrqResponsesTarget(config=LLMCallConfig(...))`. See [resources/simulation-loop.md](resources/simulation-loop.md) for the full signature |
 
-If the user wants to drive an existing orq agent, use `search_entities` with `type: "agent"` to resolve the key. Verify it answers one turn end-to-end before wrapping it in a loop.
+If the user wants to drive an existing orq agent or deployment, use `search_entities` to **browse** available keys (`type: "agent"` or `type: "deployment"`). Then **verify the key with the run key** via REST or SDK (see [run-key preflight](../orq-shared/resources/run-key-preflight.md)) — agents via `GET /v2/agents/<key>` (confirm `"status":"live"`), deployments via `POST /v2/deployments/get_config` (200 = invokable; 204 = no published version, stop and ask). After the key is verified, confirm it answers one turn end-to-end before wrapping it in a loop.
 
-The framework ships `from_orq_deployment(agent_key)` and `from_chat_completions(fn)` adapters in `evaluatorq.simulation.adapters`. For Vercel AI SDK or LangChain agents, write a small `target_callback` that calls your agent's generate/invoke method and returns the assistant text.
+The framework ships `from_orq_deployment(agent_key)` and `from_chat_completions(fn)` adapters in `evaluatorq.simulation.adapters`. For Vercel AI SDK or LangChain agents, write a small callable and pass it as `target=` — it calls your agent's generate/invoke method and returns the assistant text.
 
 ## Phase 2: Define the persona
 
@@ -146,13 +150,13 @@ capabilities from `evaluatorq.__version__` alone.
 
 | Entry point | Use when | Auto-upload to orq.ai |
 |---|---|---|
-| `wrap_simulation_agent()` | You want a simulation job inside an `evaluatorq()` run; accepts `agent_key` or `target_callback` | Yes, when you pass the returned job into `evaluatorq(...)` with `ORQ_API_KEY` set |
+| `wrap_simulation_agent()` | You want a simulation job inside an `evaluatorq()` run; accepts `agent_key` or `target` | Yes, when you pass the returned job into `evaluatorq(...)` with `ORQ_API_KEY` set |
 | `simulate()` | You have personas + scenarios already and just want results back | Yes by default when `ORQ_API_KEY` is set; pass `upload_results=False` for a local-only run |
 | `generate_and_simulate()` | You only have an `agent_description` and want personas + scenarios synthesized | Same as `simulate()` |
 
 Use `simulate()` for the direct API and `wrap_simulation_agent()` when composing the simulation as a job inside a larger `evaluatorq()` run. Both paths support auto-upload, OTel, and the results table.
 
-The APIs intentionally differ: `simulate()` and `generate_and_simulate()` take `sim_model=` plus `evaluator_names=[...]`, defaulting to `["goal_achieved", "criteria_met"]`. `wrap_simulation_agent()` retains `model=`, accepts only `agent_key` or `target_callback`, and rejects `evaluators=`. Put evaluatorq scorers on the outer `evaluatorq(..., evaluators=[...])` call, then close the returned job with `await job.aclose()`.
+The APIs intentionally differ: `simulate()` and `generate_and_simulate()` take `sim_model=` plus `evaluator_names=[...]`, defaulting to `["goal_achieved", "criteria_met"]`. `wrap_simulation_agent()` retains `model=`, accepts only `agent_key` or `target`, and rejects `evaluators=`. Put evaluatorq scorers on the outer `evaluatorq(..., evaluators=[...])` call, then close the returned job with `await job.aclose()`.
 
 Full code in [resources/simulation-loop.md](resources/simulation-loop.md).
 
@@ -198,4 +202,3 @@ Tell the user all four. The OTel span and Experiment URL are what designers and 
 
 - [resources/persona-scenario-template.md](resources/persona-scenario-template.md), `Persona` and `Scenario` filled examples with all enum values listed
 - [resources/simulation-loop.md](resources/simulation-loop.md), `simulate()`, `generate_and_simulate()`, `wrap_simulation_agent()` patterns with all target shapes
-- [resources/redteam-mode.md](resources/redteam-mode.md), when to switch to `evaluatorq.red_team()` instead

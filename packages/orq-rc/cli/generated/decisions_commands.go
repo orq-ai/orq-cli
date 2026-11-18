@@ -125,7 +125,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 							Name:        "timeout",
 							FlagName:    "timeout",
 							Type:        "json",
-							Description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
+							Description: "Timeout for each model call. Each retry and fallback gets a fresh timeout. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
 						},
 					},
 				)
@@ -233,7 +233,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 					Name:        "timeout",
 					FlagName:    "timeout",
 					Type:        "json",
-					Description: "Timeout for each model call, including every retry and fallback. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
+					Description: "Timeout for each model call. Each retry and fallback gets a fresh timeout. A timed-out call returns 408 and advances to the next fallback after configured retries are exhausted.",
 				},
 			},
 		)

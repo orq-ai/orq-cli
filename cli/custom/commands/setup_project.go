@@ -21,9 +21,7 @@ func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, op
 		// project active and made --no-project a no-op for exactly the users who
 		// had one to clear.
 		if state.session != nil && state.session.ActiveProjectID != "" {
-			state.session.ActiveProjectID = ""
-			state.session.ActiveProjectName = ""
-			if err := auth.SaveSession(state.session); err != nil {
+			if err := recordActiveProject(state.session, "", ""); err != nil {
 				return nil, fmt.Errorf("could not clear the active project: %w", err)
 			}
 		}
@@ -85,9 +83,7 @@ func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, op
 		}
 	}
 
-	state.session.ActiveProjectID = chosen.ProjectID
-	state.session.ActiveProjectName = chosen.Name
-	if err := auth.SaveSession(state.session); err != nil {
+	if err := recordActiveProject(state.session, chosen.ProjectID, chosen.Name); err != nil {
 		return nil, fmt.Errorf("could not record the active project: %w", err)
 	}
 	state.projectID = chosen.ProjectID

@@ -216,13 +216,12 @@ func TestMaybeWriteSessionSkillsSuppressedByNoSkills(t *testing.T) {
 // The launch side asks the registry, through the hook the commands package
 // injects. Unset means "cannot tell", which must not read as "already wired".
 func TestPersistedMCPHookDecides(t *testing.T) {
-	if persistedMCPConfigured("claude") {
+	if persistedMCPConfigured(&AgentContext{}, "claude") {
 		t.Fatal("an uninjected hook claimed the agent was already wired")
 	}
 	var asked string
-	PersistedMCPHook = func(agent string) bool { asked = agent; return true }
-	t.Cleanup(func() { PersistedMCPHook = nil })
-	if !persistedMCPConfigured("codex") || asked != "codex" {
+	ctx := &AgentContext{Hooks: Hooks{PersistedMCP: func(agent string) bool { asked = agent; return true }}}
+	if !persistedMCPConfigured(ctx, "codex") || asked != "codex" {
 		t.Fatalf("hook not consulted for the agent asked about: asked=%q", asked)
 	}
 }

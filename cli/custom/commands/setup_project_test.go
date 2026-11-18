@@ -24,10 +24,19 @@ func projectStepState(t *testing.T, apiBase string) *authState {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	key := "acme"
+	session := &auth.Session{
+		Version: 1, APIBaseURL: apiBase, AuthBaseURL: apiBase, V1BaseURL: apiBase, ProfileBaseURL: apiBase,
+		RefreshToken:       "refresh",
+		BootstrapToken:     auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: "2099-01-01T00:00:00Z"},
+		ActiveWorkspaceKey: &key,
+	}
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
 	return &authState{
 		apiBase: apiBase,
 		bearer:  "session-token",
-		session: &auth.Session{ActiveWorkspaceKey: &key},
+		session: session,
 	}
 }
 

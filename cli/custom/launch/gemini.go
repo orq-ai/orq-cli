@@ -66,13 +66,15 @@ func geminiServesModel(id string) bool {
 
 func geminiAgent() AgentDef {
 	return AgentDef{
-		Name:          "gemini",
-		Binary:        "gemini",
-		Label:         "Gemini CLI",
-		InstallHint:   "npm install -g @google/gemini-cli",
-		FetchesModels: true,
-		HelpRoute:     helpRoute("Gemini", DefaultGeminiGatewayURL),
-		HelpModel:     "Gemini model id, bare (e.g. gemini-2.5-pro)",
+		Name:           "gemini",
+		Binary:         "gemini",
+		Label:          "Gemini CLI",
+		InstallHint:    "npm install -g @google/gemini-cli",
+		FetchesModels:  true,
+		MCPEnvAuth:     true,
+		RequestHeaders: true,
+		HelpRoute:      helpRoute("Gemini", DefaultGeminiGatewayURL),
+		HelpModel:      "Gemini model id, bare (e.g. gemini-2.5-pro)",
 		// gemini-cli takes one --model per session and has no picker list to
 		// populate (settings.json holds auth and MCP servers, nothing about
 		// models), so resolved.GatewayModels has nowhere to go here. Offering
@@ -124,7 +126,7 @@ func resolveGemini(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	home, cleanup, err := writeGeminiHome(BuildGeminiSettingsJSON(mcpURL(ctx)))
+	home, cleanup, err := writeGeminiHome(BuildGeminiSettingsJSON(mcpURL(ctx), ctx.Flags.MCPEnvAuth))
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +151,17 @@ func resolveGemini(ctx *AgentContext) (*LaunchPlan, error) {
 			"gemini launches with a fresh config home for this session, so its own extensions, skills and session history are not available",
 		},
 		PreArgs: []string{"--model", resolved.GatewayModel},
+	}
+	exported := ctx.Getenv(geminiHeadersEnv)
+	headers := threadHeaders(ctx.Flags)
+	if id := generatedGeminiThreadID(ctx.Flags, exported); id != "" {
+		headers = append(headers, RequestHeader{Name: threadIDHeader, Value: id})
+		// Printed because it is the only way to look this run up afterwards.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"gemini-cli sends no session id, so this launch groups its model calls under generated thread id %s; pass --thread-id to choose your own", id))
+	}
+	if len(headers) > 0 {
+		plan.Env[geminiHeadersEnv] = mergeHeaderEnv(exported, ',', headers)
 	}
 	// Only the fetch warnings, not appendModelWarnings' missing-provider-prefix
 	// hint: a bare id is the correct shape here, since the gateway's
@@ -205,16 +218,19 @@ func geminiRewriteWarning(model string) string {
 // plus the orq MCP server when mcpServerURL is non-empty. gemini-cli reads
 // httpUrl for a remote server (server.httpUrl || server.url in its own
 // source), the same field name a persisted `gemini mcp add` entry would use.
-func BuildGeminiSettingsJSON(mcpServerURL string) map[string]any {
+// envAuth is --mcp-auth env: gemini-cli expands $VAR in settings.json.
+func BuildGeminiSettingsJSON(mcpServerURL string, envAuth bool) map[string]any {
 	settings := map[string]any{
 		"security": map[string]any{
 			"auth": map[string]any{"selectedType": geminiAuthSelectedType},
 		},
 	}
 	if mcpServerURL != "" {
-		settings["mcpServers"] = map[string]any{
-			MCPServerName: map[string]any{"httpUrl": mcpServerURL},
+		entry := map[string]any{"httpUrl": mcpServerURL}
+		if envAuth {
+			entry["headers"] = map[string]any{"Authorization": "Bearer $" + mcpKeyEnv}
 		}
+		settings["mcpServers"] = map[string]any{MCPServerName: entry}
 	}
 	return settings
 }
