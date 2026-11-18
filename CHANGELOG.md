@@ -122,10 +122,6 @@ controls on surface changes, whichever side they originate from.
 
 **Fixed:** API-key profiles saved by earlier versions authenticate again. 12.10.1 rejected them with `profile declares auth type "apikey"; this CLI registers ApiKey`; profiles 12.10.1 saved keep working too. `orq auth profile add <name>` is one command again, with no `ApiKey` subcommand. The `orq mcp` server that 12.10.1 added by accident is hidden from help.
 
-## [12.10.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.1) — 2026-11-18
-
-**Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
-
 - **Changed:** `orq launch claude` now matches a first-party Claude Code session
   more closely (RES-1758). It turns tool search back on through the gateway
   (`ENABLE_TOOL_SEARCH=true`), which the gateway host otherwise disables; this
@@ -135,6 +131,10 @@ controls on surface changes, whichever side they originate from.
   the per-turn-control beta line up with first party. A value you exported for
   `ENABLE_TOOL_SEARCH` or any `ANTHROPIC_DEFAULT_*_MODEL` still wins, and
   `--dry-run` shows them.
+
+## [12.10.1](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.1) — 2026-11-18
+
+**Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
 
 ## [12.10.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.0) — 2026-11-18
 
