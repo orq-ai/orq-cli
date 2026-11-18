@@ -210,6 +210,11 @@ func TestMergeHeaderEnv(t *testing.T) {
 // this file does not test turned off.
 func resolveSession(t *testing.T, agent string, flags GatewayFlags, shell map[string]string) *LaunchPlan {
 	t.Helper()
+	return resolveSessionWith(t, agent, flags, shell, Hooks{})
+}
+
+func resolveSessionWith(t *testing.T, agent string, flags GatewayFlags, shell map[string]string, hooks Hooks) *LaunchPlan {
+	t.Helper()
 	def := FindAgent(agent)
 	flags.NoSkills = true
 	plan, err := def.Resolve(&AgentContext{
@@ -220,6 +225,7 @@ func resolveSession(t *testing.T, agent string, flags GatewayFlags, shell map[st
 			return []ModelInfo{{ID: "openai/gpt-5.6-terra"}, {ID: "anthropic/claude-sonnet-4-6"}, {ID: "google/gemini-3.5-flash"}}, nil
 		},
 		ExecProbe: func(string, ...string) (string, error) { return "", io.EOF },
+		Hooks:     hooks,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -318,8 +324,11 @@ func TestMCPEnvAuthEntryNamesTheVariableForEachAgent(t *testing.T) {
 }
 
 func TestMCPEnvAuthWritesOverAPersistedEntry(t *testing.T) {
-	PersistedMCPHook = func(string) bool { return true }
-	t.Cleanup(func() { PersistedMCPHook = nil })
+	wired := Hooks{PersistedMCP: func(string) bool { return true }}
+	resolveSession := func(t *testing.T, agent string, flags GatewayFlags, shell map[string]string) *LaunchPlan {
+		t.Helper()
+		return resolveSessionWith(t, agent, flags, shell, wired)
+	}
 	on := GatewayFlags{MCP: true, MCPEnvAuth: true}
 	off := GatewayFlags{MCP: true}
 
@@ -722,11 +731,11 @@ func TestLoginPromptIsOffForRunsWithNoBrowser(t *testing.T) {
 		{[]string{"--no-fetch-models", "--no-skills", "--mcp-auth", "env"}, false},
 	} {
 		var got bool
-		resolveLaunchCredentials = func(_ func(string) string, allowPrompt bool) (*Credentials, error) {
+		resolveLaunchCredentials = func(_ func(string) string, _ Hooks, allowPrompt bool) (*Credentials, error) {
 			got = allowPrompt
 			return nil, stop
 		}
-		if _, err := Run(FindAgent("gemini"), tc.argv); !errors.Is(err, stop) {
+		if _, err := Run(FindAgent("gemini"), tc.argv, Hooks{}); !errors.Is(err, stop) {
 			t.Fatalf("%v: err=%v, want the stub's error", tc.argv, err)
 		}
 		if got != tc.want {
@@ -889,11 +898,11 @@ func TestRunRefusesMCPEnvAuthToAnotherOrigin(t *testing.T) {
 	t.Setenv("ORQ_API_KEY", "test-key")
 	t.Setenv("ORQ_LAUNCH_NON_INTERACTIVE", "1")
 	t.Setenv("ORQ_MCP_URL", "https://elsewhere.example/mcp")
-	code, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills", "--mcp-auth", "env"})
+	code, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills", "--mcp-auth", "env"}, Hooks{})
 	if code != 1 || err == nil || !strings.Contains(err.Error(), "elsewhere.example") {
 		t.Fatalf("code=%d err=%v", code, err)
 	}
-	if _, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills"}); err != nil {
+	if _, err := Run(FindAgent("gemini"), []string{"--dry-run", "--no-fetch-models", "--no-skills"}, Hooks{}); err != nil {
 		t.Fatalf("without --mcp-auth env the override stays allowed: %v", err)
 	}
 }
