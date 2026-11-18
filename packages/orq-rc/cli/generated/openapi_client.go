@@ -10,6 +10,7 @@ import (
 	neturl "net/url"
 
 	"github.com/orq-ai/bartolo/apikey"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
@@ -29,7 +30,8 @@ func servers() []map[string]string {
 func initGeneratedRuntime() {
 	bartolocli.RegisterServers(servers())
 
-	apikey.InitBearer("Authorization")
+	apikey.InitBearerWithType("ApiKey", "Authorization")
+	bartolocli.SetDefaultAuthType("ApiKey")
 
 }
 
@@ -11384,23 +11386,22 @@ func OpenapiSkillDelete(paramSkillId string, params *viper.Viper) (*gentleman.Re
 }
 
 // OpenapiSkillDeleteFile Delete a skill file
-func OpenapiSkillDeleteFile(paramSkillId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "skills delete-file skill-id"
+func OpenapiSkillDeleteFile(paramSkillId string, paramPath string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "skills delete-file skill-id path"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v2/skills/**"
+	url := server + "/v2/skills/{skill_id}/files/{path}"
 	if paramSkillId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter skill_id cannot be empty"))
 	}
+	if paramPath == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter path cannot be empty"))
+	}
 
 	url = strings.Replace(url, "{skill_id}", neturl.PathEscape(paramSkillId), 1)
+	url = strings.Replace(url, "{path}", neturl.PathEscape(paramPath), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
-
-	paramPath := params.GetString("path")
-	if bartolocli.FlagPassed(params, "path") || paramPath != "" {
-		req = req.AddQuery("path", fmt.Sprintf("%v", paramPath))
-	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -11488,6 +11489,11 @@ func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Respo
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramFactoryId := params.GetString("factory-id")
+	if bartolocli.FlagPassed(params, "factory-id") || paramFactoryId != "" {
+		req = req.AddQuery("factory_id", fmt.Sprintf("%v", paramFactoryId))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -11518,23 +11524,22 @@ func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Respo
 }
 
 // OpenapiSkillGetFileContent Get a presigned URL for a skill file
-func OpenapiSkillGetFileContent(paramSkillId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "skills get-file-content skill-id"
+func OpenapiSkillGetFileContent(paramSkillId string, paramPath string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "skills get-file-content skill-id path"
 	server := bartolocli.ResolveServer()
 
-	url := server + "/v2/skills/**:presign"
+	url := server + "/v2/skills/{skill_id}/files/{path}:presign"
 	if paramSkillId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter skill_id cannot be empty"))
 	}
+	if paramPath == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter path cannot be empty"))
+	}
 
 	url = strings.Replace(url, "{skill_id}", neturl.PathEscape(paramSkillId), 1)
+	url = strings.Replace(url, "{path}", neturl.PathEscape(paramPath), 1)
 
 	req := bartolocli.Client.Get().URL(url)
-
-	paramPath := params.GetString("path")
-	if bartolocli.FlagPassed(params, "path") || paramPath != "" {
-		req = req.AddQuery("path", fmt.Sprintf("%v", paramPath))
-	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -11669,6 +11674,14 @@ func OpenapiSkillList(params *viper.Viper) (*gentleman.Response, map[string]inte
 	paramEndingBefore := params.GetString("ending-before")
 	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
 		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramSearch := params.GetString("search")
+	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramProjectId := params.GetString("project-id")
+	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

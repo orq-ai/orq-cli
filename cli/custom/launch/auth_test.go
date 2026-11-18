@@ -438,27 +438,25 @@ func TestResolveCredentialsNotLoggedIn(t *testing.T) {
 // A dead-end "not logged in" error on an interactive run should become an
 // offer to log in; everything else must pass through untouched.
 func TestResolveCredentialsOrLogin(t *testing.T) {
-	origTTY, origHook := isTerminalFd, LoginHook
-	t.Cleanup(func() { isTerminalFd, LoginHook = origTTY, origHook })
-	isTerminalFd = func(int) bool { return true }
+	interactive := func() bool { return true }
+	withLogin := func(login func() error) Hooks { return Hooks{Login: login, Interactive: interactive} }
 
 	emptyEnv := func(string) string { return "" }
 
 	t.Run("hook absent keeps the plain error", func(t *testing.T) {
-		LoginHook = nil
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if _, err := resolveCredentialsOrLogin(emptyEnv, true); err == nil {
+		if _, err := resolveCredentialsOrLogin(emptyEnv, Hooks{Interactive: interactive}, true); err == nil {
 			t.Fatal("expected not-logged-in error")
 		}
 	})
 
 	t.Run("prompt suppressed when not allowed", func(t *testing.T) {
 		called := false
-		LoginHook = func() error { called = true; return nil }
+		hooks := withLogin(func() error { called = true; return nil })
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if _, err := resolveCredentialsOrLogin(emptyEnv, false); err == nil {
+		if _, err := resolveCredentialsOrLogin(emptyEnv, hooks, false); err == nil {
 			t.Fatal("expected not-logged-in error")
 		}
 		if called {
@@ -467,20 +465,20 @@ func TestResolveCredentialsOrLogin(t *testing.T) {
 	})
 
 	t.Run("env key short-circuits before any prompt", func(t *testing.T) {
-		LoginHook = func() error { t.Fatal("hook must not run"); return nil }
+		hooks := withLogin(func() error { t.Fatal("hook must not run"); return nil })
 		creds, err := resolveCredentialsOrLogin(func(k string) string {
 			if k == "ORQ_API_KEY" {
 				return "sk-orq-test"
 			}
 			return ""
-		}, true)
+		}, hooks, true)
 		if err != nil || creds.APIKey != "sk-orq-test" {
 			t.Fatalf("got (%v, %v)", creds, err)
 		}
 	})
 
 	t.Run("non-interactive env suppresses the prompt", func(t *testing.T) {
-		LoginHook = func() error { t.Fatal("hook must not run"); return nil }
+		hooks := withLogin(func() error { t.Fatal("hook must not run"); return nil })
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		env := func(k string) string {
@@ -489,7 +487,15 @@ func TestResolveCredentialsOrLogin(t *testing.T) {
 			}
 			return ""
 		}
-		if _, err := resolveCredentialsOrLogin(env, true); err == nil {
+		if _, err := resolveCredentialsOrLogin(env, hooks, true); err == nil {
+			t.Fatal("expected not-logged-in error")
+		}
+	})
+
+	t.Run("no human to answer suppresses the prompt", func(t *testing.T) {
+		hooks := Hooks{Login: func() error { t.Fatal("hook must not run"); return nil }, Interactive: func() bool { return false }}
+		t.Setenv("HOME", t.TempDir())
+		if _, err := resolveCredentialsOrLogin(emptyEnv, hooks, true); err == nil {
 			t.Fatal("expected not-logged-in error")
 		}
 	})
@@ -797,11 +803,11 @@ func TestResolveCredentialsProfileInForce(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())
 		t.Setenv("ORQ_API_KEY", "")
 		useProfile(t, "acme", "")
-		prev := LoginHook
-		LoginHook = func() error { t.Fatal("LoginHook must not run with a profile in force"); return nil }
-		t.Cleanup(func() { LoginHook = prev })
-
-		_, err := resolveCredentialsOrLogin(os.Getenv, true)
+		hooks := Hooks{
+			Login:       func() error { t.Fatal("Login must not run with a profile in force"); return nil },
+			Interactive: func() bool { return true },
+		}
+		_, err := resolveCredentialsOrLogin(os.Getenv, hooks, true)
 		if err == nil || !strings.Contains(err.Error(), `"acme"`) {
 			t.Fatalf("want an error naming the profile, got %v", err)
 		}
@@ -927,6 +933,60 @@ func TestResolveCredentialsPreservesInconclusiveGatewayKey(t *testing.T) {
 				})
 			}
 
+		})
+	}
+}
+
+// An interactive launch on the login session's hour-long token offers a durable
+// key first; anything but a minted key keeps the session token.
+func TestOfferDurableKey(t *testing.T) {
+	session := &Credentials{APIKey: "session-token", Kind: CredentialSessionToken, Workspace: "acme"}
+
+	for _, tc := range []struct {
+		name    string
+		creds   *Credentials
+		flags   GatewayFlags
+		env     string // ORQ_LAUNCH_NON_INTERACTIVE
+		tty     bool
+		key     string
+		hookErr error
+		asked   bool
+		durable bool
+	}{
+		{name: "accept", creds: session, tty: true, key: "sk-orq-new", asked: true, durable: true},
+		{name: "decline", creds: session, tty: true, asked: true},
+		{name: "mint fails", creds: session, tty: true, hookErr: errors.New("boom"), asked: true},
+		{name: "no terminal", creds: session, key: "sk-orq-new"},
+		{name: "non-interactive env", creds: session, env: "1", tty: true, key: "sk-orq-new"},
+		{name: "dry run", creds: session, flags: GatewayFlags{DryRun: true}, tty: true, key: "sk-orq-new"},
+		{name: "mcp env auth needs the session token", creds: session, flags: GatewayFlags{MCPEnvAuth: true}, tty: true, key: "sk-orq-new"},
+		{name: "already durable", creds: &Credentials{APIKey: "sk-orq-old", Kind: CredentialAPIKey}, tty: true, key: "sk-orq-new"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			asked := false
+			hooks := Hooks{
+				DurableKey:  func() (string, error) { asked = true; return tc.key, tc.hookErr },
+				Interactive: func() bool { return tc.tty },
+			}
+			getenv := func(k string) string {
+				if k == "ORQ_LAUNCH_NON_INTERACTIVE" {
+					return tc.env
+				}
+				return ""
+			}
+			got := offerDurableKey(tc.creds, tc.flags, getenv, hooks)
+			if asked != tc.asked {
+				t.Errorf("hook ran = %v, want %v", asked, tc.asked)
+			}
+			if !tc.durable {
+				if got != tc.creds {
+					t.Errorf("credential changed without a minted key: %+v", got)
+				}
+				return
+			}
+			if got.APIKey != tc.key || got.Kind != CredentialAPIKey || got.Workspace != "acme" {
+				t.Errorf("got %+v, want the minted key as a durable credential for acme", got)
+			}
 		})
 	}
 }

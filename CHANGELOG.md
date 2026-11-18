@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
+
 **Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
 Secret Service through `secret-tool`) on first use. `credentials.json` keeps an
 `api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file` now also
@@ -136,6 +138,40 @@ the KEY column for a stored key.
 **Downgrade caution:** an older `orq` sees a profile whose key is only in the
 store as keyless, and its layout migration can delete that profile. Do not run
 an older `orq` against a `credentials.json` written by this version.
+
+## [12.10.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.0) — 2026-11-18
+
+**Changed:** `orq connect <agent> otel` (today: `claude`) now needs a durable
+API key. When none is saved, or the only one is the login session's hour-long
+token, it offers to log in and create one, the same prompt `orq connect` uses
+for the gateway. Without a key it writes nothing and says so, instead of saving
+an exporter that cannot authenticate. Runs with `--yes` or `--no-input` never
+create a key. Every connect leg now picks its key from one place, in one order:
+`--api-key`, the saved key, `ORQ_API_KEY`, then an `orq auth login --api-key`
+login; that last one is now reused instead of minting a second key.
+
+**Added:** for quick checks, `orq connect <agent> otel` can write the login
+token instead of a durable key: pick "Use my login token" at the key prompt, or
+pass `--use-login-token` (the only way in `--yes`/`--no-input` runs; it needs `orq auth login` and no profile). `orq setup` does not offer it. It warns
+that traces stop when the token expires, in about an hour, and the next connect
+run with a durable key replaces it. The gateway still needs a durable key, so
+it is skipped when the login token is picked.
+
+**Changed:** `orq launch` offers the same key when it would hand the agent (and
+its trace export) the session token, with three choices: create the
+key, use the login token this time, or use it and stop asking in this
+directory. `orq setup` creates the key whenever you want it.
+
+## [12.9.9](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.9) — 2026-11-17
+
+**Fixed:** `orq projects use`, `orq switch`, `orq setup` and `orq auth login` no
+longer overwrite what another `orq` command saved to the session while they were
+waiting on the network, such as a gateway key from a parallel `orq setup`.
+
+**Changed:** if your login is replaced or removed while `orq projects use`,
+`orq switch` or `orq setup` is running, the command now fails with "the login
+changed while this command ran" and saves nothing. Before, it wrote the old
+login's session back over the new one.
 
 ## [12.9.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.2) — 2026-11-12
 

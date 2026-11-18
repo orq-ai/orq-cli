@@ -9,7 +9,6 @@ import (
 	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"golang.org/x/term"
 
 	"orq/cli/custom/auth"
 )
@@ -328,26 +327,16 @@ func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
 	return key, workspace
 }
 
-// LoginHook, when set, runs the interactive device login and persists the
-// session. The commands package injects it at wiring time — launch cannot
-// call the login flow directly without an import cycle.
-var LoginHook func() error
-
-// isTerminalFd is swappable in tests; prompting depends on a real TTY.
-var isTerminalFd = func(fd int) bool { return term.IsTerminal(fd) }
-
 // resolveCredentialsOrLogin is ResolveCredentials plus a recovery path: when
 // the only problem is "not logged in" and a human is present, offer to run
 // the device login right here instead of dead-ending on an error that tells
 // them to run another command and come back.
-func resolveCredentialsOrLogin(getenv func(string) string, allowPrompt bool) (*Credentials, error) {
+func resolveCredentialsOrLogin(getenv func(string) string, hooks Hooks, allowPrompt bool) (*Credentials, error) {
 	creds, err := ResolveCredentials(getenv)
-	if err == nil || !errors.Is(err, errNotLoggedIn) || LoginHook == nil || !allowPrompt {
+	if err == nil || !errors.Is(err, errNotLoggedIn) || hooks.Login == nil || !allowPrompt {
 		return creds, err
 	}
-	// Same interactivity rules as the local-mode warning prompt.
-	if getenv("ORQ_LAUNCH_NON_INTERACTIVE") == "1" ||
-		!isTerminalFd(int(os.Stdin.Fd())) || !isTerminalFd(int(os.Stderr.Fd())) {
+	if !canPrompt(getenv, hooks) {
 		return creds, err
 	}
 
@@ -362,10 +351,36 @@ func resolveCredentialsOrLogin(getenv func(string) string, allowPrompt bool) (*C
 	default:
 		return nil, err
 	}
-	if lerr := LoginHook(); lerr != nil {
+	if lerr := hooks.Login(); lerr != nil {
 		return nil, lerr
 	}
 	return ResolveCredentials(getenv)
+}
+
+// offerDurableKey swaps the login session's hour-long token for a durable key
+// when someone is there to agree. Every other outcome keeps the session token,
+// and reportCredentialNotices still explains what that costs.
+func offerDurableKey(creds *Credentials, flags GatewayFlags, getenv func(string) string, hooks Hooks) *Credentials {
+	// MCPEnvAuth hands the token to orq tools that the gateway key cannot use.
+	if creds.Kind != CredentialSessionToken || !mayPromptLogin(flags) || hooks.DurableKey == nil || !canPrompt(getenv, hooks) {
+		return creds
+	}
+	key, err := hooks.DurableKey()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not create an API key: %v\n", err)
+	}
+	if err != nil || key == "" {
+		return creds
+	}
+	durable := *creds
+	durable.APIKey, durable.Kind = key, CredentialAPIKey
+	return &durable
+}
+
+// canPrompt is false under ORQ_LAUNCH_NON_INTERACTIVE=1, which scripts set
+// even when they run on a terminal.
+func canPrompt(getenv func(string) string, hooks Hooks) bool {
+	return getenv("ORQ_LAUNCH_NON_INTERACTIVE") != "1" && hooks.Interactive != nil && hooks.Interactive()
 }
 
 var errNotLoggedIn = notLoggedInError{}

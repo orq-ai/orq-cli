@@ -394,7 +394,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-run experiment-id",
 			Short:   "Create a run",
-			Long:    bartolocli.Markdown("Creates a new run, copying columns from the selected run when present. A rerun is a new run.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
+			Long:    bartolocli.Markdown("Creates a new run, copying columns from the selected run when present. A new run starts with empty output cells; executing cells on an existing run does not create one.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string)\n- `settings` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `experiment-id` — ID of the experiment."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -882,7 +882,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "duplicate-row experiment-id run-id row-id",
 			Short:   "Duplicate a row",
-			Long:    bartolocli.Markdown("Copies a row into a new row at the end of the run. Dataset and annotation cells keep their values; task, evaluator and metric cells start empty.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `row-id` — ID of the row to copy."),
+			Long:    bartolocli.Markdown("Copies a row into a new row at the end of the run. Dataset and annotation cells keep their values; response, agent response, open response, evaluator and metric cells start empty.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `experiment-id` — ID of the experiment.\n- `run-id` — ID of the run.\n- `row-id` — ID of the row to copy."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1979,7 +1979,7 @@ func registerexperimentsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"agent\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\"\n  },\n  \"display_name\": \"display_name\",\n  \"prompt\": {\n    \"messages_source\": \"MESSAGES_SOURCE_UNSPECIFIED\",\n    \"prompt_config\": {\n      \"model\": \"model\"\n    }\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[3:], params,

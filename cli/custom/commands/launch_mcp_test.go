@@ -61,8 +61,6 @@ func TestPersistedEntrySuppressesSessionWiring(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			launch.PersistedMCPHook = mcpEntryPresent
-			t.Cleanup(func() { launch.PersistedMCPHook = nil })
 
 			// Without an entry there is one to suppress, so the session entry
 			// must be there — otherwise this test would pass on a launch that
@@ -105,8 +103,6 @@ func TestCommentedCodexTableDoesNotSuppressWiring(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	launch.PersistedMCPHook = mcpEntryPresent
-	t.Cleanup(func() { launch.PersistedMCPHook = nil })
 
 	plan := resolveLaunchPlan(t, "codex")
 	if !strings.Contains(strings.Join(plan.PreArgs, " "), "mcp_servers."+launch.MCPServerName) {
@@ -133,6 +129,7 @@ func resolveLaunchPlan(t *testing.T, agent string) *launch.LaunchPlan {
 		Creds:  &launch.Credentials{APIKey: "orq-key", APIBaseURL: launch.DefaultGatewayAPIBaseURL, Kind: launch.CredentialAPIKey},
 		Getenv: os.Getenv,
 		Flags:  launch.GatewayFlags{MCP: true, NoSkills: true},
+		Hooks:  launch.Hooks{PersistedMCP: mcpEntryPresent},
 		Fetch: func(_, _ string) ([]launch.ModelInfo, error) {
 			return []launch.ModelInfo{{ID: "openai/gpt-5.4"}}, nil
 		},

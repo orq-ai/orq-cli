@@ -14,7 +14,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 	telemetryDestinationsCmd := &cobra.Command{
 		Use:   "telemetry-destinations",
 		Short: "Telemetry Destinations",
-		Long:  bartolocli.Markdown("Telemetry Destinations"),
+		Long:  bartolocli.Markdown("OpenTelemetry destinations that receive a copy of the workspace's traces over OTLP/HTTP."),
 	}
 	root.AddCommand(telemetryDestinationsCmd)
 

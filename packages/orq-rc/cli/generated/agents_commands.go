@@ -1180,7 +1180,7 @@ func registeragentsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded, "key", "model.id", "settings.tools[].display_name", "team_of_agents[].key", "updated"); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 

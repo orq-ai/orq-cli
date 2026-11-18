@@ -25,15 +25,20 @@ func registerskillsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new skill",
-			Long:    bartolocli.Markdown("Creates a reusable skill in the workspace. Skills store instructions, metadata, and an optional project location so teams can standardize repeatable AI workflows.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a reusable skill in the workspace. Skills store instructions, metadata, and an optional project location so teams can standardize repeatable AI workflows.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `sharing` (allOf)\n- `tags` (array)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+					return nil
+				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
@@ -67,6 +72,12 @@ func registerskillsCommands(root *cobra.Command) {
 							Description: "Project that should contain the skill.",
 						},
 						{
+							Name:        "sharing",
+							FlagName:    "sharing",
+							Type:        "json",
+							Description: "Which projects in the workspace may use this skill. A skill created without a project defaults to every project.",
+						},
+						{
 							Name:        "tags",
 							FlagName:    "tags",
 							Type:        "string-slice",
@@ -93,6 +104,7 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -124,6 +136,12 @@ func registerskillsCommands(root *cobra.Command) {
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "Project that should contain the skill.",
+				},
+				{
+					Name:        "sharing",
+					FlagName:    "sharing",
+					Type:        "json",
+					Description: "Which projects in the workspace may use this skill. A skill created without a project defaults to every project.",
 				},
 				{
 					Name:        "tags",
@@ -194,11 +212,11 @@ func registerskillsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "delete-file skill-id",
+			Use:     "delete-file skill-id path",
 			Short:   "Delete a skill file",
-			Long:    bartolocli.Markdown("Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update."),
+			Long:    bartolocli.Markdown("Removes a file from a skill's bundle by its relative path. SKILL.md cannot be deleted.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name to update.\n- `path` — Relative path of the file to delete within the skill bundle (for example `references/guide.md`)."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
+			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
@@ -206,7 +224,7 @@ func registerskillsCommands(root *cobra.Command) {
 					return err
 				}
 
-				_, decoded, err := OpenapiSkillDeleteFile(args[0], params)
+				_, decoded, err := OpenapiSkillDeleteFile(args[0], args[1], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
@@ -221,8 +239,6 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
-
-		cmd.Flags().String("path", "", "Relative path of the file to delete within the skill bundle.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -304,6 +320,8 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
+		cmd.Flags().String("factory-id", "", "Resolve the skill as one factory sees it: the skills of its project plus the workspace-level skills shared with it.")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -320,21 +338,21 @@ func registerskillsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "get-file-content skill-id",
+			Use:     "get-file-content skill-id path",
 			Short:   "Get a presigned URL for a skill file",
-			Long:    bartolocli.Markdown("Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name."),
+			Long:    bartolocli.Markdown("Returns a time-limited presigned URL that can be used to download the raw content of a file in the skill bundle.\n\n## Arguments\n\n- `skill-id` — Skill ID or display name.\n- `path` — Relative path of the file within the skill bundle (for example `references/guide.md`)."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
+			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
 
-				_, decoded, err := OpenapiSkillGetFileContent(args[0], params)
+				_, decoded, err := OpenapiSkillGetFileContent(args[0], args[1], params)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
@@ -343,8 +361,6 @@ func registerskillsCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
-
-		cmd.Flags().String("path", "", "Relative path of the file within the skill bundle.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -366,7 +382,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "import-bundle",
 			Short:   "Import a skill bundle",
-			Long:    bartolocli.Markdown("Uploads a zip archive containing a SKILL.md file and optional supporting files. Creates a new file-bearing skill. An existing display name returns AlreadyExists. Operating-system archive metadata is ignored: `__MACOSX` entries, AppleDouble sidecars (`._*`), and per-directory metadata such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` are dropped and do not count toward the per-skill file limit.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `bundle` (string, required)\n- `path` (string)\n- `project_id` (string)\n\nRequired fields: `bundle`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Uploads a zip archive containing a SKILL.md file and optional supporting files. Creates a new file-bearing skill. An existing display name returns AlreadyExists. Operating-system archive metadata is ignored: `__MACOSX` entries, AppleDouble sidecars (`._*`), and per-directory metadata such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` are dropped and do not count toward the per-skill file limit.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `bundle` (string, required)\n- `path` (string)\n- `project_id` (string)\n- `sharing` (allOf)\n\nRequired fields: `bundle`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -394,6 +410,12 @@ func registerskillsCommands(root *cobra.Command) {
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "Project that should contain the skill when creating a new skill.\n Import creates a new skill; a conflicting name returns AlreadyExists.",
+						},
+						{
+							Name:        "sharing",
+							FlagName:    "sharing",
+							Type:        "json",
+							Description: "Which projects in the workspace may use this skill. A skill imported without a project defaults to every project.",
 						},
 					},
 				)
@@ -437,6 +459,12 @@ func registerskillsCommands(root *cobra.Command) {
 					Type:        "string",
 					Description: "Project that should contain the skill when creating a new skill.\n Import creates a new skill; a conflicting name returns AlreadyExists.",
 				},
+				{
+					Name:        "sharing",
+					FlagName:    "sharing",
+					Type:        "json",
+					Description: "Which projects in the workspace may use this skill. A skill imported without a project defaults to every project.",
+				},
 			},
 		)
 
@@ -460,13 +488,13 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "import-from-repository",
 			Short:   "Import a skill from a repository",
-			Long:    bartolocli.Markdown("Creates an editable skill snapshot from a repository directory using a workspace source control connection. The source commit is retained; subsequent repository changes are not synchronized.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `connection_id` (string)\n- `path` (string)\n- `project_id` (string)\n- `ref` (string)\n- `repository_url` (string)\n- `subdirectory` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates an editable skill snapshot from a repository directory using a workspace source control connection. The source commit is retained; subsequent repository changes are not synchronized.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `connection_id` (string)\n- `path` (string)\n- `project_id` (string)\n- `ref` (string)\n- `repository_url` (string)\n- `sharing` (allOf)\n- `subdirectory` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"connection_id\": \"connection_id\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"ref\": \"ref\",\n  \"repository_url\": \"repository_url\",\n  \"subdirectory\": \"subdirectory\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"connection_id\": \"connection_id\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"ref\": \"ref\",\n  \"repository_url\": \"repository_url\",\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  },\n  \"subdirectory\": \"subdirectory\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -500,6 +528,12 @@ func registerskillsCommands(root *cobra.Command) {
 							FlagName:    "repository-url",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "sharing",
+							FlagName:    "sharing",
+							Type:        "json",
+							Description: "Which projects in the workspace may use this skill. A skill imported without a project defaults to every project.",
 						},
 						{
 							Name:        "subdirectory",
@@ -562,6 +596,12 @@ func registerskillsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "sharing",
+					FlagName:    "sharing",
+					Type:        "json",
+					Description: "Which projects in the workspace may use this skill. A skill imported without a project defaults to every project.",
+				},
+				{
 					Name:        "subdirectory",
 					FlagName:    "subdirectory",
 					Type:        "string",
@@ -613,6 +653,8 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25). Values outside the range, including 0, are rejected.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `skill_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `skill_id` of the first item from the previous page.")
+		cmd.Flags().String("search", "", "Case-insensitive substring match on display name and description.")
+		cmd.Flags().String("project-id", "", "Restrict results to one project: its own skills plus the workspace-level skills shared with it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1088,13 +1130,13 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update skill-id",
 			Short:   "Update a skill",
-			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted fields keep their current values. When `tags` is provided it replaces the existing tags; send an empty array to clear them.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID to update."),
+			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted fields keep their current values. When `tags` is provided it replaces the existing tags; send an empty array to clear them.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `sharing` (allOf)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"instructions\": \"instructions\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"instructions\": \"instructions\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"sharing\": {\n    \"all_projects\": {},\n    \"allow_fork\": false,\n    \"allow_version_pin\": false,\n    \"auto_grant_new_projects\": false,\n    \"selected\": {\n      \"project_ids\": [\n        \"project_ids\"\n      ]\n    }\n  },\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1128,6 +1170,12 @@ func registerskillsCommands(root *cobra.Command) {
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "New containing project. Omit to keep the current project.",
+						},
+						{
+							Name:        "sharing",
+							FlagName:    "sharing",
+							Type:        "json",
+							Description: "Which projects in the workspace may use this skill.",
 						},
 						{
 							Name:        "tags",
@@ -1188,6 +1236,12 @@ func registerskillsCommands(root *cobra.Command) {
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "New containing project. Omit to keep the current project.",
+				},
+				{
+					Name:        "sharing",
+					FlagName:    "sharing",
+					Type:        "json",
+					Description: "Which projects in the workspace may use this skill.",
 				},
 				{
 					Name:        "tags",

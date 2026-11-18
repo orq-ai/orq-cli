@@ -18,6 +18,7 @@ type AgentContext struct {
 	ExecProbe func(binary string, args ...string) (string, error)
 	HomeDir   func() (string, error)
 	Symlink   func(oldname, newname string) error
+	Hooks     Hooks
 }
 
 // TempDir is a host directory holding config the agent reads. Declaring it lets

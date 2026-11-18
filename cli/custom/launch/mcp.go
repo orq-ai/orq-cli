@@ -109,22 +109,16 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 		return
 	}
 	plan.AddCleanup(release)
-	if hint := differingSkillsHint(agent); hint != "" {
+	if hint := differingSkillsHint(ctx, agent); hint != "" {
 		plan.Warnings = append(plan.Warnings, hint)
 	}
 }
-
-// SkillsUpdateHook says whether a newer CLI is out to suggest. The commands
-// package injects it, as with PersistedMCPHook: the update check lives there.
-// known=false means "cannot tell"; hint="" with known=true means this binary
-// is the latest, so there is no upgrade to suggest.
-var SkillsUpdateHook func() (hint string, known bool)
 
 // differingSkillsHint explains the name collisions an agent reports when a
 // skill it also reads elsewhere is a different version from the bundled one.
 // The bundle is pinned to the CLI release, so updating the CLI is the fix
 // when the other copy is the newer one — unless this is already the latest.
-func differingSkillsHint(agent string) string {
+func differingSkillsHint(ctx *AgentContext, agent string) string {
 	paths, err := skills.DifferingCopies(agent)
 	if err != nil || len(paths) == 0 {
 		return ""
@@ -140,8 +134,8 @@ func differingSkillsHint(agent string) string {
 	msg := fmt.Sprintf("%d orq skills in %s differ from the version this CLI bundles; this session uses the bundled ones",
 		len(paths), strings.Join(where, ", "))
 	suggestion := "if yours are newer, run 'orq update' to get a CLI that bundles them"
-	if SkillsUpdateHook != nil {
-		if hint, known := SkillsUpdateHook(); known {
+	if ctx.Hooks.SkillsUpdate != nil {
+		if hint, known := ctx.Hooks.SkillsUpdate(); known {
 			suggestion = hint
 		}
 	}
@@ -182,14 +176,6 @@ func mcpURL(ctx *AgentContext) string {
 	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), MCPURLFor(apiBase))
 }
 
-// PersistedMCPHook reports whether an agent already carries an orq MCP entry in
-// a config it reads on its own. The commands package injects it at wiring time
-// from the same registry `orq connect` writes through: launch cannot import
-// that package, and the copy of the path-and-presence table that used to live
-// here had already drifted from it — different codex header rules, a missing
-// agent, one file of a two-file pair.
-var PersistedMCPHook func(agent string) bool
-
 // persistedMCPConfigured is the launch-side question: a persisted OAuth entry is
 // authoritative, so adding a second entry under the same name would only shadow
 // it. Unset hook means "cannot tell", which has to answer false — writing the
@@ -201,11 +187,8 @@ var PersistedMCPHook func(agent string) bool
 // session .mcp.json sits behind the user's linked-in mcp.json, and omp keeps
 // the first same-named entry, so a persisted one wins anyway. pi has no MCP
 // support at all.
-func persistedMCPConfigured(agent string) bool {
-	if PersistedMCPHook == nil {
-		return false
-	}
-	return PersistedMCPHook(agent)
+func persistedMCPConfigured(ctx *AgentContext, agent string) bool {
+	return ctx.Hooks.PersistedMCP != nil && ctx.Hooks.PersistedMCP(agent)
 }
 
 // sessionMCPURL is the endpoint to write a session entry for, or "" for none.
@@ -214,7 +197,7 @@ func persistedMCPConfigured(agent string) bool {
 // the flag doing nothing.
 func sessionMCPURL(ctx *AgentContext, agent string) string {
 	url := mcpURL(ctx)
-	if url == "" || (!ctx.Flags.MCPEnvAuth && persistedMCPConfigured(agent)) {
+	if url == "" || (!ctx.Flags.MCPEnvAuth && persistedMCPConfigured(ctx, agent)) {
 		return ""
 	}
 	return url
