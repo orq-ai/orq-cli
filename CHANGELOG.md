@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.10.3](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.3) — 2026-11-18
+
 **Changed:** `orq mcp`, hidden in 12.10.2, now sits under Utilities in help. It runs a local MCP server that offers the orq.ai API as tools (`orq mcp --help`).
 
 ## [12.10.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.2) — 2026-11-18
