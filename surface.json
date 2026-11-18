@@ -1582,7 +1582,11 @@
     },
     {
       "path": "orq auth profile add",
-      "use": "add [flags] \u003cname\u003e [\u003capi-key\u003e]",
+      "use": "add"
+    },
+    {
+      "path": "orq auth profile add ApiKey",
+      "use": "ApiKey [flags] \u003cname\u003e [\u003capi-key\u003e]",
       "flags": [
         {
           "name": "api-key-file",
@@ -6347,6 +6351,60 @@
           "type": "bool"
         }
       ]
+    },
+    {
+      "path": "orq mcp",
+      "use": "mcp",
+      "flags": [
+        {
+          "name": "groups",
+          "type": "stringSlice"
+        },
+        {
+          "name": "http",
+          "type": "string"
+        },
+        {
+          "name": "http-allowed-origins",
+          "type": "stringSlice"
+        },
+        {
+          "name": "http-auth",
+          "type": "string"
+        },
+        {
+          "name": "http-insecure",
+          "type": "bool"
+        },
+        {
+          "name": "http-oauth-audience",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-issuer",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-jwks",
+          "type": "string"
+        },
+        {
+          "name": "http-oauth-scopes",
+          "type": "stringSlice"
+        },
+        {
+          "name": "read-only",
+          "type": "bool"
+        },
+        {
+          "name": "tools",
+          "type": "stringSlice"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp list",
+      "use": "list"
     },
     {
       "path": "orq mcp-gateways",
