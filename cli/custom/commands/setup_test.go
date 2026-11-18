@@ -4282,3 +4282,32 @@ func TestResolveAuthReportsUnreadableProfileStore(t *testing.T) {
 		t.Errorf("error tells the user to re-add the profile: %v", err)
 	}
 }
+
+func TestUnreadableProfileStoreRemedyFitsTheCause(t *testing.T) {
+	for _, tc := range []struct{ store, want, not string }{
+		{store: "", want: "make that store readable", not: "unset"},
+		{store: "file", want: "unset ORQ_CREDENTIAL_STORE", not: "unlock"},
+	} {
+		t.Run("store="+tc.store, func(t *testing.T) {
+			credsHarness(t)
+			seedMarkerOnlyProfile(t)
+			t.Setenv(auth.CredentialStoreEnv, tc.store)
+			key, err := auth.ProfileAPIKey()
+			if key != "" || err == nil {
+				t.Fatalf("ProfileAPIKey = %q, %v; want an unreadable-store error", key, err)
+			}
+			if msg := err.Error(); !strings.Contains(msg, tc.want) || strings.Contains(msg, tc.not) {
+				t.Errorf("error = %q, want %q and not %q", msg, tc.want, tc.not)
+			}
+		})
+	}
+}
+
+func TestDurableCredentialReportsUnreadableProfileStore(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	// connect must not call a stored key missing and offer to set up a new one.
+	if cred, err := durableCredential(&setupOptions{}); err == nil || !strings.Contains(err.Error(), "still stored") {
+		t.Fatalf("durableCredential = %+v, %v; want the unreadable-store error", cred, err)
+	}
+}

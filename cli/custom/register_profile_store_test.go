@@ -2,6 +2,8 @@ package custom
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -181,8 +183,77 @@ func TestProfileKeyStoreRoundTrip(t *testing.T) {
 		if strings.Contains(stderr, "orq auth login") {
 			t.Errorf("stderr sends the user to login:\n%s", stderr)
 		}
+		stdout, _, err := run(t, e, "--profile", "ci", "--server", "http://127.0.0.1:1", "-o", "json", "status")
+		if err == nil {
+			t.Error("status exited 0 with a locked store")
+		}
+		var status map[string]any
+		if err := json.Unmarshal([]byte(stdout), &status); err != nil || status["store_error"] == nil {
+			t.Errorf("status output = %v (%v), want store_error", status, err)
+		}
+		_, stderr, err = run(t, e, "--profile", "ci", "--server", "http://127.0.0.1:1", "launch", "claude")
+		if err == nil {
+			t.Error("launch succeeded with a locked store")
+		}
+		if !strings.Contains(stderr, "still stored") || strings.Contains(stderr, "has no api_key") {
+			t.Errorf("launch stderr should name the unreadable store:\n%s", stderr)
+		}
 		if profile := readProfile(t, e); profile["api_key_store"] != wantMarker {
 			t.Errorf("marker overwritten: %v", profile)
+		}
+	})
+
+	t.Run("setup_stored", func(t *testing.T) {
+		// orq's own writer (auth login --api-key, setup --api-key), not
+		// bartolo's `auth profile add`, must also land the key in the store.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
+		}))
+		t.Cleanup(srv.Close)
+		e := setup(t)
+		stdout, stderr, err := run(t, e, "--no-input", "--profile", "ci", "--server", srv.URL, "-o", "json", "auth", "login", "--api-key", "sk-orq-synthetic-key")
+		if err != nil {
+			t.Fatalf("auth login: %v\n%s\n%s", err, stdout, stderr)
+		}
+		profile := readProfile(t, e)
+		if profile["api_key_store"] != wantMarker {
+			t.Fatalf("api_key_store = %v, want %q", profile["api_key_store"], wantMarker)
+		}
+		if _, has := profile["api_key"]; has {
+			t.Errorf("api_key is still in credentials.json: %v", profile)
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(stdout), &out); err != nil || out["api_key_store"] != wantMarker {
+			t.Errorf("login output = %v (%v), want api_key_store %q", out, err, wantMarker)
+		}
+		if strings.Contains(stderr, "no OS keychain") {
+			t.Errorf("login warned about a fallback that did not happen:\n%s", stderr)
+		}
+	})
+
+	t.Run("lost_entry", func(t *testing.T) {
+		// The marker is there but the store has no entry: the key is gone, so
+		// this is "missing" and re-adding the profile is the right advice.
+		e := setup(t)
+		addProfile(t, e)
+		entries, _ := filepath.Glob(filepath.Join(e.store, "*@ci"))
+		if len(entries) != 1 {
+			t.Fatalf("store entries = %v, want one", entries)
+		}
+		if err := os.Remove(entries[0]); err != nil {
+			t.Fatal(err)
+		}
+		auth := doctorAuth(t, e)
+		if auth["status"] != "misconfigured" || auth["store_error"] != nil {
+			t.Errorf("doctor auth = %v, want misconfigured with no store_error", auth)
+		}
+		_, stderr, err := run(t, e, "--profile", "ci", "--server", "http://127.0.0.1:1", "models", "list")
+		if err == nil {
+			t.Fatal("models list succeeded with no key")
+		}
+		if strings.Contains(stderr, "still stored") {
+			t.Errorf("a lost key is reported as still stored:\n%s", stderr)
 		}
 	})
 

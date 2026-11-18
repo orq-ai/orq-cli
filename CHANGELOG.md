@@ -121,11 +121,15 @@ controls on surface changes, whichever side they originate from.
 ## Unreleased
 
 **Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
-Secret Service through `secret-tool`) on first use. `credentials.json` keeps an
-`api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file` now also
-keeps profile keys in `credentials.json`, as it already did for sessions. A key
-in a store this process cannot read (locked, or no store here) is reported as
-unreadable, with the store named, rather than as a missing key.
+Secret Service through `secret-tool`) on first use; elsewhere, or with no
+Secret Service, the key stays in the 0600 `credentials.json`. `credentials.json`
+keeps an `api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file`
+now also keeps new profile keys in `credentials.json`, as it already did for
+sessions; it does not move keys already in the keychain back. A key in a store
+this process cannot read is reported as unreadable, with the store named and the
+fix (unlock the store, or unset `ORQ_CREDENTIAL_STORE`), rather than as a
+missing key. This covers `orq connect` and `--project` as well. `orq setup` and
+`orq auth login --api-key` say where the key was saved.
 
 **Added:** `orq doctor -o json` reports `auth.api_key_store` and, when the store
 cannot be read, `auth.store_error`. It adds an `api_key_store` check and the

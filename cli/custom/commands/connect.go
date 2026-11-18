@@ -576,7 +576,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			// when something in this run actually needs a credential:
 			// warning a skills-only run about a key it will never ask for
 			// is the same false network dependency, stated in advance.
-			if cred, _ := durableCredential(opts); capsNeedCredential(caps) && cred.key == "" {
+			if cred, err := durableCredential(opts); capsNeedCredential(caps) && err == nil && cred.key == "" {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
 			agents, err = promptForAgents(rep, caps)
@@ -964,6 +964,11 @@ func durableCredential(opts *setupOptions) (credential, error) {
 		return credential{strings.TrimSpace(opts.apiKey), "--api-key"}, nil
 	}
 	if profileInForce() {
+		// A key in a store this process cannot read is not missing: saying so
+		// would send the user to set up a key that replaces it.
+		if _, err := auth.ProfileAPIKey(); err != nil {
+			return credential{}, err
+		}
 		if key, source := ConfiguredCredential(); auth.IsDurableKey(key) {
 			return credential{key, source}, nil
 		}

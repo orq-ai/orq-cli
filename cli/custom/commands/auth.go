@@ -116,6 +116,9 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 		if err := saveAPIKeyProfile(key); err != nil {
 			return err
 		}
+		if fellBack := savedKeyFellBack(); fellBack != "" {
+			fmt.Fprintln(os.Stderr, "warning: "+fellBack)
+		}
 	} else {
 		login := &auth.APIKeyLogin{
 			APIBaseURL: client.URLs.APIBaseURL,
@@ -134,17 +137,21 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 
 	if wantsHumanView(cmd) {
 		if profile != "" {
-			success("Signed in with an API key (profile: %s, %d projects visible)", profile, len(projects))
+			success("Signed in with an API key (profile: %s, key in %s, %d projects visible)", profile, profileKeyLocation(), len(projects))
 			return nil
 		}
 		success("Signed in with an API key (%d projects visible)", len(projects))
 		return nil
 	}
-	return emit(map[string]any{
+	out := map[string]any{
 		"method":   "api_key",
 		"profile":  profile,
 		"verified": true,
-	})
+	}
+	if profile != "" {
+		out["api_key_store"] = profileKeyLocation()
+	}
+	return emit(out)
 }
 
 func NewLogoutCommand() *cobra.Command {
@@ -447,13 +454,9 @@ func NewWhoAmICommand() *cobra.Command {
 		Short: "Show the current authenticated user and workspace",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if profileInForce() {
-				rawKey := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+				rawKey, storeErr := auth.ProfileAPIKey()
 				key := maskToken(rawKey)
 				apiBase := auth.ResolveURLs(serverURL()).APIBaseURL
-				var storeErr error
-				if rawKey == "" {
-					storeErr = auth.ProfileKeyUnreadable()
-				}
 				check := credentialCheck{Authenticated: rawKey != ""}
 				if rawKey != "" {
 					check = checkCredential(auth.NewClient(apiBase).WithContext(cmd.Context()).ProbeToken(rawKey))

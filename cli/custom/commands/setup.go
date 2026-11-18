@@ -537,7 +537,10 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
-			rep.ok("saved the key you passed to profile %s", bartoloProfileName())
+			rep.ok("saved the key you passed to profile %s, in %s", bartoloProfileName(), profileKeyLocation())
+			if fellBack := savedKeyFellBack(); fellBack != "" {
+				rep.warn("%s", fellBack)
+			}
 		case opts.persistKey:
 			rep.ok("using the key you passed")
 		default:
@@ -546,11 +549,11 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
 	}
 	if profileInForce() {
-		key, _ := savedAPIKey()
+		key, err := auth.ProfileAPIKey()
+		if err != nil {
+			return nil, err
+		}
 		if key == "" {
-			if err := auth.ProfileKeyUnreadable(); err != nil {
-				return nil, err
-			}
 			name := bartoloProfileName()
 			// `auth profile add` rather than a wizard: --api-key-file feeds it
 			// the key from disk — off the argv, where `ps` would show it — so a
@@ -1252,9 +1255,20 @@ func profileKeyLocation() string {
 	return "credentials.json"
 }
 
+// savedKeyFellBack warns when saveAPIKeyProfile left the key in the 0600 file
+// although nobody asked for that: bartolo falls back silently when no OS
+// keychain takes it. Empty when the key is in a store, or the file was forced.
+func savedKeyFellBack() string {
+	if profileKeyLocation() != "credentials.json" {
+		return ""
+	}
+	return "no OS keychain took the key, so it is in the 0600 credentials.json"
+}
+
 // storedAPIKeyProfile reports whether a bartolo profile in force holds a key.
 func storedAPIKeyProfile() bool {
-	return bartolocli.Creds != nil && strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
+	key, _ := auth.ProfileAPIKey()
+	return key != ""
 }
 
 // dotEnvOrigin names the dotenv file a variable was imported from, or "".

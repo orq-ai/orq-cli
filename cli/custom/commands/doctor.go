@@ -207,6 +207,9 @@ func NewDoctorCommand() *cobra.Command {
 			authStatus := string(inspect.Status)
 			authSource := "none"
 			var storeErr error
+			if profileInForce() {
+				_, storeErr = auth.ProfileAPIKey()
+			}
 			var userEmail string
 			var activeWS any
 			workspaceCount := 0
@@ -227,7 +230,7 @@ func NewDoctorCommand() *cobra.Command {
 				workspaceCount = len(inspect.Session.Workspaces)
 			} else if storedAPIKeyProfile() {
 				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
-			} else if storeErr = auth.ProfileKeyUnreadable(); profileInForce() && storeErr != nil {
+			} else if storeErr != nil {
 				// The key exists but sits in a secure store this process
 				// could not read; re-adding the profile is not the fix.
 				authStatus = bartolocli.ProfileStoreUnreadable
