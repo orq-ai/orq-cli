@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** `orq mcp`, hidden in 12.10.2, now sits under Utilities in help. It runs a local MCP server that offers the orq.ai API as tools (`orq mcp --help`).
+
 ## [12.10.2](https://github.com/orq-ai/orq-cli/releases/tag/v12.10.2) — 2026-11-18
 
 **Fixed:** API-key profiles saved by earlier versions authenticate again. 12.10.1 rejected them with `profile declares auth type "apikey"; this CLI registers ApiKey`; profiles 12.10.1 saved keep working too. `orq auth profile add <name>` is one command again, with no `ApiKey` subcommand. The `orq mcp` server that 12.10.1 added by accident is hidden from help.

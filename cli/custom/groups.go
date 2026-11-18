@@ -127,6 +127,7 @@ var deliberateUtilities = map[string]bool{
 	"help-config":    true, // bartolo's config help page
 	"help-input":     true, // bartolo's input help page
 	"request":        true, // raw-HTTP escape hatch — a utility by definition
+	"mcp":            true, // generated MCP server over the raw API, like request
 	"server":         true, // inspects/persists server-URL defaults
 	"default-format": true, // persists the default output format
 }
