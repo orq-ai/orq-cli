@@ -798,6 +798,7 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 }
 
 func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
+	restoreAnonymousAuth(root)
 	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
