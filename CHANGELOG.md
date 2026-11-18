@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** the embedded orq skills move to assistant-plugins v5.0.0 (was v4.0.0), with orq-trace 0.6.1. Added: `orq-create-skill`. Removed: `create-skill`. An existing install drops the removed skills on its next refresh; `orq connect skills` installs the added ones.
+
 ## [12.9.9](https://github.com/orq-ai/orq-cli/releases/tag/v12.9.9) — 2026-11-17
 
 **Fixed:** `orq projects use`, `orq switch`, `orq setup` and `orq auth login` no
