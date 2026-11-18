@@ -9,21 +9,26 @@
 # deliberate — a quiet release body — not an oversight.
 version: 2
 updates:
+  # One entry for both Go modules. packages/orq-rc replaces orq with ../.., so a
+  # dependency bumped in one module and not the other breaks the rc build (go mod
+  # tidy) or the bartolo version-match check. group-by: dependency-name makes
+  # Dependabot open one PR per dependency covering both directories, instead of a
+  # PR per directory. It applies to version updates only; a security update is
+  # still opened per directory.
   - package-ecosystem: gomod
-    directory: /
+    directories:
+      - /
+      - /packages/orq-rc
     schedule:
       interval: weekly
     commit-message:
       prefix: chore
       include: scope
-
-  - package-ecosystem: gomod
-    directory: /packages/orq-rc
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: chore
-      include: scope
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+        group-by: dependency-name
 
   # The workflows mix SHA pins with floating @v4/@v5 refs. Pins go stale silently;
   # this is what surfaces them as reviewable PRs.
