@@ -3407,53 +3407,6 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 	return resp, decoded, nil
 }
 
-// OpenapiDuplicateEval Duplicate an Evaluator
-func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "evals duplicate id"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/evaluators/{id}/duplicate"
-	if paramId == "" {
-		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter id cannot be empty"))
-	}
-
-	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiGetEval Retrieve an Evaluator
 func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "evals get id"

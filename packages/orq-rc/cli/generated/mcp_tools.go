@@ -1428,26 +1428,6 @@ func mcpTools() []mcpserver.ToolDef {
 			return decoded, err
 		}),
 		mcpserver.APITool(mcpserver.ToolDef{
-			Name:         "evals_duplicate",
-			Title:        "Duplicate an Evaluator",
-			Description:  "Duplicate an Evaluator\n\nCreate a copy of an evaluator under a new key.",
-			Group:        "evals",
-			InputSchema:  json.RawMessage(`{"additionalProperties":false,"properties":{"description":{"description":"Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.","type":"string"},"id":{"type":"string"},"key":{"type":"string"}},"required":["id"],"type":"object"}`),
-			OutputSchema: json.RawMessage(`{"type":"object"}`),
-			WrapResult:   false,
-			ReadOnly:     false,
-			Destructive:  false,
-			Idempotent:   false,
-			Routes: []mcpserver.ArgRoute{
-				{Prop: "description", WireName: "description", In: "body"},
-				{Prop: "id", WireName: "id", In: "path", Required: true},
-				{Prop: "key", WireName: "key", In: "body"},
-			},
-		}, func(req *mcpserver.APIRequest) (any, error) {
-			_, decoded, err := OpenapiDuplicateEval(req.Arg("path", "id"), req.Params, req.Body)
-			return decoded, err
-		}),
-		mcpserver.APITool(mcpserver.ToolDef{
 			Name:         "evals_get",
 			Title:        "Retrieve an Evaluator",
 			Description:  "Retrieve an Evaluator\n\nRetrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata and enabled.",
@@ -3515,7 +3495,7 @@ func mcpTools() []mcpserver.ToolDef {
 			Title:        "List Azure Foundry deployments under a resource",
 			Description:  "List Azure Foundry deployments under a resource\n\nLists Azure Foundry deployments under the given base_url and merges each entry with the matching model catalog entry. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.",
 			Group:        "models",
-			InputSchema:  json.RawMessage(`{"additionalProperties":false,"properties":{"api_key":{"type":"string"},"api_version":{"type":"string"},"base_url":{"type":"string"},"provider":{"type":"string"}},"required":["api_key","base_url","provider"],"type":"object"}`),
+			InputSchema:  json.RawMessage(`{"additionalProperties":false,"properties":{"api_key":{"description":"Required unless integration_id is set.","type":"string"},"api_version":{"type":"string"},"base_url":{"type":"string"},"integration_id":{"description":"Azure workload identity federation integration that authenticates the listing with an Entra access token instead of api_key.","type":"string"},"provider":{"type":"string"}},"required":["base_url","provider"],"type":"object"}`),
 			OutputSchema: json.RawMessage(`{"properties":{"deployments":{"items":{"properties":{"base_url":{"type":["string","null"]},"id":{"type":["string","null"]},"master_data":{"properties":{"has_functions":{"type":["boolean","null"]},"id":{"type":["string","null"]},"input_cost":{"type":["number","null"]},"metadata":{"type":["object","null"]},"model_developer":{"type":["string","null"]},"model_family":{"type":["string","null"]},"model_id":{"type":["string","null"]},"model_type":{"type":["string","null"]},"output_cost":{"type":["number","null"]},"parameters":{"type":["array","null"]}},"type":["object","null"]},"model":{"type":["string","null"]},"publisher":{"type":["string","null"]},"wire":{"type":["string","null"]}},"type":["object","null"]},"type":["array","null"]},"region":{"type":["string","null"]}},"type":"object"}`),
 			WrapResult:   false,
 			ReadOnly:     false,
@@ -3525,6 +3505,7 @@ func mcpTools() []mcpserver.ToolDef {
 				{Prop: "api_key", WireName: "api_key", In: "body"},
 				{Prop: "api_version", WireName: "api_version", In: "body"},
 				{Prop: "base_url", WireName: "base_url", In: "body"},
+				{Prop: "integration_id", WireName: "integration_id", In: "body"},
 				{Prop: "provider", WireName: "provider", In: "body"},
 			},
 		}, func(req *mcpserver.APIRequest) (any, error) {
@@ -3897,7 +3878,7 @@ func mcpTools() []mcpserver.ToolDef {
 			Title:       "Validate model endpoint",
 			Description: "Validate model endpoint\n\nValidates a provider endpoint by performing a minimal live probe. Currently supports Azure OpenAI. Response includes the resolved region, whether the model is known to Orq, and either the full model document or a synthesized default.",
 			Group:       "models",
-			InputSchema: json.RawMessage(`{"additionalProperties":false,"properties":{"api_key":{"type":"string"},"api_version":{"type":"string"},"base_url":{"type":"string"},"deployment_name":{"type":"string"},"endpoint":{"type":"string"},"provider":{"type":"string"},"subtype":{"type":"string"}},"required":["api_key","provider"],"type":"object"}`),
+			InputSchema: json.RawMessage(`{"additionalProperties":false,"properties":{"api_key":{"description":"Required unless integration_id is set.","type":"string"},"api_version":{"type":"string"},"base_url":{"type":"string"},"deployment_name":{"type":"string"},"endpoint":{"type":"string"},"integration_id":{"description":"Azure workload identity federation integration that authenticates the probe with an Entra access token instead of api_key.","type":"string"},"provider":{"type":"string"},"subtype":{"type":"string"}},"required":["provider"],"type":"object"}`),
 			ReadOnly:    false,
 			Destructive: false,
 			Idempotent:  false,
@@ -3907,6 +3888,7 @@ func mcpTools() []mcpserver.ToolDef {
 				{Prop: "base_url", WireName: "base_url", In: "body"},
 				{Prop: "deployment_name", WireName: "deployment_name", In: "body"},
 				{Prop: "endpoint", WireName: "endpoint", In: "body"},
+				{Prop: "integration_id", WireName: "integration_id", In: "body"},
 				{Prop: "provider", WireName: "provider", In: "body"},
 				{Prop: "subtype", WireName: "subtype", In: "body"},
 			},
