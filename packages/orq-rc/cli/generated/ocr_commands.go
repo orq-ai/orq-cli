@@ -25,11 +25,14 @@ func registerocrCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " ocr --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
-			Use:     "ocr",
-			Short:   "Ocr",
+			Use: "create",
+			Aliases: []string{
+				"ocr",
+			},
+			Short:   "Create",
 			Long:    bartolocli.Markdown("Extracts text content while maintaining document structure and hierarchy\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `document` (anyOf, required)\n- `model` (string, required)\n- `ocr_settings` (object)\n- `pages` (array | null)\n\nRequired fields: `document`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),

@@ -10599,9 +10599,9 @@ func OpenapiCreateModeration(params *viper.Viper, body string) (*gentleman.Respo
 	return resp, decoded, nil
 }
 
-// OpenapiPostV2RouterOcr Ocr
+// OpenapiPostV2RouterOcr Create
 func OpenapiPostV2RouterOcr(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "ocr ocr"
+	handlerPath := "ocr create"
 	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/ocr"
