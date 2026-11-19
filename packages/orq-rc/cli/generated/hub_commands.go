@@ -16,6 +16,7 @@ func registerhubCommands(root *cobra.Command) {
 		Short: "Hub",
 		Long:  bartolocli.Markdown("Hub"),
 	}
+	bartolocli.HelpSection(root, hubCmd, "AI Gateway")
 	root.AddCommand(hubCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerhubCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -88,6 +90,7 @@ func registerhubCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("q", "", "")

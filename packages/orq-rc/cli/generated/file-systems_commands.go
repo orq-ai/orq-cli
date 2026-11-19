@@ -16,6 +16,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		Short: "File Systems",
 		Long:  bartolocli.Markdown("File Systems"),
 	}
+	bartolocli.HelpSection(root, fileSystemsCmd, "Factory")
 	root.AddCommand(fileSystemsCmd)
 
 	func() {
@@ -101,6 +102,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -206,6 +208,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -261,6 +264,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -305,6 +309,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -349,6 +354,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -395,6 +401,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("path", "", "")
@@ -463,6 +470,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -521,6 +529,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -561,6 +570,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("path", "", "")
@@ -650,6 +660,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Factory")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

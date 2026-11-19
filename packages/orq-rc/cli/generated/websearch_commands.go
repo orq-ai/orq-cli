@@ -16,6 +16,7 @@ func registerwebsearchCommands(root *cobra.Command) {
 		Short: "Websearch",
 		Long:  bartolocli.Markdown("Websearch"),
 	}
+	bartolocli.HelpSection(root, websearchCmd, "AI Gateway")
 	root.AddCommand(websearchCmd)
 
 	func() {
@@ -102,6 +103,7 @@ func registerwebsearchCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

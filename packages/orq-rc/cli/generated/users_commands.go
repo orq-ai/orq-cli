@@ -16,6 +16,7 @@ func registerusersCommands(root *cobra.Command) {
 		Short: "Users",
 		Long:  bartolocli.Markdown("Workspace user administration. Requires a Management Key with user permissions or an authenticated workspace admin session. Standard API keys are not supported."),
 	}
+	bartolocli.HelpSection(root, usersCmd, "Administration")
 	root.AddCommand(usersCmd)
 
 	func() {
@@ -72,6 +73,7 @@ func registerusersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -133,6 +135,7 @@ func registerusersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -174,6 +177,7 @@ func registerusersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -214,6 +218,7 @@ func registerusersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -278,6 +283,7 @@ func registerusersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

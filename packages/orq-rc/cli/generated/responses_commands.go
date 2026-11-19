@@ -16,6 +16,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		Short: "Responses",
 		Long:  bartolocli.Markdown("Responses"),
 	}
+	bartolocli.HelpSection(root, responsesCmd, "AI Gateway")
 	root.AddCommand(responsesCmd)
 
 	func() {
@@ -92,6 +93,7 @@ func registerresponsesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -492,6 +494,7 @@ func registerresponsesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -850,6 +853,7 @@ func registerresponsesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)

@@ -16,6 +16,7 @@ func registerchatCommands(root *cobra.Command) {
 		Short: "Chat",
 		Long:  bartolocli.Markdown("Chat"),
 	}
+	bartolocli.HelpSection(root, chatCmd, "AI Gateway")
 	root.AddCommand(chatCmd)
 
 	func() {
@@ -304,6 +305,7 @@ func registerchatCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

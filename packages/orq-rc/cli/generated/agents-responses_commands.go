@@ -16,6 +16,7 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 		Short: "Agents Responses",
 		Long:  bartolocli.Markdown("Agents Responses"),
 	}
+	bartolocli.HelpSection(root, agentsResponsesCmd, "Managed agents")
 	root.AddCommand(agentsResponsesCmd)
 
 	func() {
@@ -144,6 +145,7 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

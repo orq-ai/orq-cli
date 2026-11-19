@@ -16,6 +16,7 @@ func registerocrCommands(root *cobra.Command) {
 		Short: "Ocr",
 		Long:  bartolocli.Markdown("Ocr"),
 	}
+	bartolocli.HelpSection(root, ocrCmd, "AI Gateway")
 	root.AddCommand(ocrCmd)
 
 	func() {
@@ -87,6 +88,7 @@ func registerocrCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

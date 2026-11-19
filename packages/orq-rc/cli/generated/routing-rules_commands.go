@@ -16,6 +16,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		Short: "Routing Rules",
 		Long:  bartolocli.Markdown("Routing Rules"),
 	}
+	bartolocli.HelpSection(root, routingRulesCmd, "AI Gateway")
 	root.AddCommand(routingRulesCmd)
 
 	func() {
@@ -115,6 +116,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -219,6 +221,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -261,6 +264,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -310,6 +314,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("project-id", "", "")
@@ -353,6 +358,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -454,6 +460,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

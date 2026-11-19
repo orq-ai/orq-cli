@@ -16,6 +16,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 		Short: "Decisions",
 		Long:  bartolocli.Markdown("Decisions"),
 	}
+	bartolocli.HelpSection(root, decisionsCmd, "AI Gateway")
 	root.AddCommand(decisionsCmd)
 
 	func() {
@@ -146,6 +147,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

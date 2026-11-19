@@ -16,6 +16,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		Short: "Guardrail Rules",
 		Long:  bartolocli.Markdown("Guardrail Rules"),
 	}
+	bartolocli.HelpSection(root, guardrailRulesCmd, "AI Gateway")
 	root.AddCommand(guardrailRulesCmd)
 
 	func() {
@@ -103,6 +104,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -195,6 +197,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -237,6 +240,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -287,6 +291,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("project-id", "", "")
@@ -330,6 +335,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -419,6 +425,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

@@ -16,6 +16,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 		Short: "Audit Log Destinations",
 		Long:  bartolocli.Markdown("Signed webhook destinations that receive workspace audit log events, for SIEM and compliance pipelines."),
 	}
+	bartolocli.HelpSection(root, auditLogDestinationsCmd, "Administration")
 	root.AddCommand(auditLogDestinationsCmd)
 
 	func() {
@@ -31,6 +32,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "create",
 			Short:   "Create an audit log destination",
 			Long:    bartolocli.Markdown("Creates a signed webhook destination that receives every audit log event recorded in the workspace from this point on. The signing secret is returned once in this response and never again.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `url` (string, required)\n\nRequired fields: `display_name`, `url`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -78,6 +80,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -123,6 +126,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "delete destination-id",
 			Short:   "Delete an audit log destination",
 			Long:    bartolocli.Markdown("Deletes a destination and cancels its pending deliveries.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -145,6 +149,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -167,6 +172,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "get destination-id",
 			Short:   "Retrieve an audit log destination",
 			Long:    bartolocli.Markdown("Retrieves an audit log destination by ID. The signing secret is never returned.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -186,6 +192,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -207,6 +214,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "list",
 			Short:   "List audit log destinations",
 			Long:    bartolocli.Markdown("Returns the audit log destinations of the workspace, newest first, with cursor pagination."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -226,6 +234,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -251,6 +260,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "list-deliveries destination-id",
 			Short:   "List deliveries",
 			Long:    bartolocli.Markdown("Returns the delivery history of a destination, newest first, optionally filtered by status.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -270,6 +280,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -298,6 +309,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "replay destination-id",
 			Short:   "Replay audit events",
 			Long:    bartolocli.Markdown("Queues a new delivery for every retained audit event recorded in the time window, up to 10,000 events per request. Replays keep the original event IDs and never extend event retention.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -339,6 +351,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -378,6 +391,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "rotate-secret destination-id",
 			Short:   "Rotate the signing secret",
 			Long:    bartolocli.Markdown("Generates a new signing secret for the destination. Deliveries attempted after the rotation are signed with the new secret. The new secret is returned once in this response and never again.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -397,6 +411,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -418,6 +433,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "test destination-id",
 			Short:   "Send a test event",
 			Long:    bartolocli.Markdown("Sends a signed synthetic `audit_log.test` event to the destination synchronously and returns the receiver outcome. Test deliveries appear in the delivery history.\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -437,6 +453,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -460,6 +477,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 			Use:     "update destination-id",
 			Short:   "Update an audit log destination",
 			Long:    bartolocli.Markdown("Partially updates a destination. Set `status` to `AUDIT_LOG_DESTINATION_STATUS_PAUSED` to stop deliveries while retaining the backlog, and back to `AUDIT_LOG_DESTINATION_STATUS_ACTIVE` to drain it. The URL can only change while the destination is paused.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `status` (string)\n- `url` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -517,6 +535,7 @@ func registerauditLogDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

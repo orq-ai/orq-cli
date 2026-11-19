@@ -16,6 +16,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 		Short: "Workspaces",
 		Long:  bartolocli.Markdown("Workspaces"),
 	}
+	bartolocli.HelpSection(root, workspacesCmd, "Administration")
 	root.AddCommand(workspacesCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -88,6 +90,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -198,6 +201,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

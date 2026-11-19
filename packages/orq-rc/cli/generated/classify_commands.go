@@ -16,6 +16,7 @@ func registerclassifyCommands(root *cobra.Command) {
 		Short: "Classify",
 		Long:  bartolocli.Markdown("Classify"),
 	}
+	bartolocli.HelpSection(root, classifyCmd, "AI Gateway")
 	root.AddCommand(classifyCmd)
 
 	func() {
@@ -147,6 +148,7 @@ func registerclassifyCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

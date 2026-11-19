@@ -16,6 +16,7 @@ func registerreportingCommands(root *cobra.Command) {
 		Short: "Reporting",
 		Long:  bartolocli.Markdown("Reporting"),
 	}
+	bartolocli.HelpSection(root, reportingCmd, "Administration")
 	root.AddCommand(reportingCmd)
 
 	func() {
@@ -160,6 +161,7 @@ func registerreportingCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

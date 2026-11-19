@@ -16,6 +16,7 @@ func registerrerankCommands(root *cobra.Command) {
 		Short: "Rerank",
 		Long:  bartolocli.Markdown("Rerank"),
 	}
+	bartolocli.HelpSection(root, rerankCmd, "AI Gateway")
 	root.AddCommand(rerankCmd)
 
 	func() {
@@ -150,6 +151,7 @@ func registerrerankCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

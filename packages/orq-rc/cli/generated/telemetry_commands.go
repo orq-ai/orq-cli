@@ -16,6 +16,7 @@ func registertelemetryCommands(root *cobra.Command) {
 		Short: "Telemetry",
 		Long:  bartolocli.Markdown("Telemetry"),
 	}
+	bartolocli.HelpSection(root, telemetryCmd, "Observability")
 	root.AddCommand(telemetryCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("source", "", " (one of: TELEMETRY_SOURCE_TRACES, TELEMETRY_SOURCE_METRICS, TELEMETRY_SOURCE_LOGS)")
@@ -160,6 +162,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -392,6 +395,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

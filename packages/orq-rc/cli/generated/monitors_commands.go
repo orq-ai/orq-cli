@@ -16,6 +16,7 @@ func registermonitorsCommands(root *cobra.Command) {
 		Short: "Monitors",
 		Long:  bartolocli.Markdown("Monitors are custom observability dashboards for traces, runtime metrics, and logs. Each monitor holds widgets that chart one telemetry query. List the metrics, operations, and dimensions available to your workspace with `GET /v3/telemetry/capabilities`, or start from a preset with `GET /v2/monitors/presets`."),
 	}
+	bartolocli.HelpSection(root, monitorsCmd, "Observability")
 	root.AddCommand(monitorsCmd)
 
 	func() {
@@ -111,6 +112,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -211,6 +213,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -252,6 +255,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -292,6 +296,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
@@ -339,6 +344,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -421,6 +427,7 @@ func registermonitorsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
