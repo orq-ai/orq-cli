@@ -14,7 +14,11 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Setenv("HOME", home)
 	_ = os.Setenv("USERPROFILE", home)
-	_ = os.Unsetenv("CLAUDE_CONFIG_DIR")
+	// Agent config dirs that override HOME: a dev box (or a wrapper such as
+	// Superset) may export them, and detection would then find real agents.
+	for _, k := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR", "XDG_CONFIG_HOME"} {
+		_ = os.Unsetenv(k)
+	}
 	// Keep session reads off the real OS keychain. doctor and other commands
 	// read the session through auth, which would otherwise shell out to
 	// security/secret-tool on a dev box; the file store needs no daemon and
