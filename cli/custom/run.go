@@ -47,6 +47,8 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 
 	commands.SetAPIVersion(bartolocli.Root, apiVersion)
 
+	// Before generation, so the spec's sections find our groups already present and docs order wins.
+	RegisterHelpGroups(bartolocli.Root)
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root, traceAPI)
 	// Passthrough commands (launch, orqi) disable flag parsing, so cobra

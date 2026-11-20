@@ -111,6 +111,7 @@ func dump() ([]byte, error) {
 		SerializationFormat: "toon",
 		Version:             "surface", // fixed: the manifest must not churn per release
 	})
+	custom.RegisterHelpGroups(bartolocli.Root)
 	generated.Register(bartolocli.Root)
 	custom.Register(bartolocli.Root, commands.TraceAPI{})
 
