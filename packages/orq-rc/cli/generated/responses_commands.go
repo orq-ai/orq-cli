@@ -443,7 +443,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "tool_choice",
 							FlagName:    "tool-choice",
 							Type:        "json-or-string",
-							Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+							Description: "How the model should use the provided tools. Native OpenAI requests can restrict the allowed tools.",
 						},
 						{
 							Name:        "tools",
@@ -780,7 +780,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "tool_choice",
 					FlagName:    "tool-choice",
 					Type:        "json-or-string",
-					Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+					Description: "How the model should use the provided tools. Native OpenAI requests can restrict the allowed tools.",
 				},
 				{
 					Name:        "tools",
