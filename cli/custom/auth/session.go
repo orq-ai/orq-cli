@@ -428,18 +428,42 @@ func warnStoredSecretRemains(store SecretStore, host, why string) {
 	fmt.Fprintln(os.Stderr, msg)
 }
 
+// ProfileAPIKey is the in-force profile's API key. An empty key with a nil
+// error means the profile has none. A non-nil error means the key exists in a
+// secure store this process could not read; it names the store and the fix,
+// and re-adding the profile would replace the key. Every profile-key read goes
+// through here, so no caller can report an unreadable key as missing.
+func ProfileAPIKey() (string, error) {
+	if bartolocli.Creds == nil {
+		return "", nil
+	}
+	if key := strings.TrimSpace(bartolocli.GetProfile()["api_key"]); key != "" {
+		return key, nil
+	}
+	err := bartolocli.ProfileKeyUnreadable(bartolocli.ActiveProfileName())
+	if err == nil {
+		return "", nil
+	}
+	// Forcing the file store does not move keys back out of the keychain, so
+	// a key stored before the switch reads as unreadable until it is unset.
+	fix := "make that store readable (unlock it, or run where it is reachable) and retry"
+	if credentialStoreForcedFile() {
+		fix = "unset " + CredentialStoreEnv + " and retry"
+	}
+	return "", fmt.Errorf("%w; the key is still stored there, so %s. Re-adding the profile would replace it", err, fix)
+}
+
 // SavedAgentKey returns the credential agent configs are wired with, and the
 // workspace it was minted for. A bartolo profile in force is authoritative: its
 // key is returned with an unknowable workspace and the login session is ignored
-// completely. With no profile in force, the gateway key belongs to the login
-// session. It lives here because launch needs it too and launch cannot import
-// commands.
+// completely; callers that report a missing key use ProfileAPIKey instead, for
+// the unreadable-store error. With no profile in force, the gateway key
+// belongs to the login session. It lives here because launch needs it too and
+// launch cannot import commands.
 func SavedAgentKey() (key, workspace string) {
 	if bartolocli.ActiveProfileName() != "" {
-		if bartolocli.Creds == nil {
-			return "", ""
-		}
-		return strings.TrimSpace(bartolocli.GetProfile()["api_key"]), ""
+		key, _ := ProfileAPIKey()
+		return key, ""
 	}
 	if session, err := ReadSession(); err == nil && session != nil {
 		return session.GatewayKey, session.GatewayWorkspace

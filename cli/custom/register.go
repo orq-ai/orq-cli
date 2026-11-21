@@ -402,11 +402,11 @@ func applyProfileAPIKey(announce bool) {
 	if !profileInForce() {
 		return
 	}
-	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	key, _ := auth.ProfileAPIKey()
 	if key == "" {
-		// Nothing to export, and nothing to clear either: bartolo will fail
-		// this call on the keyless profile, and doctor reports it. Unsetting
-		// here would only hide what the user actually has set.
+		// Missing, or in a store this process can't read: nothing to export
+		// and nothing to clear. bartolo fails the call itself, naming the
+		// store, and doctor reports it; unsetting would hide what the user set.
 		return
 	}
 	var shadowed []string
@@ -542,10 +542,8 @@ func apiKeyConfigured() bool {
 // does not fall through from that profile to an ambient environment key.
 func configuredAPIKey() string {
 	if bartolocli.ActiveProfileName() != "" {
-		if bartolocli.Creds == nil {
-			return ""
-		}
-		return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+		key, _ := auth.ProfileAPIKey()
+		return key
 	}
 	for _, envVar := range apiKeyEnvVars {
 		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" {
@@ -785,7 +783,14 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 		// ORQ_TOKEN, ORQ_AUTHORIZATION or a credentials-profile api_key was
 		// resolving `--project <key-or-name>` with an empty bearer and getting
 		// a 401 out of a flag that should have cost them nothing.
-		resolved, err := lookupProjectID(client, configuredAPIKey(), ref)
+		key := configuredAPIKey()
+		if key == "" && profileInForce() {
+			// An unreadable store, not a 401 from an empty bearer.
+			if _, err := auth.ProfileAPIKey(); err != nil {
+				return err
+			}
+		}
+		resolved, err := lookupProjectID(client, key, ref)
 		if err != nil {
 			return err
 		}

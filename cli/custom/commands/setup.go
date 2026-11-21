@@ -537,7 +537,10 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
-			rep.ok("saved the key you passed to profile %s", bartoloProfileName())
+			rep.ok("saved the key you passed to profile %s, in %s", bartoloProfileName(), profileKeyLocation())
+			if fellBack := savedKeyFellBack(); fellBack != "" {
+				rep.warn("%s", fellBack)
+			}
 		case opts.persistKey:
 			rep.ok("using the key you passed")
 		default:
@@ -546,7 +549,10 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
 	}
 	if profileInForce() {
-		key, _ := savedAPIKey()
+		key, err := auth.ProfileAPIKey()
+		if err != nil {
+			return nil, err
+		}
 		if key == "" {
 			name := bartoloProfileName()
 			// `auth profile add` rather than a wizard: --api-key-file feeds it
@@ -912,18 +918,20 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 
 // saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
 // handler type and the resolved server, nothing of ours. bartolo resolves it
-// from here on. Only ever writes a named, selected profile — an unselected one
-// is unreachable, so a caller with no profile in force must not reach here.
+// from here on. SetProfile moves the key into the OS secure store and leaves an
+// api_key_store marker; with no store available the key stays in the 0600
+// file. Only ever writes a named, selected profile — an unselected one is
+// unreachable, so a caller with no profile in force must not reach here.
 func saveAPIKeyProfile(key string) error {
 	name := bartoloProfileName()
 	if name == "" {
 		return errors.New("cannot save an API-key profile without a selected profile (--profile / ORQ_PROFILE / `orq auth profile use`)")
 	}
-	bartolocli.Creds.Set("profiles."+name+".api_key", key)
-	bartolocli.Creds.Set("profiles."+name+".type", BartoloAuthType())
+	fields := map[string]string{"api_key": key, "type": BartoloAuthType()}
 	if server := auth.Server(); server != "" {
-		bartolocli.Creds.Set("profiles."+name+".server", server)
+		fields["server"] = server
 	}
+	bartolocli.Creds.SetProfile(name, fields)
 	return saveCreds()
 }
 
@@ -1234,9 +1242,33 @@ func clearShellEnvFile() ([]string, error) {
 	return cleared, errors.Join(clearErrors...)
 }
 
+// profileKeyLocation names where the in-force profile's API key is kept: the
+// secure store bartolo moved it to, or credentials.json. Call after GetProfile.
+func profileKeyLocation() string {
+	name := bartolocli.ActiveProfileName()
+	if store := strings.TrimSpace(bartolocli.Creds.GetStringMapString("profiles." + name)["api_key_store"]); store != "" {
+		return store
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(auth.CredentialStoreEnv)), "file") {
+		return "credentials.json (" + auth.CredentialStoreEnv + "=file)"
+	}
+	return "credentials.json"
+}
+
+// savedKeyFellBack warns when saveAPIKeyProfile left the key in the 0600 file
+// although nobody asked for that: bartolo falls back silently when no OS
+// keychain takes it. Empty when the key is in a store, or the file was forced.
+func savedKeyFellBack() string {
+	if profileKeyLocation() != "credentials.json" {
+		return ""
+	}
+	return "no OS keychain took the key, so it is in the 0600 credentials.json"
+}
+
 // storedAPIKeyProfile reports whether a bartolo profile in force holds a key.
 func storedAPIKeyProfile() bool {
-	return bartolocli.Creds != nil && strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
+	key, _ := auth.ProfileAPIKey()
+	return key != ""
 }
 
 // dotEnvOrigin names the dotenv file a variable was imported from, or "".

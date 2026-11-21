@@ -58,7 +58,7 @@ func TestConnectNativeOtelUsesResolvedServerWithoutPlugin(t *testing.T) {
 			// There is no agent binary on PATH: native configuration must not
 			// invoke Claude's plugin manager, even for an existing hook install.
 			env := []string{
-				"HOME=" + home, "USERPROFILE=" + home, "PATH=" + t.TempDir(),
+				"HOME=" + home, "USERPROFILE=" + home, "PATH=" + t.TempDir(), "ORQ_CREDENTIAL_STORE=file",
 				"CLAUDE_CONFIG_DIR=" + claudeDir, "ORQ_NO_UPDATE_CHECK=1",
 				"ORQ_SERVER=" + tc.envServer, "ORQ_API_KEY=" + envKey,
 				"ORQ_TOKEN=", "ORQ_AUTHORIZATION=", "ORQ_API_BASE_URL=", "ORQ_PROFILE=",

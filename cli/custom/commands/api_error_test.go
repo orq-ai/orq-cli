@@ -104,6 +104,17 @@ func TestExplainAPIError(t *testing.T) {
 			want:   []string{"run `orq auth login` or set ORQ_API_KEY"},
 			absent: []string{"auth setup"},
 		},
+		{
+			name:   "the binary-prefixed stale remedy is replaced too",
+			in:     "missing API key; configure a profile with `orq auth setup --profile dev` or set ORQ_API_KEY",
+			want:   []string{"run `orq auth login` or set ORQ_API_KEY"},
+			absent: []string{"auth setup"},
+		},
+		{
+			name: "the unreadable-store text passes through unchanged",
+			in:   "profile dev key is in macOS Keychain, which could not be read; Running `orq auth setup --profile dev` would replace it",
+			want: []string{"Running `orq auth setup --profile dev` would replace it"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

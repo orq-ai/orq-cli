@@ -1615,3 +1615,60 @@ func TestDoctorReportsTheCredentialStoreInEverySessionState(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorReportsUnreadableProfileStore(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	bartolocli.Creds.SetProfile("work", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+
+	report := runDoctor(t, true)
+	authReport := doctorSection(t, report, "auth")
+	if authReport["status"] != "profile-store-unreadable" {
+		t.Errorf("auth status = %v, want profile-store-unreadable", authReport["status"])
+	}
+	if msg, _ := authReport["store_error"].(string); !strings.Contains(msg, "macOS Keychain") {
+		t.Errorf("auth.store_error = %q, want the store named", msg)
+	}
+	if authReport["api_key_store"] != "macOS Keychain" {
+		t.Errorf("auth.api_key_store = %v", authReport["api_key_store"])
+	}
+	check := findCheck(t, report, "api_key_store")
+	if check == nil || check["status"] != "fail" {
+		t.Errorf("api_key_store check = %v, want fail", check)
+	}
+	raw, _ := json.Marshal(report)
+	for _, bad := range []string{"orq setup", "auth profile add"} {
+		if strings.Contains(string(raw), bad) {
+			t.Errorf("report offers %q as the fix: %s", bad, raw)
+		}
+	}
+}
+
+func TestDoctorReportsWhereProfileKeyIsStored(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	bartolocli.Creds.Set("profiles", map[string]any{"work": map[string]any{
+		"type": "apikey", "api_key": "sk-orq-x", "api_key_store": "macOS Keychain",
+	}})
+
+	report := runDoctorJSON(t)
+	authReport := doctorSection(t, report, "auth")
+	if authReport["status"] != "authenticated" || authReport["api_key_store"] != "macOS Keychain" {
+		t.Errorf("auth = %v", authReport)
+	}
+	check := findCheck(t, report, "api_key_store")
+	if check == nil || check["status"] != "pass" {
+		t.Errorf("api_key_store check = %v, want pass", check)
+	}
+}
+
+func TestDoctorReportsForcedFileKeyLocation(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	t.Setenv("ORQ_CREDENTIAL_STORE", "file")
+	bartolocli.Creds.Set("profiles.work.type", "apikey")
+	bartolocli.Creds.Set("profiles.work.api_key", "sk-orq-x")
+
+	report := runDoctorJSON(t)
+	authReport := doctorSection(t, report, "auth")
+	if want := "credentials.json (ORQ_CREDENTIAL_STORE=file)"; authReport["api_key_store"] != want {
+		t.Errorf("auth.api_key_store = %v, want %q", authReport["api_key_store"], want)
+	}
+}

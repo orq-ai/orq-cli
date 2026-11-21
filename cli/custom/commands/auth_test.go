@@ -650,3 +650,38 @@ func TestWhoAmIProbesCredentialInForce(t *testing.T) {
 		})
 	}
 }
+
+func TestWhoAmIReportsUnreadableProfileStore(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	seedMarkerOnlyProfile(t)
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	var out bytes.Buffer
+	origStdout := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = origStdout })
+
+	cmd := NewWhoAmICommand()
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "macOS Keychain") {
+		t.Fatalf("whoami err = %v, want the unreadable-store error", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if msg, _ := payload["store_error"].(string); !strings.Contains(msg, "macOS Keychain") {
+		t.Errorf("store_error = %v", payload["store_error"])
+	}
+	if payload["api_key_store"] != "macOS Keychain" {
+		t.Errorf("api_key_store = %v", payload["api_key_store"])
+	}
+	if strings.Contains(out.String(), "not set") {
+		t.Errorf("whoami calls an unreadable key not set:\n%s", out.String())
+	}
+}
