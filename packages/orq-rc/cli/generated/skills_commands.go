@@ -665,6 +665,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `skill_id` of the first item from the previous page.")
 		cmd.Flags().String("search", "", "Case-insensitive substring match on display name and description.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project: its own skills plus the workspace-level skills shared with it.")
+		cmd.Flags().String("updated-by", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
