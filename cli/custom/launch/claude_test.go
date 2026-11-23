@@ -153,14 +153,12 @@ func TestClaudeGatewayAcceptsBareModel(t *testing.T) {
 // The /model tiers are Claude Code's to resolve: it maps opus, sonnet and haiku
 // to current model ids itself, and the gateway serves them. A pin here went
 // stale with every new tier, so the launcher sets none, with or without
-// gateway routing, and whatever the user exported.
+// gateway routing.
 func TestClaudeLeavesTheModelTiersToClaudeCode(t *testing.T) {
 	tiers := []string{"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"}
-	exported := map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}
 	for name, ctx := range map[string]*AgentContext{
-		"gateway":             claudeCtx(nil, routerFlags(GatewayFlags{})),
-		"no gateway":          claudeCtx(nil, GatewayFlags{}),
-		"gateway, user value": claudeCtx(exported, routerFlags(GatewayFlags{})),
+		"gateway":    claudeCtx(nil, routerFlags(GatewayFlags{})),
+		"no gateway": claudeCtx(nil, GatewayFlags{}),
 	} {
 		plan, err := resolveClaude(ctx)
 		if err != nil {

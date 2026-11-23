@@ -126,7 +126,7 @@ controls on surface changes, whichever side they originate from.
   `_SONNET_MODEL` or `_HAIKU_MODEL`: Claude Code resolves `opus`, `sonnet` and
   `haiku` to current model ids itself, and the gateway serves them. Checked with
   Claude Code 2.1.330. An older Claude Code resolves the tiers to older models
-  without an error (2.1.281 sends haiku as `claude-haiku-4-5` and sonnet as
+  without an error (2.1.281 sends haiku as `claude-haiku-4-5-20251001` and sonnet as
   `claude-sonnet-5`); update it, or export the tier variable to pin a model.
   A value you exported for any of the three still reaches
   the session, but `--dry-run` no longer lists it.
