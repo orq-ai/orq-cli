@@ -85,6 +85,13 @@ installed into each agent's config dir).
 holds a saved API key, its handler type and its server. Two writers reach it:
 bartolo's own `auth profile add`, and our `commands.saveAPIKeyProfile` (behind
 `orq setup --api-key` and `orq auth login --api-key`). Never add a field there.
+`profiles.<name>.api_key` lives in the OS secure store (keychain service `orq`,
+account = profile name); the file keeps an `api_key_store` marker.
+`ORQ_CREDENTIAL_STORE=file` keeps new profile keys and sessions in files; a key
+already in the store stays there and reads as unreadable until it is unset.
+Session secrets use service `orq-cli`, so the two never collide. Read a profile
+key only through `auth.ProfileAPIKey()`, which returns the unreadable-store
+error beside an empty key, so no caller reports a stored key as missing.
 A profile that is selected but absent from the file is refused up front by
 `custom.rejectUnknownProfile`, because bartolo will not fall through from a
 selected profile to an ambient key. A browser login lives in `sessions/<host>.json` — host from

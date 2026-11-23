@@ -2,9 +2,13 @@
   "app_name": "orq",
   "app_version": "4.18.23",
   "module_path": "orq",
-  "bartolo_version": "0.18.0",
+  "bartolo_version": "0.23.0",
   "env_prefix": "ORQ",
   "serialization_format": "toon",
   "api_key_env_var": "ORQ_API_KEY",
-  "last_spec_path": "openapi.yaml"
+  "last_spec_path": "openapi.yaml",
+  "targets": [
+    "cli",
+    "mcp"
+  ]
 }

@@ -272,7 +272,7 @@ func registerchatCommands(root *cobra.Command) {
 							Name:        "top_p",
 							FlagName:    "top-p",
 							Type:        "float64-nullable",
-							Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. ",
+							Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass.",
 						},
 						{
 							Name:        "variables",
@@ -541,7 +541,7 @@ func registerchatCommands(root *cobra.Command) {
 					Name:        "top_p",
 					FlagName:    "top-p",
 					Type:        "float64-nullable",
-					Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. ",
+					Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass.",
 				},
 				{
 					Name:        "variables",

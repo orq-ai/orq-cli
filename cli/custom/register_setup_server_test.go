@@ -39,7 +39,7 @@ func TestCapabilityOnlySetupPersistsServerForNextCommand(t *testing.T) {
 				}
 				env := []string{
 					"HOME=" + home, "USERPROFILE=" + home, "CLAUDE_CONFIG_DIR=" + claudeDir,
-					"PATH=" + t.TempDir(), "ORQ_NO_UPDATE_CHECK=1", "ORQ_API_KEY=synthetic-env-key",
+					"PATH=" + t.TempDir(), "ORQ_CREDENTIAL_STORE=file", "ORQ_NO_UPDATE_CHECK=1", "ORQ_API_KEY=synthetic-env-key",
 					"ORQ_PROFILE=", "ORQ_SERVER=", "ORQ_API_BASE_URL=", "ORQ_TOKEN=", "ORQ_AUTHORIZATION=",
 				}
 				run := func(useProfile bool, args ...string) (string, string) {

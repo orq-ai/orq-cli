@@ -174,6 +174,9 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// login that the profile then refuses.
 	if name, key, ok := profileKey(); ok {
 		if key == "" {
+			if _, err := auth.ProfileAPIKey(); err != nil {
+				return nil, err
+			}
 			return nil, fmt.Errorf("profile %q has no api_key; add one with 'orq auth profile add %s --api-key-file <file>' or pass --profile \"\" for this call", name, name)
 		}
 		return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialAPIKey}, nil
@@ -281,7 +284,8 @@ func profileKey() (name, key string, ok bool) {
 	if name == "" || !bartolocli.ProfileExists(name) {
 		return "", "", false
 	}
-	return name, strings.TrimSpace(bartolocli.GetProfile()["api_key"]), true
+	key, _ = auth.ProfileAPIKey()
+	return name, key, true
 }
 
 // validateReusableKey verifies a saved gateway key against the server before
