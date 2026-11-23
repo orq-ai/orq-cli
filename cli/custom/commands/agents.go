@@ -214,7 +214,7 @@ func agentRegistry() []agentSpec {
 			writeMCP:   writeMCPJSON("mcpServers", cursorMCPEntry),
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
-			mcpLogin:   "connect it from Cursor's MCP settings, or run 'agent mcp login " + launch.MCPServerName + "'",
+			mcpLogin:   "open Cursor Settings > Tools & MCP and connect " + launch.MCPServerName + ", or run 'agent mcp login " + launch.MCPServerName + "'",
 		},
 	}
 }
