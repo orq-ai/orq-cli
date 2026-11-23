@@ -1700,7 +1700,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "metadata",
 							FlagName:    "metadata",
 							Type:        "string-map",
-							Description: "Metadata of the chunk",
+							Description: "Metadata of the chunk. Replaces the existing metadata object: send every key you want to keep.",
 						},
 						{
 							Name:        "text",
@@ -1743,7 +1743,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "string-map",
-					Description: "Metadata of the chunk",
+					Description: "Metadata of the chunk. Replaces the existing metadata object: send every key you want to keep.",
 				},
 				{
 					Name:        "text",
