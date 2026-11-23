@@ -126,3 +126,29 @@ func TestConnectStatusListsCursor(t *testing.T) {
 		}
 	}
 }
+
+// The entry carries no credential, so the hint is the only thing that tells the
+// user to finish the OAuth login. It has to name the server and both ways in.
+func TestCursorLoginHintNamesTheServerAndBothWaysToLogIn(t *testing.T) {
+	spec, ok := lookupAgent("cursor")
+	if !ok {
+		t.Fatal("cursor is not in the registry")
+	}
+	for _, want := range []string{"Tools & MCP", "agent mcp login " + launch.MCPServerName} {
+		if !strings.Contains(spec.mcpLogin, want) {
+			t.Errorf("login hint %q lacks %q", spec.mcpLogin, want)
+		}
+	}
+
+	mcpMachine(t, ".cursor")
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"cursor", "mcp", "--global"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, spec.mcpLogin) {
+		t.Fatalf("connect did not print the login hint:\n%s", out)
+	}
+}
