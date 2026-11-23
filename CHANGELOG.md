@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.12.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.12.0) — 2026-11-23
+
 **Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
 Secret Service through `secret-tool`) on first use; elsewhere, or with no
 Secret Service, the key stays in the 0600 `credentials.json`. `credentials.json`
