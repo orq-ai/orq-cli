@@ -16,6 +16,7 @@ func registerskillsCommands(root *cobra.Command) {
 		Short: "Skills",
 		Long:  bartolocli.Markdown("Skills"),
 	}
+	bartolocli.HelpSection(root, skillsCmd, "Managed agents")
 	root.AddCommand(skillsCmd)
 
 	func() {
@@ -102,6 +103,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -193,6 +195,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -237,6 +240,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -278,6 +282,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -318,6 +323,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("factory-id", "", "Resolve the skill as one factory sees it: the skills of its project plus the workspace-level skills shared with it.")
@@ -360,6 +366,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -436,6 +443,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -560,6 +568,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -648,6 +657,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25). Values outside the range, including 0, are rejected.")
@@ -655,6 +665,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `skill_id` of the first item from the previous page.")
 		cmd.Flags().String("search", "", "Case-insensitive substring match on display name and description.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project: its own skills plus the workspace-level skills shared with it.")
+		cmd.Flags().String("updated-by", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -694,6 +705,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -762,6 +774,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -844,6 +857,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -920,6 +934,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -990,6 +1005,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1078,6 +1094,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1202,6 +1219,7 @@ func registerskillsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

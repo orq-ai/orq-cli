@@ -16,6 +16,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 		Short: "Deployments",
 		Long:  bartolocli.Markdown("Deployments"),
 	}
+	bartolocli.HelpSection(root, deploymentsCmd, "Managed agents")
 	root.AddCommand(deploymentsCmd)
 
 	func() {
@@ -138,6 +139,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -358,6 +360,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -488,6 +491,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
@@ -532,6 +536,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
@@ -667,6 +672,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

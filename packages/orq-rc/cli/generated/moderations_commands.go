@@ -16,6 +16,7 @@ func registermoderationsCommands(root *cobra.Command) {
 		Short: "Moderations",
 		Long:  bartolocli.Markdown("Moderations"),
 	}
+	bartolocli.HelpSection(root, moderationsCmd, "AI Gateway")
 	root.AddCommand(moderationsCmd)
 
 	func() {
@@ -72,6 +73,7 @@ func registermoderationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

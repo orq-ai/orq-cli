@@ -16,6 +16,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 		Short: "Embeddings",
 		Long:  bartolocli.Markdown("Embeddings"),
 	}
+	bartolocli.HelpSection(root, embeddingsCmd, "AI Gateway")
 	root.AddCommand(embeddingsCmd)
 
 	func() {
@@ -144,6 +145,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

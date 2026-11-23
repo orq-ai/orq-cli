@@ -16,6 +16,7 @@ func registermodelsCommands(root *cobra.Command) {
 		Short: "Models",
 		Long:  bartolocli.Markdown("Models"),
 	}
+	bartolocli.HelpSection(root, modelsCmd, "AI Gateway")
 	root.AddCommand(modelsCmd)
 
 	func() {
@@ -30,13 +31,13 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "azure-foundry-deployments",
 			Short:   "List Azure Foundry deployments under a resource",
-			Long:    bartolocli.Markdown("Lists Azure Foundry deployments under the given base_url and merges each entry with the matching model catalog entry. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string, required)\n- `provider` (string, required)\n\nRequired fields: `api_key`, `base_url`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Lists Azure Foundry deployments under the given base_url and merges each entry with the matching model catalog entry. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string)\n- `api_version` (string)\n- `base_url` (string, required)\n- `integration_id` (string)\n- `provider` (string, required)\n\nRequired fields: `base_url`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"base_url\": \"base_url\",\n  \"provider\": \"provider\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"base_url\": \"base_url\",\n  \"provider\": \"provider\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -45,7 +46,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "api_key",
 							FlagName:    "api-key",
 							Type:        "string",
-							Description: "",
+							Description: "Required unless integration_id is set.",
 						},
 						{
 							Name:        "api_version",
@@ -58,6 +59,12 @@ func registermodelsCommands(root *cobra.Command) {
 							FlagName:    "base-url",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "integration_id",
+							FlagName:    "integration-id",
+							Type:        "string",
+							Description: "Azure workload identity federation integration that authenticates the listing with an Entra access token instead of api_key.",
 						},
 						{
 							Name:        "provider",
@@ -84,6 +91,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -93,7 +101,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "api_key",
 					FlagName:    "api-key",
 					Type:        "string",
-					Description: "",
+					Description: "Required unless integration_id is set.",
 				},
 				{
 					Name:        "api_version",
@@ -106,6 +114,12 @@ func registermodelsCommands(root *cobra.Command) {
 					FlagName:    "base-url",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "integration_id",
+					FlagName:    "integration-id",
+					Type:        "string",
+					Description: "Azure workload identity federation integration that authenticates the listing with an Entra access token instead of api_key.",
 				},
 				{
 					Name:        "provider",
@@ -250,6 +264,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -576,6 +591,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -944,6 +960,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1152,6 +1169,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1225,6 +1243,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -1269,6 +1288,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -1328,6 +1348,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1391,6 +1412,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1436,6 +1458,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1476,6 +1499,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1516,6 +1540,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1622,6 +1647,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -1896,6 +1922,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -2236,6 +2263,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -2384,13 +2412,13 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "validate",
 			Short:   "Validate model endpoint",
-			Long:    bartolocli.Markdown("Validates a provider endpoint by performing a minimal live probe. Currently supports Azure OpenAI. Response includes the resolved region, whether the model is known to Orq, and either the full model document or a synthesized default.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string)\n- `deployment_name` (string)\n- `endpoint` (string)\n- `provider` (string, required)\n- `subtype` (string)\n\nRequired fields: `api_key`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Validates a provider endpoint by performing a minimal live probe. Currently supports Azure OpenAI. Response includes the resolved region, whether the model is known to Orq, and either the full model document or a synthesized default.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string)\n- `api_version` (string)\n- `base_url` (string)\n- `deployment_name` (string)\n- `endpoint` (string)\n- `integration_id` (string)\n- `provider` (string, required)\n- `subtype` (string)\n\nRequired fields: `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"provider\": \"provider\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"provider\": \"provider\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -2399,7 +2427,7 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "api_key",
 							FlagName:    "api-key",
 							Type:        "string",
-							Description: "",
+							Description: "Required unless integration_id is set.",
 						},
 						{
 							Name:        "api_version",
@@ -2424,6 +2452,12 @@ func registermodelsCommands(root *cobra.Command) {
 							FlagName:    "endpoint",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "integration_id",
+							FlagName:    "integration-id",
+							Type:        "string",
+							Description: "Azure workload identity federation integration that authenticates the probe with an Entra access token instead of api_key.",
 						},
 						{
 							Name:        "provider",
@@ -2456,6 +2490,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -2465,7 +2500,7 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "api_key",
 					FlagName:    "api-key",
 					Type:        "string",
-					Description: "",
+					Description: "Required unless integration_id is set.",
 				},
 				{
 					Name:        "api_version",
@@ -2490,6 +2525,12 @@ func registermodelsCommands(root *cobra.Command) {
 					FlagName:    "endpoint",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "integration_id",
+					FlagName:    "integration-id",
+					Type:        "string",
+					Description: "Azure workload identity federation integration that authenticates the probe with an Entra access token instead of api_key.",
 				},
 				{
 					Name:        "provider",
@@ -2598,6 +2639,7 @@ func registermodelsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

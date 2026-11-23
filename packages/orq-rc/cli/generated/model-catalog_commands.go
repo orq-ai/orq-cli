@@ -16,6 +16,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		Short: "Model Catalog",
 		Long:  bartolocli.Markdown("Model Catalog"),
 	}
+	bartolocli.HelpSection(root, modelCatalogCmd, "AI Gateway")
 	root.AddCommand(modelCatalogCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -88,6 +90,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
@@ -144,6 +147,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")

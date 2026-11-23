@@ -16,6 +16,7 @@ func registerbatchesCommands(root *cobra.Command) {
 		Short: "Batches",
 		Long:  bartolocli.Markdown("Batches"),
 	}
+	bartolocli.HelpSection(root, batchesCmd, "AI Gateway")
 	root.AddCommand(batchesCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerbatchesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -143,6 +145,7 @@ func registerbatchesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -230,6 +233,7 @@ func registerbatchesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("file", "", "Which result file to download: output holds successful responses, errors holds the per-line failures. Defaults to output, and answers the errors file when the batch produced no output file. Requesting errors on a batch with no error file returns 409 output_unavailable. (one of: output, errors)")
@@ -275,6 +279,7 @@ func registerbatchesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Maximum number of batches to return, 1 to 100. Defaults to 20.")
@@ -322,6 +327,7 @@ func registerbatchesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)

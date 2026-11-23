@@ -16,6 +16,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		Short: "Datasets",
 		Long:  bartolocli.Markdown("Datasets"),
 	}
+	bartolocli.HelpSection(root, datasetsCmd, "Optimization")
 	root.AddCommand(datasetsCmd)
 
 	func() {
@@ -51,6 +52,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -116,6 +118,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -185,6 +188,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -248,6 +252,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -303,6 +308,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -347,6 +353,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -406,6 +413,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -458,6 +466,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -505,6 +514,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -549,6 +559,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -589,6 +600,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -659,6 +671,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -753,6 +766,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

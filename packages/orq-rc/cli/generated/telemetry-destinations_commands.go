@@ -16,6 +16,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 		Short: "Telemetry Destinations",
 		Long:  bartolocli.Markdown("OpenTelemetry destinations that receive a copy of the workspace's traces over OTLP/HTTP."),
 	}
+	bartolocli.HelpSection(root, telemetryDestinationsCmd, "Observability")
 	root.AddCommand(telemetryDestinationsCmd)
 
 	func() {
@@ -31,6 +32,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 			Use:     "create-destination",
 			Short:   "Create an OpenTelemetry destination",
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `destination` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -66,6 +68,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -99,6 +102,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 			Use:     "delete-destination destination-id",
 			Short:   "Delete an OpenTelemetry destination",
 			Long:    bartolocli.Markdown("Delete an OpenTelemetry destination\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -121,6 +125,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -143,6 +148,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 			Use:     "get-destination destination-id",
 			Short:   "Retrieve an OpenTelemetry destination",
 			Long:    bartolocli.Markdown("Retrieve an OpenTelemetry destination\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -162,6 +168,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -183,6 +190,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 			Use:     "list-destinations",
 			Short:   "List OpenTelemetry destinations",
 			Long:    bartolocli.Markdown(""),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -202,6 +210,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -228,6 +237,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 			Use:     "update-destination destination-id",
 			Short:   "Update an OpenTelemetry destination",
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `destination` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `destination-id`"),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -263,6 +273,7 @@ func registertelemetryDestinationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

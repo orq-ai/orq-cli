@@ -16,6 +16,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 		Short: "Model Fusions",
 		Long:  bartolocli.Markdown("Model Fusions"),
 	}
+	bartolocli.HelpSection(root, modelFusionsCmd, "AI Gateway")
 	root.AddCommand(modelFusionsCmd)
 
 	func() {
@@ -125,6 +126,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -239,6 +241,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -280,6 +283,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -320,6 +324,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -385,6 +390,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -508,6 +514,7 @@ func registermodelFusionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

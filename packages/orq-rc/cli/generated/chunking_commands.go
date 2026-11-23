@@ -16,6 +16,7 @@ func registerchunkingCommands(root *cobra.Command) {
 		Short: "Chunking",
 		Long:  bartolocli.Markdown("Chunking"),
 	}
+	bartolocli.HelpSection(root, chunkingCmd, "AI Gateway")
 	root.AddCommand(chunkingCmd)
 
 	func() {
@@ -223,6 +224,7 @@ func registerchunkingCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

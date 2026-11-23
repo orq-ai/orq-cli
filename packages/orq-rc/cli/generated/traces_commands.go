@@ -16,6 +16,7 @@ func registertracesCommands(root *cobra.Command) {
 		Short: "Traces",
 		Long:  bartolocli.Markdown("Traces"),
 	}
+	bartolocli.HelpSection(root, tracesCmd, "Observability")
 	root.AddCommand(tracesCmd)
 
 	func() {
@@ -108,6 +109,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -226,6 +228,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -317,6 +320,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 		bartolocli.AddBodyFlags(cmd)
@@ -382,6 +386,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
@@ -424,6 +429,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("span-id", "", "Read the conversation from this span instead of the automatically selected one.")
@@ -466,6 +472,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
@@ -508,6 +515,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("from", "", bartolocli.WithDateTimeHelp(""))
@@ -554,6 +562,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -594,6 +603,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
@@ -636,6 +646,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("include-all", false, "Every evaluator and human review in the workspace, not only recent ones.")
@@ -678,6 +689,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -764,6 +776,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -900,6 +913,7 @@ func registertracesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

@@ -16,6 +16,7 @@ func registerpiiCommands(root *cobra.Command) {
 		Short: "Pii",
 		Long:  bartolocli.Markdown("Pii"),
 	}
+	bartolocli.HelpSection(root, piiCmd, "AI Gateway")
 	root.AddCommand(piiCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerpiiCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -142,6 +144,7 @@ func registerpiiCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -278,6 +281,7 @@ func registerpiiCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -384,6 +388,7 @@ func registerpiiCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

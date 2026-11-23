@@ -16,6 +16,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		Short: "Mcp Gateways",
 		Long:  bartolocli.Markdown("Mcp Gateways"),
 	}
+	bartolocli.HelpSection(root, mcpGatewaysCmd, "AI Gateway")
 	root.AddCommand(mcpGatewaysCmd)
 
 	func() {
@@ -140,6 +141,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -269,6 +271,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -310,6 +313,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
@@ -356,6 +360,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
@@ -401,6 +406,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -557,6 +563,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

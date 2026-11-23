@@ -16,6 +16,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 		Short: "Decisions",
 		Long:  bartolocli.Markdown("Decisions"),
 	}
+	bartolocli.HelpSection(root, decisionsCmd, "AI Gateway")
 	root.AddCommand(decisionsCmd)
 
 	func() {
@@ -25,20 +26,20 @@ func registerdecisionsCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " create fallbacks[].model: openai/gpt-5.6-luna, identity{display_name: Sample customer, id: customer-demo}, model: openai/gpt-6-luna, questions{positive{criteria{false: The customer is unhappy., true: The customer is happy.}, instructions: Is the sentiment positive?, type: noul}, rating{criteria: Negative, Neutral, Positive, instructions: Rate sentiment., type: score}, sentiment{criteria{negative: Negative sentiment, neutral: null, positive: Positive sentiment}, instructions: Classify sentiment., type: choice}}, retry{count: 2, on_codes: 429, 502, 503, 504}, state: @file, timeout.call_timeout: 2000\n"
+		examples += "  " + parent.CommandPath() + " create fallbacks[].model: google-ai/gemini-decision-1, identity{display_name: Sample customer, id: customer-demo}, model: openai/gpt-6-luna, questions{positive{criteria{false: The customer is unhappy., true: The customer is happy.}, instructions: Is the sentiment positive?, type: noul}, rating{criteria: Negative, Neutral, Positive, instructions: Rate sentiment., type: score}, sentiment{criteria{negative: Negative sentiment, neutral: null, positive: Positive sentiment}, instructions: Classify sentiment., type: choice}}, retry{count: 2, on_codes: 429, 502, 503, 504}, state: @file, timeout.call_timeout: 2000\n"
 
 		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Decisions",
-			Long:    bartolocli.Markdown("**Beta.** Evaluate content against named questions and receive structured answers, probabilities, and usage costs. Send the content as `state` and define each entry in `questions` as:\n\n- `noul`: estimate the probability that a statement is true.\n- `choice`: select an option from a set.\n- `score`: rate the content on an ordered scale.\n- `box`: locate one target in an image and return its bounding box. Beta, TypeSafe `jev-preview` only.\n\nInstructions and criteria accept strings or structured JSON. TypeSafe models also accept inline images through `assets` (beta).\n\nUse a native decision model or a supported chat model. Configure ordered `fallbacks`, optional `retry`, `timeout.call_timeout` in milliseconds, and an exact-match `cache`. Each retry and fallback gets a fresh timeout; when `retry` is omitted, the gateway retries twice before moving to the next fallback. The response identifies the model that answered.\n\nRequires the `classify` API-key permission. PII plugins and guardrails are not applied. See the [Decisions guide](/ai-gateway/features/decisions) for supported models, probability interpretation, and refusals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assets` (object)\n- `cache` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- ... and 6 more fields\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("**Beta.** Evaluate content against named questions and receive structured answers, probabilities, and usage costs. Send the content as `state` and define each entry in `questions` as:\n\n- `noul`: estimate the probability that a statement is true.\n- `choice`: select an option from a set.\n- `score`: rate the content on an ordered scale.\n- `box`: locate one target in an image and return its bounding box. Beta, TypeSafe `jev-preview` only.\n\nInstructions and criteria accept strings or structured JSON. TypeSafe models also accept inline images through `assets` (beta).\n\nUse a model that supports native Decisions. Configure ordered `fallbacks`, optional `retry`, `timeout.call_timeout` in milliseconds, and an exact-match `cache`. Each retry and fallback gets a fresh timeout; when `retry` is omitted, the gateway retries twice before moving to the next fallback. The response identifies the model that answered.\n\nRequires the `classify` API-key permission. PII plugins and guardrails are not applied. See the [Decisions guide](/ai-gateway/features/decisions) for supported models, probability interpretation, and refusals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assets` (object)\n- `cache` (object)\n- `fallback_on_codes` (array | null)\n- `fallbacks` (array | null)\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- ... and 6 more fields\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"fallbacks\": [\n    {\n      \"model\": \"openai/gpt-5.6-luna\"\n    }\n  ],\n  \"identity\": {\n    \"display_name\": \"Sample customer\",\n    \"id\": \"customer-demo\"\n  },\n  \"model\": \"openai/gpt-6-luna\",\n  \"questions\": {\n    \"positive\": {\n      \"criteria\": {\n        \"false\": \"The customer is unhappy.\",\n        \"true\": \"The customer is happy.\"\n      },\n      \"instructions\": \"Is the sentiment positive?\",\n      \"type\": \"noul\"\n    },\n    \"rating\": {\n      \"criteria\": [\n        \"Negative\",\n        \"Neutral\",\n        \"Positive\"\n      ],\n      \"instructions\": \"Rate sentiment.\",\n      \"type\": \"score\"\n    },\n    \"sentiment\": {\n      \"criteria\": {\n        \"negative\": \"Negative sentiment\",\n        \"neutral\": null,\n        \"positive\": \"Positive sentiment\"\n      },\n      \"instructions\": \"Classify sentiment.\",\n      \"type\": \"choice\"\n    }\n  },\n  \"retry\": {\n    \"count\": 2,\n    \"on_codes\": [\n      429,\n      502,\n      503,\n      504\n    ]\n  },\n  \"state\": \"The customer says: I love this product. It is wonderful!\",\n  \"timeout\": {\n    \"call_timeout\": 2000\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"fallbacks\": [\n    {\n      \"model\": \"google-ai/gemini-decision-1\"\n    }\n  ],\n  \"identity\": {\n    \"display_name\": \"Sample customer\",\n    \"id\": \"customer-demo\"\n  },\n  \"model\": \"openai/gpt-6-luna\",\n  \"questions\": {\n    \"positive\": {\n      \"criteria\": {\n        \"false\": \"The customer is unhappy.\",\n        \"true\": \"The customer is happy.\"\n      },\n      \"instructions\": \"Is the sentiment positive?\",\n      \"type\": \"noul\"\n    },\n    \"rating\": {\n      \"criteria\": [\n        \"Negative\",\n        \"Neutral\",\n        \"Positive\"\n      ],\n      \"instructions\": \"Rate sentiment.\",\n      \"type\": \"score\"\n    },\n    \"sentiment\": {\n      \"criteria\": {\n        \"negative\": \"Negative sentiment\",\n        \"neutral\": null,\n        \"positive\": \"Positive sentiment\"\n      },\n      \"instructions\": \"Classify sentiment.\",\n      \"type\": \"choice\"\n    }\n  },\n  \"retry\": {\n    \"count\": 2,\n    \"on_codes\": [\n      429,\n      502,\n      503,\n      504\n    ]\n  },\n  \"state\": \"The customer says: I love this product. It is wonderful!\",\n  \"timeout\": {\n    \"call_timeout\": 2000\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -65,7 +66,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 							Name:        "fallbacks",
 							FlagName:    "fallbacks",
 							Type:        "json",
-							Description: "Up to 10 fallback models in order. The gateway retries a model for matching error codes before trying the next model. Every model must support classification and satisfy access checks. Requests with images in state require native OpenAI image-capable fallbacks; requests with assets or box questions require TypeSafe fallbacks.",
+							Description: "Up to 10 fallback models in order. The gateway retries a model for matching error codes before trying the next model. Every model must support native Decisions and satisfy access checks. Requests with images in state require native OpenAI image-capable fallbacks; requests with assets or box questions require TypeSafe fallbacks.",
 						},
 						{
 							Name:        "identity",
@@ -83,7 +84,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "ID of a model that supports native or emulated classify, including openai/gpt-6-luna.",
+							Description: "ID of a model that supports native Decisions, such as openai/gpt-6-luna.",
 						},
 						{
 							Name:        "name",
@@ -146,6 +147,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -173,7 +175,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 					Name:        "fallbacks",
 					FlagName:    "fallbacks",
 					Type:        "json",
-					Description: "Up to 10 fallback models in order. The gateway retries a model for matching error codes before trying the next model. Every model must support classification and satisfy access checks. Requests with images in state require native OpenAI image-capable fallbacks; requests with assets or box questions require TypeSafe fallbacks.",
+					Description: "Up to 10 fallback models in order. The gateway retries a model for matching error codes before trying the next model. Every model must support native Decisions and satisfy access checks. Requests with images in state require native OpenAI image-capable fallbacks; requests with assets or box questions require TypeSafe fallbacks.",
 				},
 				{
 					Name:        "identity",
@@ -191,7 +193,7 @@ func registerdecisionsCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "ID of a model that supports native or emulated classify, including openai/gpt-6-luna.",
+					Description: "ID of a model that supports native Decisions, such as openai/gpt-6-luna.",
 				},
 				{
 					Name:        "name",
