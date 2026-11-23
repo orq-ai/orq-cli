@@ -125,7 +125,9 @@ controls on surface changes, whichever side they originate from.
   `.cursor/mcp.json` with `--local`, as a URL and nothing else, and installs the
   skills into the shared `.agents/skills` directory, which Cursor reads.
   `orq connect --status` and `orq disconnect` cover it too. Gateway routing is
-  not wired for Cursor: it receives `mcp` and `skills` only.
+  not wired for Cursor: it receives `mcp` and `skills` only. The skills directory
+  is shared, so a bare `orq disconnect cursor` removes the skills for every agent
+  that reads it; `orq disconnect cursor mcp` drops only the MCP entry.
 
 ## [12.11.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.0) — 2026-11-18
 
