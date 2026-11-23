@@ -2591,7 +2591,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m83tsqbvj37p5b0qj27k420m"
+              default: "reasoning_01m842wgcy74f91w6nmw55rrt2"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -2846,12 +2846,13 @@ components:
             blocking:
               type: "boolean"
               default: false
-              description: "Whether to block until the agent task completes. When true, the response will include the full task with messages. When false (default), returns immediately with task ID and status."
-          description: "Configuration options for the agent invocation"
+              description: "Accepted for A2A compatibility and ignored on this endpoint. Use background instead."
+              deprecated: true
+          description: "A2A compatibility options. Ignored on this endpoint; use background to control whether the call waits."
         background:
           type: "boolean"
           default: false
-          description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors."
+          description: "The only switch that controls whether the call waits. If true, returns immediately with the task ID and status. If false (default), waits until the agent becomes inactive or errors and returns the full conversation."
         stream:
           type: "boolean"
           default: false
@@ -6966,7 +6967,7 @@ components:
           $ref: "#/components/schemas/MemoryStoreEmbeddingConfig"
         _id:
           type: "string"
-          description: "The unique identifier of the memory store"
+          description: "The Memory's generated `_id` or its `entity_id` store"
     UpdateMemoryStoreRequest:
       required: []
       type: "object"
@@ -12156,9 +12157,15 @@ components:
           format: "double"
           type: "number"
         price:
-          description: "Blended price per million tokens, in USD."
+          description: "Blended price per million tokens, in USD: (7 x cache read + 2 x input + 1 x output) / 10."
           format: "double"
           type: "number"
+        price_cache_read_source:
+          description: "Where the cache read rate in the price came from: host, artificial_analysis (capped at the input price) or input."
+          type: "string"
+        price_mix:
+          description: "Blend the price uses. agentic is the 7:2:1 cache read, input and output blend."
+          type: "string"
         reasoning_efforts:
           additionalProperties:
             $ref: "#/components/schemas/AutoRouterV2EffortConfig"
@@ -17516,7 +17523,7 @@ components:
           description: "Artificial Analysis intelligence index per reasoning effort, keyed by\n effort name. Each value has `intelligence_index`, plus `index_version`\n and `index_is_estimated` when known. Absent when there is no effort ladder."
         blended_price:
           type: "number"
-          description: "Blended price in USD per 1M tokens, weighting input to output 3:1. It uses\n base pricing only, so service tiers and conditional prices are ignored.\n Absent when the model has no Artificial Analysis data."
+          description: "Blended price in USD per 1M tokens, weighting cache read, input and output\n 7:2:1: (7 x cache read + 2 x input + 1 x output) / 10. It uses base pricing\n only, so service tiers and conditional prices are ignored. Absent when the\n model has no Artificial Analysis data."
           format: "double"
         default_effort_scored:
           type: "boolean"
@@ -17533,6 +17540,12 @@ components:
           type: "number"
           description: "Artificial Analysis median end-to-end response time in seconds. Absent\n when unmeasured."
           format: "double"
+        blended_price_mix:
+          type: "string"
+          description: "Blend `blended_price` uses: `agentic` is the 7:2:1 cache read, input and\n output blend. Absent when `blended_price` is absent."
+        blended_price_cache_read_source:
+          type: "string"
+          description: "Where the cache read rate in `blended_price` came from: `host` is the\n model's own cache read price, `artificial_analysis` is the Artificial\n Analysis cache hit price capped at the input price, and `input` is the\n input price, used when neither exists. Absent when `blended_price` is\n absent."
     ModelProvider:
       required:
         - "id"
@@ -29445,7 +29458,7 @@ paths:
                                 type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                                default: "01M83TSQAYRWB4MBCQ9NB4X29X"
+                                default: "01M842WGC6A30XFH0THQ64V1WV"
                                 readOnly: true
                                 description: "The unique identifier of the playground knowledge base"
                               knowledge_id:
@@ -38860,7 +38873,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M83TSQD3HAT6K4WG995WDKJ2"
+                                          default: "01M842WGE2WPEAEM8CES7SJQG8"
                                         name:
                                           type: "string"
                                         description:
@@ -40487,7 +40500,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M83TSQDGWZTF1SWCFZK3V47E"
+                                          default: "01M842WGEDWW96YRXGF1BDA7HX"
                                         name:
                                           type: "string"
                                         description:
@@ -49553,7 +49566,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M83TSQEJJBCR8H5T04P4ZQRK"
+                              default: "tool_01M842WGF7GA2MMPZBV6JS5WYD"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49654,7 +49667,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M83TSQEKPE13CHXSW97YSBAP"
+                              default: "tool_01M842WGF7KATK3BXWX4Y1CD7D"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49757,7 +49770,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M83TSQEK3RHPGVWEEZ6KFD84"
+                              default: "tool_01M842WGF70R2DF1RXFRV5XTBC"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -49901,7 +49914,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M83TSQEM4M3663NSNK1WTT55"
+                              default: "tool_01M842WGF8CW45H6CRV01FJAX5"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50389,7 +50402,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQETT50ZHCN75QA137N7"
+                        default: "tool_01M842WGFE6RV5GFGKTHQSZZGD"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50490,7 +50503,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQET0KH9D31P30AF7NQA"
+                        default: "tool_01M842WGFERKCQ0ZD6C97944D9"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50593,7 +50606,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEV49TGSABXF934SKWH"
+                        default: "tool_01M842WGFFS6Q1VYZYVTX8FQD6"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -50737,7 +50750,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEVKXMGC2PGY69JN9HW"
+                        default: "tool_01M842WGFF19G3JWDD9D46QACN"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51242,7 +51255,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEXGMJ9W9GJ9GT8WNAZ"
+                        default: "tool_01M842WGFGWF81NA91NSZHMF60"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51343,7 +51356,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEXK2SGN8N0JGZXN6NK"
+                        default: "tool_01M842WGFG1VEABZZ4QKZ1CHY3"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51446,7 +51459,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEY3DNR9S6Y52AGV5V7"
+                        default: "tool_01M842WGFHCHTF6AZNSAWACJ5T"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51590,7 +51603,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQEY21DSMBCH3FR5H8FB"
+                        default: "tool_01M842WGFHG8EQKZWSWGQKQ8FP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51759,7 +51772,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQF24F5AG766S58NZWJN"
+                        default: "tool_01M842WGFM5J299WTTQ0AP81RK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51860,7 +51873,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQF2RGPQAYE9BB0JSXE9"
+                        default: "tool_01M842WGFMN0BPWXSCB3JY89RX"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -51963,7 +51976,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQF3D3R2Y3R5QV2FM82V"
+                        default: "tool_01M842WGFN3CY21FFC9EJDKXMM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -52107,7 +52120,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M83TSQF3892VBQC99F55XZ5H"
+                        default: "tool_01M842WGFNC10SP2BKMPA36KZQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -60895,6 +60908,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
       responses:
         "200":
           description: "Memory successfully retrieved."
@@ -60932,6 +60947,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
       responses:
         "204":
           description: "Memory successfully deleted."
@@ -60965,6 +60982,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
       requestBody:
         content:
           application/json:
@@ -61010,9 +61029,9 @@ paths:
           in: "path"
         - schema:
             type: "string"
-            description: "The unique identifier of the memory"
+            description: "The Memory's generated `_id` or its `entity_id`"
           required: true
-          description: "The unique identifier of the memory"
+          description: "The Memory's generated `_id` or its `entity_id`"
           name: "memory_entity_id"
           in: "path"
         - schema:
@@ -61092,6 +61111,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
       requestBody:
         content:
           application/json:
@@ -61138,6 +61159,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
         - name: "document_id"
           in: "path"
           required: true
@@ -61180,6 +61203,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
         - name: "document_id"
           in: "path"
           required: true
@@ -61218,6 +61243,8 @@ paths:
           required: true
           schema:
             type: "string"
+            description: "The Memory's generated `_id` or its `entity_id`."
+          description: "The Memory's generated `_id` or its `entity_id`."
         - name: "document_id"
           in: "path"
           required: true
@@ -64927,8 +64954,20 @@ paths:
       responses:
         "200":
           description: "Span annotated"
+        "400":
+          description: "The annotation is invalid: the value is missing or out of range, a string value is too long, or the request is malformed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The span or the annotation key does not exist."
           content:
             application/json:
               schema:
@@ -72092,6 +72131,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "A budget with the same scope and target already exists."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "budgets"
       x-speakeasy-name-override: "create"
       x-cli-group: "budgets"
@@ -73986,6 +74031,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The MCP gateway does not exist."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
       x-speakeasy-group: "mcpGateways"
       x-speakeasy-name-override: "delete"
       x-cli-group: "mcpGateways"
@@ -74246,8 +74297,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteMcpServerResponse"
+        "400":
+          description: "The server is still linked to one or more MCP gateways."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The MCP server does not exist."
           content:
             application/json:
               schema:
@@ -74363,8 +74426,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TestMcpServerToolResponse"
+        "400":
+          description: "The server cannot be reached: it has no stored connection, is a stdio server, or a required discovery variable is missing."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: "Authentication required. See https://docs.orq.ai/reference/errors for the error codes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "The MCP server does not exist."
           content:
             application/json:
               schema:
