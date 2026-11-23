@@ -11,17 +11,6 @@ const (
 	// DefaultClaudeGatewayURL is the anthropic-native gateway path — not the
 	// router URL. Claude Code speaks the Anthropic API directly.
 	DefaultClaudeGatewayURL = DefaultGatewayAPIBaseURL + "/v3/anthropic"
-
-	// Claude Code resolves /model opus|sonnet|haiku through these three. Left
-	// unset it sends the bare alias, which is not a model id the gateway can
-	// resolve, so a session could not switch tiers at all. The ids are the bare,
-	// current ones a first-party session sends: the router accepts
-	// them and model, max_tokens, effort and the per-turn-control beta then match
-	// first party. Bump these when Anthropic ships a newer tier; a stale pin is
-	// what sent Opus 5 with the wrong max_tokens and effort before.
-	DefaultClaudeOpusModel   = "claude-opus-5-5"
-	DefaultClaudeSonnetModel = "claude-sonnet-5-5"
-	DefaultClaudeHaikuModel  = "claude-haiku-5-5"
 )
 
 func claudeAgent() AgentDef {
@@ -188,9 +177,9 @@ func claudeProviderSwitchesSet(getenv func(string) string) []string {
 
 // routeThroughGateway points claude at the anthropic-native gateway path. Only
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
-// claude's own default and any /model choice alone, and the tier variables
-// below turn its default aliases into concrete model ids. It returns false when a
-// provider switch in the shell overrides the route.
+// claude's own default and any /model choice alone, and claude resolves its
+// tier aliases to model ids itself. It returns false when a provider switch in
+// the shell overrides the route.
 func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 	getenv := ctx.Getenv
 
@@ -241,12 +230,11 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 				"gateway routing sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
 		}
 	}
-	// Tier aliases, so /model opus|sonnet|haiku resolves to a concrete model id.
-	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
-	// Code reads the haiku tier below for its background calls.
-	plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
-	plan.Env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
-	plan.Env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
+	// The /model tiers (opus, sonnet, haiku) are left to Claude Code. It resolves
+	// each alias to a current model id itself and the gateway serves those ids, so
+	// no ANTHROPIC_DEFAULT_*_MODEL is set here: a pin went stale with every new
+	// tier and needed a CLI release to move. A value the user exported still
+	// reaches the session, because the child inherits the environment.
 
 	// Claude Code turns tool search off whenever ANTHROPIC_BASE_URL is not a
 	// first-party Anthropic host, which the gateway never is, so a launched
