@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.11.8](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.8) — 2026-11-23
+
 - **Fixed:** `orq launch claude` pinned the `/model` tiers to model ids that went
   stale with every new Anthropic tier, so each one needed a CLI release
   (RES-1840). It no longer exports `ANTHROPIC_DEFAULT_OPUS_MODEL`,
