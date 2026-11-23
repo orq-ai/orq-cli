@@ -204,6 +204,18 @@ func agentRegistry() []agentSpec {
 			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 			mcpLogin:        "run /mcp in omp",
 		},
+		{
+			ID:     "cursor",
+			Label:  "Cursor",
+			detect: detectAny(".cursor"),
+			// No provider config: whether Cursor's model calls can go through the gateway is not decided, so only mcp and skills are wired.
+			// Cursor reads .cursor/mcp.json in the project and in the home directory.
+			mcpConfig:  projectOrGlobalPath(filepath.Join(".cursor", "mcp.json"), filepath.Join(".cursor", "mcp.json")),
+			writeMCP:   writeMCPJSON("mcpServers", cursorMCPEntry),
+			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			mcpLogin:   "connect it from Cursor's MCP settings, or run 'agent mcp login " + launch.MCPServerName + "'",
+		},
 	}
 }
 
@@ -245,7 +257,7 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 }
 
 // projectOrGlobalPath resolves the project copy for global=false and the home copy for
-// global=true. claude, kimi, opencode and kilo have two MCP scopes; codex has its own
+// global=true. claude, kimi, opencode, kilo and cursor have two MCP scopes; codex has its own
 // resolver (codexMCPPath) because its global side honours $CODEX_HOME.
 func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error) {
 	return func(global bool) (string, error) {
@@ -1158,6 +1170,9 @@ func kimiMCPEntry(url string) map[string]any {
 // remoteMCPEntry is launch.RemoteMCPEntry: the persistent entry and the session
 // config launch injects are the same shape by construction.
 func remoteMCPEntry(url string) map[string]any { return launch.RemoteMCPEntry(url) }
+
+// cursorMCPEntry is Cursor's remote server shape: a URL and nothing else. Cursor's "type" key is for stdio servers only.
+func cursorMCPEntry(url string) map[string]any { return map[string]any{"url": url} }
 
 // writeMCPJSON writes the orq-workspace entry into a JSON config under the
 // given section key ("mcpServers" for claude/kimi, "mcp" for opencode/kilo).

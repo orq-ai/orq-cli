@@ -322,7 +322,7 @@ Capabilities:
             available; without one, exporter settings are saved with a warning.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
-instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
+instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode, Kilo and Cursor).
 
 ` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
 orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
