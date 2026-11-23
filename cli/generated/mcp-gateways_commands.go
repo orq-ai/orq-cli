@@ -16,6 +16,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		Short: "Mcp Gateways",
 		Long:  bartolocli.Markdown("Mcp Gateways"),
 	}
+	bartolocli.HelpSection(root, mcpGatewaysCmd, "AI Gateway")
 	root.AddCommand(mcpGatewaysCmd)
 
 	func() {
@@ -140,6 +141,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -269,6 +271,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -310,12 +313,14 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
 		cmd.Flags().String("starting-after", "", "Cursor for the page after the given item id. Mutually exclusive with `ending_before`.")
 		cmd.Flags().String("ending-before", "", "Cursor for the page before the given item id. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("search", "", "Case-insensitive match against the gateway key and display name.")
+		cmd.Flags().Bool("all-accessible-projects", false, "Spans every project the caller belongs to instead of the active one.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -355,6 +360,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
@@ -400,6 +406,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -422,7 +429,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP gateway",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string)\n- `mode` (string)\n- ... and 7 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `clear_skill_ids` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `expected_updated` (string)\n- `guardrails` (array)\n- `icons` (array)\n- `key` (string)\n- ... and 8 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -456,6 +463,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "Human readable name shown in the workspace.",
+						},
+						{
+							Name:        "expected_updated",
+							FlagName:    "expected-updated",
+							Type:        "string",
+							Description: "Latest observed `McpGateway.updated` value. Required when changing resource exposure or re-enabling a link that exposes resources.",
 						},
 						{
 							Name:        "guardrails",
@@ -550,6 +563,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -578,6 +592,12 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "Human readable name shown in the workspace.",
+				},
+				{
+					Name:        "expected_updated",
+					FlagName:    "expected-updated",
+					Type:        "string",
+					Description: "Latest observed `McpGateway.updated` value. Required when changing resource exposure or re-enabling a link that exposes resources.",
 				},
 				{
 					Name:        "guardrails",

@@ -16,6 +16,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		Short: "Prompts",
 		Long:  bartolocli.Markdown("Prompts"),
 	}
+	bartolocli.HelpSection(root, promptsCmd, "Managed agents")
 	root.AddCommand(promptsCmd)
 
 	func() {
@@ -90,6 +91,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -169,6 +171,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -210,6 +213,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -250,6 +254,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
@@ -294,6 +299,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
@@ -338,6 +344,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -456,6 +463,7 @@ func registerpromptsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

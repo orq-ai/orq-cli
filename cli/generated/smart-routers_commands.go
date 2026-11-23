@@ -16,6 +16,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		Short: "Smart Routers",
 		Long:  bartolocli.Markdown("Smart Routers"),
 	}
+	bartolocli.HelpSection(root, smartRoutersCmd, "AI Gateway")
 	root.AddCommand(smartRoutersCmd)
 
 	func() {
@@ -89,6 +90,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -167,6 +169,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -208,6 +211,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -248,6 +252,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -330,6 +335,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

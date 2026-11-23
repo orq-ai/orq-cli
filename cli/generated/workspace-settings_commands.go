@@ -16,6 +16,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 		Short: "Workspace Settings",
 		Long:  bartolocli.Markdown("Workspace Settings"),
 	}
+	bartolocli.HelpSection(root, workspaceSettingsCmd, "Administration")
 	root.AddCommand(workspaceSettingsCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -118,6 +120,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

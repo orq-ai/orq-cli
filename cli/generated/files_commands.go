@@ -16,6 +16,7 @@ func registerfilesCommands(root *cobra.Command) {
 		Short: "Files",
 		Long:  bartolocli.Markdown("Files"),
 	}
+	bartolocli.HelpSection(root, filesCmd, "Administration")
 	root.AddCommand(filesCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -91,6 +93,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -132,6 +135,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -172,6 +176,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default.")
@@ -237,6 +242,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -337,6 +343,7 @@ func registerfilesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

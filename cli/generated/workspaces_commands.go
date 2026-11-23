@@ -16,6 +16,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 		Short: "Workspaces",
 		Long:  bartolocli.Markdown("Workspaces"),
 	}
+	bartolocli.HelpSection(root, workspacesCmd, "Administration")
 	root.AddCommand(workspacesCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -88,6 +90,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -114,13 +117,13 @@ func registerworkspacesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update key",
 			Short:   "Update a workspace",
-			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `chat_kit` (object)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `retention_period` (integer)\n- `settings` (object)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key`"),
+			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `chat_kit` (object)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `prompt_caching` (boolean)\n- `retention_period` (integer)\n- ... and 2 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"archived\": false,\n  \"chat_kit\": {\n    \"items\": [\n      {\n        \"display_name\": \"display_name\",\n        \"id\": \"id\",\n        \"resource_id\": \"resource_id\",\n        \"resource_type\": \"resource_type\"\n      }\n    ]\n  },\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"logo_url\": \"logo_url\",\n  \"metadata\": {},\n  \"retention_period\": 0,\n  \"settings\": {\n    \"model_garden_settings\": {},\n    \"plugins\": {},\n    \"same_project_entities_enabled\": false\n  },\n  \"tracing_enabled\": false\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"archived\": false,\n  \"chat_kit\": {\n    \"items\": [\n      {\n        \"display_name\": \"display_name\",\n        \"id\": \"id\",\n        \"resource_id\": \"resource_id\",\n        \"resource_type\": \"resource_type\"\n      }\n    ]\n  },\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"logo_url\": \"logo_url\",\n  \"metadata\": {},\n  \"prompt_caching\": false,\n  \"retention_period\": 0,\n  \"settings\": {\n    \"model_garden_settings\": {},\n    \"plugins\": {},\n    \"same_project_entities_enabled\": false\n  },\n  \"tracing_enabled\": false\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -162,6 +165,12 @@ func registerworkspacesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "prompt_caching",
+							FlagName:    "prompt-caching",
+							Type:        "bool",
+							Description: "",
+						},
+						{
 							Name:        "retention_period",
 							FlagName:    "retention-period",
 							Type:        "int64",
@@ -198,6 +207,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -237,6 +247,12 @@ func registerworkspacesCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "prompt_caching",
+					FlagName:    "prompt-caching",
+					Type:        "bool",
 					Description: "",
 				},
 				{

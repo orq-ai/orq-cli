@@ -16,6 +16,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		Short: "Management Keys",
 		Long:  bartolocli.Markdown("Management Keys"),
 	}
+	bartolocli.HelpSection(root, managementKeysCmd, "Administration")
 	root.AddCommand(managementKeysCmd)
 
 	func() {
@@ -89,6 +90,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -167,6 +169,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -208,6 +211,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -248,6 +252,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
@@ -298,6 +303,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -396,6 +402,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

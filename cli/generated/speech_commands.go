@@ -16,6 +16,7 @@ func registerspeechCommands(root *cobra.Command) {
 		Short: "Speech",
 		Long:  bartolocli.Markdown("Speech"),
 	}
+	bartolocli.HelpSection(root, speechCmd, "AI Gateway")
 	root.AddCommand(speechCmd)
 
 	func() {
@@ -140,6 +141,7 @@ func registerspeechCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

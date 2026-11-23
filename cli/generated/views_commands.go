@@ -16,6 +16,7 @@ func registerviewsCommands(root *cobra.Command) {
 		Short: "Views",
 		Long:  bartolocli.Markdown("Views"),
 	}
+	bartolocli.HelpSection(root, viewsCmd, "Observability")
 	root.AddCommand(viewsCmd)
 
 	func() {
@@ -114,6 +115,7 @@ func registerviewsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -217,6 +219,7 @@ func registerviewsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -258,6 +261,7 @@ func registerviewsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -298,6 +302,7 @@ func registerviewsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -409,6 +414,7 @@ func registerviewsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

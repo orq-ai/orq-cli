@@ -16,6 +16,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		Short: "Api Keys",
 		Long:  bartolocli.Markdown("Api Keys"),
 	}
+	bartolocli.HelpSection(root, apiKeysCmd, "Administration")
 	root.AddCommand(apiKeysCmd)
 
 	func() {
@@ -116,6 +117,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -221,6 +223,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -262,6 +265,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -302,6 +306,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("project-id", "", "Only return keys bound to this project. When omitted, every key visible to the caller is returned.")
@@ -348,6 +353,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -455,6 +461,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
