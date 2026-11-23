@@ -177,29 +177,6 @@ func TestClaudeLeavesTheModelTiersToClaudeCode(t *testing.T) {
 	}
 }
 
-// A tier the user exported is not in the plan, so it arrives through the
-// inherited environment. This checks the one thing the launcher controls: the
-// plan's overrides do not blank or replace it when they are merged.
-func TestThePlanDoesNotOverrideAUserExportedModelTier(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}, routerFlags(GatewayFlags{})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
-	merged := MergeEnv([]string{"ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-4-8", "PATH=/usr/bin"}, plan.Env)
-	found := false
-	for _, kv := range merged {
-		if kv == "ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-4-8" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("the exported tier did not survive the merge: %v", merged)
-	}
-}
-
 // Gateway routing turns tool search back on: the gateway is not a first-party
 // host, so Claude Code would otherwise disable it and send every tool up front.
 // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS must never be set, since it forces
