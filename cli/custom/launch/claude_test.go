@@ -195,7 +195,7 @@ func TestClaudeEnablesToolSearchWithGateway(t *testing.T) {
 	}
 }
 
-// A user who exported ENABLE_TOOL_SEARCH keeps their value, like the tier vars.
+// A user who exported ENABLE_TOOL_SEARCH keeps their value.
 func TestClaudeToolSearchHonoursTheEnvironment(t *testing.T) {
 	ctx := claudeCtx(map[string]string{"ENABLE_TOOL_SEARCH": "auto:3"}, routerFlags(GatewayFlags{}))
 	plan, err := resolveClaude(ctx)
