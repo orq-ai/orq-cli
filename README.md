@@ -521,7 +521,7 @@ Sandboxed execution is not available in this version.
 | `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
 | `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint), honoured with default gateway routing |
 | `ANTHROPIC_MODEL` | passes through to claude. With `--no-gateway`, a `provider/model_id` gateway ref triggers a warning because Anthropic will reject it |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | model ids the `/model` tiers resolve to with gateway routing. The defaults are bare ids such as `claude-opus-5-5`, the ids a first-party session sends |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | optional. `orq launch claude` sets none of them: Claude Code resolves the `/model` tiers to current model ids itself. Export one to point a tier at a different model |
 | `ENABLE_TOOL_SEARCH` | tool search with gateway routing, `true` by default. Set `false` to turn it off, or `auto` / `auto:N` to let claude decide |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |

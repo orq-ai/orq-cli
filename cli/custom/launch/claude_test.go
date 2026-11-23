@@ -150,52 +150,52 @@ func TestClaudeGatewayAcceptsBareModel(t *testing.T) {
 	}
 }
 
-// Gateway-prefixed tier refs sent to Anthropic directly would be rejected, so
-// they are only set when gateway routing is on.
-func TestClaudeTiersOnlyWithRouter(t *testing.T) {
-	plan, _ := resolveClaude(claudeCtx(nil, GatewayFlags{}))
-	if _, set := plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; set {
-		t.Fatal("tier aliases exported without gateway routing")
-	}
-}
-
-// Claude Code resolves /model opus|sonnet|haiku through three tier variables.
-// Unset, it sends the bare alias, which is not a gateway model id, so a
-// launched session cannot switch tiers at all.
-func TestClaudeWiresEveryModelTier(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, routerFlags(GatewayFlags{})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
-	for _, tc := range []struct{ env, want string }{
-		// Literals, not the constants: comparing a constant with itself cannot catch
-		// a stale pin, which is the regression this guards.
-		{"ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-5-5"},
-		{"ANTHROPIC_DEFAULT_SONNET_MODEL", "claude-sonnet-5-5"},
-		{"ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-5-5"},
+// The /model tiers are Claude Code's to resolve: it maps opus, sonnet and haiku
+// to current model ids itself, and the gateway serves them. A pin here went
+// stale with every new tier, so the launcher sets none, with or without
+// gateway routing, and whatever the user exported.
+func TestClaudeLeavesTheModelTiersToClaudeCode(t *testing.T) {
+	tiers := []string{"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"}
+	exported := map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}
+	for name, ctx := range map[string]*AgentContext{
+		"gateway":             claudeCtx(nil, routerFlags(GatewayFlags{})),
+		"no gateway":          claudeCtx(nil, GatewayFlags{}),
+		"gateway, user value": claudeCtx(exported, routerFlags(GatewayFlags{})),
 	} {
-		if got := plan.Env[tc.env]; got != tc.want {
-			t.Errorf("%s = %q, want %q", tc.env, got, tc.want)
+		plan, err := resolveClaude(ctx)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, tier := range tiers {
+			if got, set := plan.Env[tier]; set {
+				t.Errorf("%s: launcher set %s=%q", name, tier, got)
+			}
+		}
+		if plan.Cleanup != nil {
+			plan.Cleanup()
 		}
 	}
 }
 
-// The tiers are overridable, like ANTHROPIC_MODEL already is: a user who has
-// pinned one in their shell keeps it.
-func TestClaudeTiersHonourTheEnvironment(t *testing.T) {
-	ctx := claudeCtx(map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}, routerFlags(GatewayFlags{}))
-	plan, err := resolveClaude(ctx)
+// A tier the user exported is not in the plan, so it has to arrive through the
+// inherited environment: the plan must not blank it on the way.
+func TestAUserExportedModelTierReachesTheSession(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}, routerFlags(GatewayFlags{})))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	if got := plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "anthropic/claude-opus-4-8" {
-		t.Errorf("env override ignored: got %q", got)
+	merged := MergeEnv([]string{"ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-4-8", "PATH=/usr/bin"}, plan.Env)
+	found := false
+	for _, kv := range merged {
+		if kv == "ANTHROPIC_DEFAULT_OPUS_MODEL=anthropic/claude-opus-4-8" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the exported tier did not survive the merge: %v", merged)
 	}
 }
 
