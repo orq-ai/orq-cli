@@ -177,9 +177,10 @@ func TestClaudeLeavesTheModelTiersToClaudeCode(t *testing.T) {
 	}
 }
 
-// A tier the user exported is not in the plan, so it has to arrive through the
-// inherited environment: the plan must not blank it on the way.
-func TestAUserExportedModelTierReachesTheSession(t *testing.T) {
+// A tier the user exported is not in the plan, so it arrives through the
+// inherited environment. This checks the one thing the launcher controls: the
+// plan's overrides do not blank or replace it when they are merged.
+func TestThePlanDoesNotOverrideAUserExportedModelTier(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}, routerFlags(GatewayFlags{})))
 	if err != nil {
 		t.Fatal(err)

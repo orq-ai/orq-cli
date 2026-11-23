@@ -120,12 +120,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-- **Changed:** `orq launch claude` no longer pins the `/model` tiers (RES-1840).
-  It used to export `ANTHROPIC_DEFAULT_OPUS_MODEL`, `_SONNET_MODEL` and
-  `_HAIKU_MODEL`, which went stale with every new Anthropic tier and needed a CLI
-  release to move. Claude Code resolves `opus`, `sonnet` and `haiku` to current
-  model ids itself, and the gateway serves them. A value you exported for any of
-  the three still reaches the session, but `--dry-run` no longer lists it.
+- **Fixed:** `orq launch claude` pinned the `/model` tiers to model ids that went
+  stale with every new Anthropic tier, so each one needed a CLI release
+  (RES-1840). It no longer exports `ANTHROPIC_DEFAULT_OPUS_MODEL`,
+  `_SONNET_MODEL` or `_HAIKU_MODEL`: Claude Code resolves `opus`, `sonnet` and
+  `haiku` to current model ids itself, and the gateway serves them. Checked with
+  Claude Code 2.1.330. A value you exported for any of the three still reaches
+  the session, but `--dry-run` no longer lists it.
 
 ## [12.11.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.0) — 2026-11-18
 

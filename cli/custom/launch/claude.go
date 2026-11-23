@@ -177,9 +177,9 @@ func claudeProviderSwitchesSet(getenv func(string) string) []string {
 
 // routeThroughGateway points claude at the anthropic-native gateway path. Only
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
-// claude's own default and any /model choice alone, and the tier variables
-// below turn its default aliases into concrete model ids. It returns false when a
-// provider switch in the shell overrides the route.
+// claude's own default and any /model choice alone, and claude resolves its
+// tier aliases to model ids itself. It returns false when a provider switch in
+// the shell overrides the route.
 func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 	getenv := ctx.Getenv
 
