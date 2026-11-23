@@ -69,6 +69,13 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	if ownExportedKey() {
 		t.Error("a profile api_key must keep winning")
 	}
+
+	// So must a profile key in a store that cannot be read right now.
+	creds.SetProfile("locked", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	viper.Set("profile", "locked")
+	if ownExportedKey() {
+		t.Error("a profile key in an unreadable store must keep winning")
+	}
 }
 
 // setProjectRef points --project/ORQ_PROJECT at ref for one test. The viper key
@@ -411,8 +418,6 @@ func TestBridgeProjectFlagReportsUnreadableProfileStore(t *testing.T) {
 	t.Cleanup(func() { auth.SetServer(prevServer, prevSource) })
 
 	setProjectRef(t, "banking")
-	k, kerr := auth.ProfileAPIKey()
-	t.Logf("DEBUG active=%q inforce=%v key=%q err=%v cfg=%q", bartolocli.ActiveProfileName(), profileInForce(), k, kerr, configuredAPIKey())
 	err = bridgeProjectFlag(projectIDCommand(t, ""), nil)
 	if err == nil || !strings.Contains(err.Error(), "still stored") {
 		t.Fatalf("bridgeProjectFlag err = %v, want the unreadable-store error", err)

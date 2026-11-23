@@ -634,8 +634,8 @@ func apiKeyUsageNoticeBeforeDial(ctx *gentlemancontext.Context, h gentlemanconte
 // Deliberately narrow: any key we did not mint, and any key in a credentials
 // profile, still wins. Only the exact string we exported defers.
 func ownExportedKey() bool {
-	profile := bartolocli.GetProfile()
-	if strings.TrimSpace(profile["api_key"]) != "" {
+	// A key in an unreadable store is still a profile key, so it wins too.
+	if key, err := auth.ProfileAPIKey(); key != "" || err != nil {
 		return false
 	}
 	// The two keys this CLI injects itself: the gateway key `orq setup` minted
