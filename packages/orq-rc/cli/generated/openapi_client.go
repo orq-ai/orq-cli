@@ -5023,6 +5023,10 @@ func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string
 	if bartolocli.FlagPassed(params, "filter-by-tags") || paramFilterByTags != "" {
 		req = req.AddQuery("filter_by.tags", fmt.Sprintf("%v", paramFilterByTags))
 	}
+	paramFilterBySource := params.GetInt64("filter-by-source")
+	if bartolocli.FlagPassed(params, "filter-by-source") || paramFilterBySource != 0 {
+		req = req.AddQuery("filter_by.source", fmt.Sprintf("%v", paramFilterBySource))
+	}
 	paramIncludeMetrics := params.GetBool("include-metrics")
 	if bartolocli.FlagPassed(params, "include-metrics") || paramIncludeMetrics != false {
 		req = req.AddQuery("include_metrics", fmt.Sprintf("%v", paramIncludeMetrics))
