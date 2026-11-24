@@ -1266,10 +1266,20 @@ func mcpFileMode(path string) os.FileMode {
 	if info, err := os.Stat(path); err == nil {
 		return info.Mode().Perm()
 	}
-	if filepath.Base(path) == ".mcp.json" {
+	if filepath.Base(path) == ".mcp.json" || projectCursorMCP(path) {
 		return 0o644
 	}
 	return 0o600
+}
+
+// projectCursorMCP is true for a repository's .cursor/mcp.json, which a team commits like
+// Claude's .mcp.json. The one in the home directory stays private.
+func projectCursorMCP(path string) bool {
+	if filepath.Base(path) != "mcp.json" || filepath.Base(filepath.Dir(path)) != ".cursor" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	return err == nil && filepath.Dir(filepath.Dir(path)) != home
 }
 
 // kiloMCPPresent checks kilo.json, which is where we write, and kilo.jsonc,

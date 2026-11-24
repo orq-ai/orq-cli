@@ -290,3 +290,27 @@ func TestDisconnectCursorAndEveryOtherSharedReaderGivesNoWarning(t *testing.T) {
 		t.Fatalf("warned although codex is being disconnected too:\n%s", out)
 	}
 }
+
+func TestConnectCursorCreatesAProjectFileTheTeamCanReadAndAPrivateGlobalOne(t *testing.T) {
+	for scope, want := range map[string]os.FileMode{"--local": 0o644, "--global": 0o600} {
+		t.Run(scope, func(t *testing.T) {
+			home, project := mcpMachine(t, ".cursor")
+			path := filepath.Join(home, ".cursor", "mcp.json")
+			if scope == "--local" {
+				path = filepath.Join(project, ".cursor", "mcp.json")
+			}
+			c := NewConnectCommand()
+			c.SetArgs([]string{"cursor", "mcp", scope})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != want {
+				t.Fatalf("mode = %o, want %o", got, want)
+			}
+		})
+	}
+}
