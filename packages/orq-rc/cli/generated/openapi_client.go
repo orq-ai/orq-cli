@@ -218,6 +218,18 @@ func OpenapiDeleteAgent(paramAgentKey string, params *viper.Viper) (*gentleman.R
 
 	req := bartolocli.Client.Delete().URL(url)
 
+	paramParamForce := params.GetString("param-force")
+	if bartolocli.FlagPassed(params, "param-force") || paramParamForce != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--param-force", paramParamForce, "", []string{"true", "false"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramParamForce = normalized
+		}
+		req = req.AddQuery("force", fmt.Sprintf("%v", paramParamForce))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -900,6 +912,434 @@ func OpenapiUpdateAgent(paramAgentKey string, params *viper.Viper, body string) 
 	}
 
 	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+
+	req := bartolocli.Client.Patch().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiCreateAgentDeployment CreateAgentDeployment
+func OpenapiCreateAgentDeployment(paramAgentKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments create agent-key"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiDeleteAgentDeployment DeleteAgentDeployment
+func OpenapiDeleteAgentDeployment(paramAgentKey string, paramDeploymentId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments delete agent-key deployment-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
+
+	req := bartolocli.Client.Delete().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiListAgentDeployments ListAgentDeployments
+func OpenapiListAgentDeployments(paramAgentKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments list agent-key"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramStatus := params.GetString("status")
+	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"AGENT_DEPLOYMENT_STATUS_ACTIVE", "AGENT_DEPLOYMENT_STATUS_PAUSED", "AGENT_DEPLOYMENT_STATUS_ARCHIVED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStatus = normalized
+		}
+		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	}
+	paramSearch := params.GetString("search")
+	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiListAgentDeploymentRuns ListAgentDeploymentRuns
+func OpenapiListAgentDeploymentRuns(paramAgentKey string, paramDeploymentId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments list-runs agent-key deployment-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}/runs"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramStatus := params.GetString("status")
+	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"AGENT_DEPLOYMENT_RUN_STATUS_QUEUED", "AGENT_DEPLOYMENT_RUN_STATUS_RUNNING", "AGENT_DEPLOYMENT_RUN_STATUS_COMPLETED", "AGENT_DEPLOYMENT_RUN_STATUS_FAILED", "AGENT_DEPLOYMENT_RUN_STATUS_SKIPPED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStatus = normalized
+		}
+		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetAgentDeployment GetAgentDeployment
+func OpenapiGetAgentDeployment(paramAgentKey string, paramDeploymentId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments retrieve agent-key deployment-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetAgentDeploymentRun GetAgentDeploymentRun
+func OpenapiGetAgentDeploymentRun(paramAgentKey string, paramDeploymentId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments retrieve-run agent-key deployment-id run-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}/runs/{run_id}"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+	if paramRunId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiRunAgentDeployment RunAgentDeployment
+func OpenapiRunAgentDeployment(paramAgentKey string, paramDeploymentId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments run agent-key deployment-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}:run"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiUpdateAgentDeployment UpdateAgentDeployment
+func OpenapiUpdateAgentDeployment(paramAgentKey string, paramDeploymentId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "agent-deployments update agent-key deployment-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/agents/{agent_key}/deployments/{deployment_id}"
+	if paramAgentKey == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
+	}
+	if paramDeploymentId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter deployment_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{deployment_id}", neturl.PathEscape(paramDeploymentId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 

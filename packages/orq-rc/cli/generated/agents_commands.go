@@ -312,7 +312,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete agent-key",
 			Short:   "Delete agent",
-			Long:    bartolocli.Markdown("Permanently remove an agent and all associated configuration from the workspace. Terminate active sessions and the key becomes reusable.\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to delete"),
+			Long:    bartolocli.Markdown("Permanently remove an agent and all associated configuration from the workspace. Terminate active sessions and the key becomes reusable.\n\nRenamed flags (the original names belong to global flags):\n- `force` is `--param-force` (not `--force`)\n\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to delete"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -338,6 +338,11 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.HelpSection(parent, cmd, "Managed agents")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
+
+		cmd.Flags().String("param-force", "", "Delete even when deployments are active or have runs in progress. (parameter \"force\", renamed to keep the reserved --force flag available) (one of: true, false)")
+		_ = cmd.RegisterFlagCompletionFunc("param-force", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"true", "false"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 		bartolocli.SetCustomFlags(cmd)
 

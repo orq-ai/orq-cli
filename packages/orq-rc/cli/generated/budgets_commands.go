@@ -37,7 +37,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"agent_deployment\": {\n      \"deployment_id\": \"deployment_id\"\n    },\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -82,7 +82,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "scope",
 							FlagName:    "scope",
 							Type:        "json",
-							Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
+							Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
 						},
 					},
 				)
@@ -149,7 +149,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "scope",
 					FlagName:    "scope",
 					Type:        "json",
-					Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
+					Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set.",
 				},
 			},
 		)

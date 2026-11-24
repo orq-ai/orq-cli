@@ -82,29 +82,17 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 9 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code` (string)\n- `dataset_id` (string | null)\n- `decision_questions` (object | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- `mode` (string)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"type\": \"llm_eval\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
-						{
-							Name:        "categorical_labels",
-							FlagName:    "categorical-labels",
-							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "categories",
-							FlagName:    "categories",
-							Type:        "string-slice",
-							Description: "",
-						},
 						{
 							Name:        "code",
 							FlagName:    "code",
@@ -116,6 +104,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "dataset-id",
 							Type:        "string-nullable",
 							Description: "",
+						},
+						{
+							Name:        "decision_questions",
+							FlagName:    "decision-questions",
+							Type:        "json",
+							Description: "Questions a decision LLM evaluator asks in place of a prompt. Required when `output_type` is `decision`.",
 						},
 						{
 							Name:        "description",
@@ -164,7 +158,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Description: "The type of output expected from the evaluator",
 							Enum: []string{
 								"boolean",
-								"categorical",
+								"decision",
 								"number",
 								"string",
 							},
@@ -185,7 +179,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "string",
-							Description: "",
+							Description: "The judge prompt. Required unless `output_type` is `decision`, where each decision question carries its own instructions.",
 						},
 						{
 							Name:        "repetitions",
@@ -235,18 +229,6 @@ func registerevalsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
-					Name:        "categorical_labels",
-					FlagName:    "categorical-labels",
-					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "categories",
-					FlagName:    "categories",
-					Type:        "string-slice",
-					Description: "",
-				},
-				{
 					Name:        "code",
 					FlagName:    "code",
 					Type:        "string",
@@ -257,6 +239,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "dataset-id",
 					Type:        "string-nullable",
 					Description: "",
+				},
+				{
+					Name:        "decision_questions",
+					FlagName:    "decision-questions",
+					Type:        "json",
+					Description: "Questions a decision LLM evaluator asks in place of a prompt. Required when `output_type` is `decision`.",
 				},
 				{
 					Name:        "description",
@@ -305,7 +293,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Description: "The type of output expected from the evaluator",
 					Enum: []string{
 						"boolean",
-						"categorical",
+						"decision",
 						"number",
 						"string",
 					},
@@ -326,7 +314,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "string",
-					Description: "",
+					Description: "The judge prompt. Required unless `output_type` is `decision`, where each decision question carries its own instructions.",
 				},
 				{
 					Name:        "repetitions",
@@ -725,7 +713,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 16 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code` (string)\n- `dataset_id` (string | null)\n- `decision_questions` (object | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- `key` (string)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -737,18 +725,6 @@ func registerevalsCommands(root *cobra.Command) {
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
-							Name:        "categorical_labels",
-							FlagName:    "categorical-labels",
-							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "categories",
-							FlagName:    "categories",
-							Type:        "string-slice",
-							Description: "",
-						},
-						{
 							Name:        "code",
 							FlagName:    "code",
 							Type:        "string",
@@ -759,6 +735,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "dataset-id",
 							Type:        "string-nullable",
 							Description: "",
+						},
+						{
+							Name:        "decision_questions",
+							FlagName:    "decision-questions",
+							Type:        "json",
+							Description: "Questions a decision LLM evaluator asks in place of a prompt. Required when `output_type` is `decision`.",
 						},
 						{
 							Name:        "description",
@@ -840,7 +822,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "string",
-							Description: "",
+							Description: "The judge prompt. Required unless `output_type` is `decision`, where each decision question carries its own instructions.",
 						},
 						{
 							Name:        "repetitions",
@@ -915,18 +897,6 @@ func registerevalsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
-					Name:        "categorical_labels",
-					FlagName:    "categorical-labels",
-					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "categories",
-					FlagName:    "categories",
-					Type:        "string-slice",
-					Description: "",
-				},
-				{
 					Name:        "code",
 					FlagName:    "code",
 					Type:        "string",
@@ -937,6 +907,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "dataset-id",
 					Type:        "string-nullable",
 					Description: "",
+				},
+				{
+					Name:        "decision_questions",
+					FlagName:    "decision-questions",
+					Type:        "json",
+					Description: "Questions a decision LLM evaluator asks in place of a prompt. Required when `output_type` is `decision`.",
 				},
 				{
 					Name:        "description",
@@ -1018,7 +994,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "string",
-					Description: "",
+					Description: "The judge prompt. Required unless `output_type` is `decision`, where each decision question carries its own instructions.",
 				},
 				{
 					Name:        "repetitions",

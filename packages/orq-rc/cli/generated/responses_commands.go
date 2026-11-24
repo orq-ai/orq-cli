@@ -287,7 +287,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from this platform.",
+							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke an agent, or `agent/<key>@<deployment_key>` (or `@<deployment_id>`) to invoke a deployment with its pinned version, payload, limits and run history. Legacy version tags remain supported.",
 						},
 						{
 							Name:        "parallel_tool_calls",
@@ -624,7 +624,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke a pre-configured agent from this platform.",
+					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use `agent/<key>` to invoke an agent, or `agent/<key>@<deployment_key>` (or `@<deployment_id>`) to invoke a deployment with its pinned version, payload, limits and run history. Legacy version tags remain supported.",
 				},
 				{
 					Name:        "parallel_tool_calls",
