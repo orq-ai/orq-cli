@@ -150,7 +150,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-document memory-store-key memory-entity-id",
 			Short:   "Create a new memory document",
-			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`"),
+			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -347,7 +347,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-document memory-store-key memory-entity-id document-id",
 			Short:   "Delete a specific memory document",
-			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\nUse this endpoint to:\n- Remove a document from a memory\n- Clean up unused documents\n- Manage document storage space\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`\n- `document-id`"),
+			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\nUse this endpoint to:\n- Remove a document from a memory\n- Clean up unused documents\n- Manage document storage space\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`.\n- `document-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -392,7 +392,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-memory memory-store-key memory-entity-id",
 			Short:   "Delete a specific memory",
-			Long:    bartolocli.Markdown("Permanently deletes a specific memory.\n\nUse this endpoint to:\n- Remove a memory from the store\n- Clean up unused memories\n- Manage memory storage space\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`"),
+			Long:    bartolocli.Markdown("Permanently deletes a specific memory.\n\nUse this endpoint to:\n- Remove a memory from the store\n- Clean up unused memories\n- Manage memory storage space\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -485,7 +485,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-documents memory-store-key memory-entity-id",
 			Short:   "List all documents for a memory",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of documents associated with a specific memory.\n\n## Arguments\n\n- `memory-store-key` — The unique key identifier of the memory store\n- `memory-entity-id` — The unique identifier of the memory"),
+			Long:    bartolocli.Markdown("Retrieves a paginated list of documents associated with a specific memory.\n\n## Arguments\n\n- `memory-store-key` — The unique key identifier of the memory store\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -619,7 +619,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-document memory-store-key memory-entity-id document-id",
 			Short:   "Retrieve a specific memory document",
-			Long:    bartolocli.Markdown("Retrieves details of a specific memory document by its ID.\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`\n- `document-id`"),
+			Long:    bartolocli.Markdown("Retrieves details of a specific memory document by its ID.\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`.\n- `document-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -660,7 +660,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-memory memory-store-key memory-entity-id",
 			Short:   "Retrieve a specific memory",
-			Long:    bartolocli.Markdown("Retrieves details of a specific memory by its ID\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`"),
+			Long:    bartolocli.Markdown("Retrieves details of a specific memory by its ID\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -810,7 +810,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-document memory-store-key memory-entity-id document-id",
 			Short:   "Update a specific memory document",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`\n- `document-id`"),
+			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`.\n- `document-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -893,7 +893,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-memory memory-store-key memory-entity-id",
 			Short:   "Update a specific memory",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id`"),
+			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`\n- `memory-entity-id` — The Memory's generated `_id` or its `entity_id`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

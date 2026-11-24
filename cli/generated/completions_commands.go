@@ -16,6 +16,7 @@ func registercompletionsCommands(root *cobra.Command) {
 		Short: "Completions",
 		Long:  bartolocli.Markdown("Completions"),
 	}
+	bartolocli.HelpSection(root, completionsCmd, "AI Gateway")
 	root.AddCommand(completionsCmd)
 
 	func() {
@@ -198,6 +199,7 @@ func registercompletionsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

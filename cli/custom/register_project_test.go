@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"orq/cli/custom/auth"
@@ -67,6 +68,13 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	creds.Set("profiles.default.api_key", "sk-orq-PROFILE")
 	if ownExportedKey() {
 		t.Error("a profile api_key must keep winning")
+	}
+
+	// So must a profile key in a store that cannot be read right now.
+	creds.SetProfile("locked", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	viper.Set("profile", "locked")
+	if ownExportedKey() {
+		t.Error("a profile key in an unreadable store must keep winning")
 	}
 }
 
@@ -374,5 +382,47 @@ func TestConfiguredAPIKeyPrefersTheProfileInForce(t *testing.T) {
 				t.Errorf("configuredAPIKey = %q, want the key of the profile in force", got)
 			}
 		})
+	}
+}
+
+func TestBridgeProjectFlagReportsUnreadableProfileStore(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	for _, envVar := range apiKeyEnvVars {
+		t.Setenv(envVar, "")
+	}
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCredentialsFile: %v", err)
+	}
+	prevCreds, prevProfile := bartolocli.Creds, viper.GetString("profile")
+	bartolocli.Creds = creds
+	t.Cleanup(func() { bartolocli.Creds = prevCreds; viper.Set("profile", prevProfile) })
+	creds.SetProfile("work", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	viper.Set("profile", "work")
+	// An earlier test in this package can leave the root --profile flag set,
+	// and the flag outranks the selection.
+	if bartolocli.Root != nil {
+		if f := bartolocli.Root.PersistentFlags().Lookup("profile"); f != nil && f.Changed {
+			prev := f.Value.String()
+			_ = f.Value.Set("work")
+			t.Cleanup(func() { _ = f.Value.Set(prev) })
+		}
+	}
+	prevServer, prevSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "test")
+	t.Cleanup(func() { auth.SetServer(prevServer, prevSource) })
+
+	setProjectRef(t, "banking")
+	err = bridgeProjectFlag(projectIDCommand(t, ""), nil)
+	if err == nil || !strings.Contains(err.Error(), "still stored") {
+		t.Fatalf("bridgeProjectFlag err = %v, want the unreadable-store error", err)
+	}
+	if hits != 0 {
+		t.Errorf("project lookup sent %d requests with an empty bearer", hits)
 	}
 }

@@ -16,6 +16,7 @@ func registerimagesCommands(root *cobra.Command) {
 		Short: "Images",
 		Long:  bartolocli.Markdown("Images"),
 	}
+	bartolocli.HelpSection(root, imagesCmd, "AI Gateway")
 	root.AddCommand(imagesCmd)
 
 	func() {
@@ -155,6 +156,7 @@ func registerimagesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -438,6 +440,7 @@ func registerimagesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -710,6 +713,7 @@ func registerimagesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

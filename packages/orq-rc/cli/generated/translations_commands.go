@@ -89,7 +89,7 @@ func registertranslationsCommands(root *cobra.Command) {
 							Name:        "num_speakers",
 							FlagName:    "num-speakers",
 							Type:        "float64",
-							Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
+							Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32.",
 						},
 						{
 							Name:        "orq",
@@ -227,7 +227,7 @@ func registertranslationsCommands(root *cobra.Command) {
 					Name:        "num_speakers",
 					FlagName:    "num-speakers",
 					Type:        "float64",
-					Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
+					Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32.",
 				},
 				{
 					Name:        "orq",

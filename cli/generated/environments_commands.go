@@ -16,6 +16,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 		Short: "Environments",
 		Long:  bartolocli.Markdown("Environments"),
 	}
+	bartolocli.HelpSection(root, environmentsCmd, "Administration")
 	root.AddCommand(environmentsCmd)
 
 	func() {
@@ -90,6 +91,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -169,6 +171,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -210,6 +213,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -250,6 +254,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -326,6 +331,7 @@ func registerenvironmentsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Administration")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

@@ -16,6 +16,7 @@ func registerevalsCommands(root *cobra.Command) {
 		Short: "Evals",
 		Long:  bartolocli.Markdown("Evals"),
 	}
+	bartolocli.HelpSection(root, evalsCmd, "Optimization")
 	root.AddCommand(evalsCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
@@ -226,6 +228,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -391,91 +394,9 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		parent := evalsCmd
-
-		params := viper.New()
-
-		var examples string
-
-		examples += "  " + parent.CommandPath() + " duplicate id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "duplicate id",
-			Short:   "Duplicate an Evaluator",
-			Long:    bartolocli.Markdown("Create a copy of an evaluator under a new key.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `key` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
-			Hidden:  true,
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-
-				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"key\": \"key\"\n}") {
-					return nil
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "description",
-							FlagName:    "description",
-							Type:        "string",
-							Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
-						},
-						{
-							Name:        "key",
-							FlagName:    "key",
-							Type:        "string",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					return errors.Wrap(err, "unable to get body")
-				}
-
-				_, decoded, err := OpenapiDuplicateEval(args[0], params, body)
-				if err != nil {
-					return bartolocli.OperationError(err)
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					return errors.Wrap(err, "formatting failed")
-				}
-
-				return nil
-
-			},
-		}
-		parent.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "description",
-					FlagName:    "description",
-					Type:        "string",
-					Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
-				},
-				{
-					Name:        "key",
-					FlagName:    "key",
-					Type:        "string",
-					Description: "",
-				},
-			},
-		)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -515,6 +436,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -556,6 +478,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -668,6 +591,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -774,6 +698,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (10).")
@@ -983,6 +908,7 @@ func registerevalsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

@@ -16,6 +16,7 @@ func registertranslationsCommands(root *cobra.Command) {
 		Short: "Translations",
 		Long:  bartolocli.Markdown("Translations"),
 	}
+	bartolocli.HelpSection(root, translationsCmd, "AI Gateway")
 	root.AddCommand(translationsCmd)
 
 	func() {
@@ -88,7 +89,7 @@ func registertranslationsCommands(root *cobra.Command) {
 							Name:        "num_speakers",
 							FlagName:    "num-speakers",
 							Type:        "float64",
-							Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
+							Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32.",
 						},
 						{
 							Name:        "orq",
@@ -169,6 +170,7 @@ func registertranslationsCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -225,7 +227,7 @@ func registertranslationsCommands(root *cobra.Command) {
 					Name:        "num_speakers",
 					FlagName:    "num-speakers",
 					Type:        "float64",
-					Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
+					Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32.",
 				},
 				{
 					Name:        "orq",

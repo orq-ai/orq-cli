@@ -16,6 +16,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		Short: "Feedback",
 		Long:  bartolocli.Markdown("Feedback"),
 	}
+	bartolocli.HelpSection(root, feedbackCmd, "Observability")
 	root.AddCommand(feedbackCmd)
 
 	func() {
@@ -110,6 +111,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -256,6 +258,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -376,6 +379,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

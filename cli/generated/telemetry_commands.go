@@ -16,6 +16,7 @@ func registertelemetryCommands(root *cobra.Command) {
 		Short: "Telemetry",
 		Long:  bartolocli.Markdown("Telemetry"),
 	}
+	bartolocli.HelpSection(root, telemetryCmd, "Observability")
 	root.AddCommand(telemetryCmd)
 
 	func() {
@@ -48,6 +49,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().String("source", "", " (one of: TELEMETRY_SOURCE_TRACES, TELEMETRY_SOURCE_METRICS, TELEMETRY_SOURCE_LOGS)")
@@ -160,6 +162,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -241,7 +244,7 @@ func registertelemetryCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query telemetry",
-			Long:    bartolocli.Markdown("Canonical neutral query envelope for traces, metrics, and logs. Select a source, compute list, and time range; optionally group, filter, bucket, sort, limit, and include totals. ReportingService.QueryReport and TraceQueryService.AggregateTraces remain supported compatibility contracts.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `interval_seconds` (integer)\n- ... and 10 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Canonical neutral query envelope for traces, metrics, and logs. Select a source, compute list, and time range; optionally group, filter, bucket, sort, limit, and include totals.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `interval_seconds` (integer)\n- ... and 10 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -392,6 +395,7 @@ func registertelemetryCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

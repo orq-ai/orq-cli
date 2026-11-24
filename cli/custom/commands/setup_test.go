@@ -4239,3 +4239,75 @@ func TestLoginStepErrorNamesTheFailedStep(t *testing.T) {
 		t.Error("non-auth errors pass through untouched")
 	}
 }
+
+// seedMarkerOnlyProfile makes "work" a profile whose key was moved to a secure
+// store (marker only) and puts it in force. Under go test secure stores are off,
+// so the key always reads as unreadable.
+func seedMarkerOnlyProfile(t *testing.T) {
+	t.Helper()
+	bartolocli.Creds.SetProfile("work", map[string]string{"type": "apikey", "api_key_store": "macOS Keychain"})
+	viper.Set("profile", "work")
+}
+
+func TestSaveAPIKeyProfileDropsStaleStoreMarker(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	if err := saveAPIKeyProfile("sk-orq-new"); err != nil {
+		t.Fatal(err)
+	}
+	if got := bartolocli.GetProfile()["api_key"]; got != "sk-orq-new" {
+		t.Errorf("api_key = %q, want the new key", got)
+	}
+	if _, ok := bartolocli.Creds.GetStringMapString("profiles.work")["api_key_store"]; ok {
+		t.Errorf("stale api_key_store marker survived: %v", bartolocli.Creds.GetStringMapString("profiles.work"))
+	}
+	if err := bartolocli.ProfileKeyUnreadable("work"); err != nil {
+		t.Errorf("profile still reads as unreadable: %v", err)
+	}
+}
+
+func TestResolveAuthReportsUnreadableProfileStore(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	_, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{})
+	if err == nil {
+		t.Fatal("want an error for an unreadable profile store")
+	}
+	for _, want := range []string{"macOS Keychain", "still stored"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "auth profile add") {
+		t.Errorf("error tells the user to re-add the profile: %v", err)
+	}
+}
+
+func TestUnreadableProfileStoreRemedyFitsTheCause(t *testing.T) {
+	for _, tc := range []struct{ store, want, not string }{
+		{store: "", want: "make that store readable", not: "unset"},
+		{store: "file", want: "unset ORQ_CREDENTIAL_STORE", not: "unlock"},
+	} {
+		t.Run("store="+tc.store, func(t *testing.T) {
+			credsHarness(t)
+			seedMarkerOnlyProfile(t)
+			t.Setenv(auth.CredentialStoreEnv, tc.store)
+			key, err := auth.ProfileAPIKey()
+			if key != "" || err == nil {
+				t.Fatalf("ProfileAPIKey = %q, %v; want an unreadable-store error", key, err)
+			}
+			if msg := err.Error(); !strings.Contains(msg, tc.want) || strings.Contains(msg, tc.not) {
+				t.Errorf("error = %q, want %q and not %q", msg, tc.want, tc.not)
+			}
+		})
+	}
+}
+
+func TestDurableCredentialReportsUnreadableProfileStore(t *testing.T) {
+	credsHarness(t)
+	seedMarkerOnlyProfile(t)
+	// connect must not call a stored key missing and offer to set up a new one.
+	if cred, err := durableCredential(&setupOptions{}); err == nil || !strings.Contains(err.Error(), "still stored") {
+		t.Fatalf("durableCredential = %+v, %v; want the unreadable-store error", cred, err)
+	}
+}

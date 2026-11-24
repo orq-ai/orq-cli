@@ -169,7 +169,8 @@ func ConfiguredCredential() (key, source string) {
 }
 
 func profileAPIKey() string {
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	key, _ := auth.ProfileAPIKey()
+	return key
 }
 
 // credentialOutranksSession reports whether the credential in force is

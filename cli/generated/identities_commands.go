@@ -16,6 +16,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		Short: "Identities",
 		Long:  bartolocli.Markdown("Identities"),
 	}
+	bartolocli.HelpSection(root, identitiesCmd, "Observability")
 	root.AddCommand(identitiesCmd)
 
 	func() {
@@ -96,6 +97,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -181,6 +183,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -222,6 +225,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
@@ -274,6 +278,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on the returned identity.")
@@ -359,6 +364,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

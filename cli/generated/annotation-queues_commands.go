@@ -16,6 +16,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		Short: "Annotation Queues",
 		Long:  bartolocli.Markdown("Annotation Queues"),
 	}
+	bartolocli.HelpSection(root, annotationQueuesCmd, "Optimization")
 	root.AddCommand(annotationQueuesCmd)
 
 	func() {
@@ -66,6 +67,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -121,6 +123,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -192,6 +195,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -259,6 +263,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -300,6 +305,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -340,6 +346,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -380,6 +387,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Optional. Number of annotation queues to return. Defaults to 10 and must be between 1 and 200.")
@@ -426,6 +434,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Optional. Number of items to return. Defaults to 10 and must be between 1 and 200.")
@@ -488,6 +497,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -576,6 +586,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Optimization")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)

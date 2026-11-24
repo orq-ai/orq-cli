@@ -47,13 +47,13 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 							Name:        "background",
 							FlagName:    "background",
 							Type:        "bool",
-							Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
+							Description: "The only switch that controls whether the call waits. If true, returns immediately with the task ID and status. If false (default), waits until the agent becomes inactive or errors and returns the full conversation.",
 						},
 						{
 							Name:        "configuration",
 							FlagName:    "configuration",
 							Type:        "json",
-							Description: "Configuration options for the agent invocation",
+							Description: "A2A compatibility options. Ignored on this endpoint; use background to control whether the call waits.",
 						},
 						{
 							Name:        "contact",
@@ -155,13 +155,13 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 					Name:        "background",
 					FlagName:    "background",
 					Type:        "bool",
-					Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
+					Description: "The only switch that controls whether the call waits. If true, returns immediately with the task ID and status. If false (default), waits until the agent becomes inactive or errors and returns the full conversation.",
 				},
 				{
 					Name:        "configuration",
 					FlagName:    "configuration",
 					Type:        "json",
-					Description: "Configuration options for the agent invocation",
+					Description: "A2A compatibility options. Ignored on this endpoint; use background to control whether the call waits.",
 				},
 				{
 					Name:        "contact",

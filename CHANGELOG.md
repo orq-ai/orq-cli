@@ -133,6 +133,43 @@ controls on surface changes, whichever side they originate from.
   `orq-workspace` entry that was already there, and says so when it refuses a
   `mcp.json` because of comments or trailing commas.
 
+## [12.12.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.12.0) — 2026-11-23
+
+**Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
+Secret Service through `secret-tool`) on first use; elsewhere, or with no
+Secret Service, the key stays in the 0600 `credentials.json`. `credentials.json`
+keeps an `api_key_store` marker in place of the key. `ORQ_CREDENTIAL_STORE=file`
+now also keeps new profile keys in `credentials.json`, as it already did for
+sessions; it does not move keys already in the keychain back. A key in a store
+this process cannot read is reported as unreadable, with the store named and the
+fix (unlock the store, or unset `ORQ_CREDENTIAL_STORE`), rather than as a
+missing key. This covers `orq connect` and `--project` as well. `orq setup` and
+`orq auth login --api-key` say where the key was saved.
+
+**Added:** `orq doctor -o json` reports `auth.api_key_store` and, when the store
+cannot be read, `auth.store_error`. It adds an `api_key_store` check and the
+`auth.status` value `profile-store-unreadable`. `orq status -o json` adds
+`api_key_store` and `store_error`, and `orq status` exits non-zero in both
+output modes when the store cannot be read. `orq auth profile list` shows
+`in <store>` in the KEY column for a stored key.
+
+**Downgrade caution:** an older `orq` sees a profile whose key is only in the
+store as keyless, and its layout migration can delete that profile. Do not run
+an older `orq` against a `credentials.json` written by this version.
+
+## [12.11.8](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.8) — 2026-11-23
+
+- **Fixed:** `orq launch claude` pinned the `/model` tiers to model ids that went
+  stale with every new Anthropic tier, so each one needed a CLI release
+  (RES-1840). It no longer exports `ANTHROPIC_DEFAULT_OPUS_MODEL`,
+  `_SONNET_MODEL` or `_HAIKU_MODEL`: Claude Code resolves `opus`, `sonnet` and
+  `haiku` to current model ids itself, and the gateway serves them. Checked with
+  Claude Code 2.1.330. An older Claude Code resolves the tiers to older models
+  without an error (2.1.281 sends haiku as `claude-haiku-4-5-20251001` and sonnet as
+  `claude-sonnet-5`); update it, or export the tier variable with a bare id such as `claude-opus-5-5` to pin a model.
+  A value you exported for any of the three still reaches
+  the session, but `--dry-run` no longer lists it.
+
 ## [12.11.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.11.0) — 2026-11-18
 
 - **Changed:** `orq launch claude` now matches a first-party Claude Code session

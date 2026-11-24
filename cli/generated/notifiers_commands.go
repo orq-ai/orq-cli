@@ -16,6 +16,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		Short: "Notifiers",
 		Long:  bartolocli.Markdown("Notifiers"),
 	}
+	bartolocli.HelpSection(root, notifiersCmd, "Observability")
 	root.AddCommand(notifiersCmd)
 
 	func() {
@@ -113,6 +114,7 @@ func registernotifiersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
@@ -215,6 +217,7 @@ func registernotifiersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
@@ -256,6 +259,7 @@ func registernotifiersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -296,6 +300,7 @@ func registernotifiersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Optional. Number of notifiers to return. Defaults to 25 and must be between 1 and 200.")
@@ -408,6 +413,7 @@ func registernotifiersCommands(root *cobra.Command) {
 
 			},
 		}
+		bartolocli.HelpSection(parent, cmd, "Observability")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
