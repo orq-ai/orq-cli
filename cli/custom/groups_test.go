@@ -41,6 +41,7 @@ func buildRoot(t *testing.T) *cobra.Command {
 	t.Cleanup(commands.ResetUserEnvAPIKey)
 
 	root := bartolocli.Root
+	RegisterHelpGroups(root)
 	generated.Register(root)
 	Register(root, commands.TraceAPI{})
 	return root
@@ -161,4 +162,172 @@ func TestTracesConversationAttachesToGeneratedTracesParent(t *testing.T) {
 	if !thread.Hidden {
 		t.Error("deprecated traces thread is listed in help")
 	}
+}
+
+// headings returns the group headings of the root help screen, in print order.
+func headings(root *cobra.Command) []string {
+	var out []string
+	for _, line := range strings.Split(root.UsageString(), "\n") {
+		if strings.HasSuffix(line, ":") && !strings.HasPrefix(line, " ") && line != "Usage:" && line != "Flags:" && line != "Global Flags:" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// assertHelpHeadings checks the root help for one heading per section, in docs
+// order (unknown trailing sections allowed after the known ones), none empty
+// and no "Additional Commands" block.
+func assertHelpHeadings(t *testing.T, root *cobra.Command, wantTrailing ...string) {
+	t.Helper()
+	got := headings(root)
+	seen := map[string]bool{}
+	for _, h := range got {
+		if seen[h] {
+			t.Errorf("heading %q printed twice: %v", h, got)
+		}
+		seen[h] = true
+		if h == "Additional Commands:" {
+			t.Errorf("root help has an Additional Commands block: %v", got)
+		}
+	}
+	var want []string
+	for _, g := range helpGroups {
+		if g.ID == groupFactory { // only present when the tree has file-systems; checked via populated below
+			if seen[g.Title] {
+				want = append(want, g.Title)
+			}
+			continue
+		}
+		want = append(want, g.Title)
+	}
+	for _, s := range wantTrailing {
+		want = append(want, s+":")
+	}
+	// "Available Commands:" is cobra's heading for the ungrouped bucket and must not appear either.
+	if !slices.Equal(got, want) {
+		t.Errorf("headings = %v, want %v", got, want)
+	}
+	populated := map[string]int{}
+	for _, cmd := range root.Commands() {
+		if cmd.IsAvailableCommand() {
+			populated[cmd.GroupID]++
+		}
+	}
+	for _, g := range root.Groups() {
+		if populated[g.ID] == 0 {
+			t.Errorf("group %q renders an empty heading", g.ID)
+		}
+	}
+}
+
+// Today's spec: generated commands have no GroupID, our map places them.
+func TestRootHelpTodaysSpecHasOneHeadingPerSectionInDocsOrder(t *testing.T) {
+	assertHelpHeadings(t, buildRoot(t))
+}
+
+// sectionTitle is the title the upcoming spec will put in x-cli-help-section for a command we map by hand.
+func sectionTitle(id string) string { return id }
+
+// The upcoming spec: bartolo has already stamped GroupID == section title (and
+// registered the group if it was missing) on generated commands, leaves included.
+func TestRootHelpSectionedSpecHasOneHeadingPerSectionInDocsOrder(t *testing.T) {
+	root := buildSectionedRoot(t, true, "")
+	assertHelpHeadings(t, root)
+
+	// Every generated top-level command kept the spec's section.
+	for name, id := range commandGroup {
+		cmd, _, err := root.Find([]string{name})
+		if err != nil || cmd == nil || cmd == root || cmd.Name() != name || cmd.GroupID == "" {
+			continue
+		}
+		if name == "version" || cmd.Annotations["custom"] == "1" {
+			continue
+		}
+		if cmd.GroupID != sectionTitle(id) {
+			t.Errorf("command %q moved to %q, spec section %q should win", name, cmd.GroupID, id)
+		}
+	}
+}
+
+// Same tree but sections registered out of docs order by the generator (the
+// bug a reviewer demonstrated) must still print in docs order, because we
+// registered first.
+func TestRootHelpSectionedSpecIgnoresGeneratedRegisterOrder(t *testing.T) {
+	root := buildSectionedRoot(t, true, "")
+	var order []string
+	for _, g := range root.Groups() {
+		order = append(order, g.ID)
+	}
+	var docs []string
+	for _, g := range helpGroups {
+		docs = append(docs, g.ID)
+	}
+	if !slices.Equal(order, docs) {
+		t.Errorf("group order = %v, want docs order %v", order, docs)
+	}
+}
+
+// A section title orq-cli does not know still renders (bartolo registered it), after ours, without panicking.
+func TestRootHelpUnknownSectionStillRenders(t *testing.T) {
+	root := buildSectionedRoot(t, true, "Brand New Section")
+	assertHelpHeadings(t, root, "Brand New Section")
+	if !strings.Contains(root.UsageString(), "Brand New Section:") {
+		t.Fatal("unknown section did not render")
+	}
+}
+
+// Subcommands under a sectioned generated group: hand-attached children join
+// the group instead of splitting into "Additional Commands".
+func TestSectionedLeavesDoNotSplitIntoAdditionalCommands(t *testing.T) {
+	root := buildSectionedRoot(t, true, "")
+	agents, _, err := root.Find([]string{"agents"})
+	if err != nil || agents == nil || agents.Name() != "agents" {
+		t.Fatalf("agents = %v, %v", agents, err)
+	}
+	out := agents.UsageString()
+	if strings.Contains(out, "Additional Commands:") {
+		t.Errorf("agents help splits into Additional Commands:\n%s", out)
+	}
+	for _, c := range agents.Commands() {
+		if c.GroupID == "" {
+			t.Errorf("agents %q has no group", c.Name())
+		}
+	}
+}
+
+// Real generated tree with the sections the upcoming spec adds applied the way
+// the generated Register does, via bartolocli.HelpSection on the group and on
+// every leaf. unknownFor, when set, moves the "traces" group into that section.
+func buildSectionedRoot(t *testing.T, stampLeaves bool, unknownFor string) *cobra.Command {
+	t.Helper()
+	bartolocli.Init(&bartolocli.Config{AppName: "orq", EnvPrefix: "ORQ", APIKeyEnvVar: "ORQ_API_KEY", SerializationFormat: "toon", Version: "test"})
+	prev := bartolocli.PreRun
+	bartolocli.PreRun = nil
+	t.Cleanup(func() { bartolocli.PreRun = prev })
+	t.Cleanup(commands.ResetUserEnvAPIKey)
+
+	root := bartolocli.Root
+	RegisterHelpGroups(root)
+	generated.Register(root)
+	// Stamp in reverse docs order to prove registration order does not matter.
+	cmds := slices.Clone(root.Commands())
+	slices.Reverse(cmds)
+	for _, cmd := range cmds {
+		id, ok := commandGroup[cmd.Name()]
+		if !ok || id == groupGetStarted || id == groupUtilities {
+			continue
+		}
+		if unknownFor != "" && cmd.Name() == "traces" {
+			id = unknownFor
+		}
+		bartolocli.HelpSection(root, cmd, id)
+		if stampLeaves {
+			for _, leaf := range cmd.Commands() {
+				bartolocli.HelpSection(cmd, leaf, id)
+			}
+		}
+	}
+	Register(root, commands.TraceAPI{})
+	return root
 }

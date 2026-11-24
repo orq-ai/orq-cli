@@ -3,15 +3,21 @@ package custom
 import "github.com/spf13/cobra"
 
 // Topic groups for the root help screen; the taxonomy mirrors the docs.orq.ai tabs and the studio sidebar.
+//
+// A group ID is the section title without the trailing colon, because that is
+// what the OpenAPI spec's x-cli-help-section carries and what Bartolo's
+// HelpSection stamps into a generated command's GroupID. Using the same string
+// is what lets the spec's section and our hand-written fallback land under one
+// heading instead of two.
 const (
-	groupGetStarted    = "getting-started"
-	groupGateway       = "ai-gateway"
-	groupObservability = "observability"
-	groupAgents        = "managed-agents"
-	groupOptimization  = "optimization"
-	groupFactory       = "factory"
-	groupAdmin         = "administration"
-	groupUtilities     = "utilities"
+	groupGetStarted    = "Get started"
+	groupGateway       = "AI Gateway"
+	groupObservability = "Observability"
+	groupAgents        = "Managed agents"
+	groupOptimization  = "Optimization"
+	groupFactory       = "Factory"
+	groupAdmin         = "Administration"
+	groupUtilities     = "Utilities"
 )
 
 // In display order: cobra renders groups in the order they were added, not alphabetically.
@@ -24,6 +30,25 @@ var helpGroups = []*cobra.Group{
 	{ID: groupFactory, Title: "Factory:"},
 	{ID: groupAdmin, Title: "Administration:"},
 	{ID: groupUtilities, Title: "Utilities:"},
+}
+
+// RegisterHelpGroups adds the root help sections in docs order. It must run
+// BEFORE generated.Register: Bartolo's HelpSection registers a section the
+// first time a generated command names it and skips it when a group with that
+// ID already exists, so the order here wins over generated register order and
+// no section is announced twice. Idempotent; Register calls it again as a
+// safety net for callers that only add groups after generation (the headings
+// then render in the order they were first added, which is the only drawback).
+//
+// A section title the spec introduces that is not listed here is still
+// registered by Bartolo, after ours, so it renders as its own heading after
+// Utilities; nothing panics and its commands are not moved.
+func RegisterHelpGroups(root *cobra.Command) {
+	for _, g := range helpGroups {
+		if !root.ContainsGroup(g.ID) {
+			root.AddGroup(g)
+		}
+	}
 }
 
 var commandGroup = map[string]string{
@@ -149,6 +174,10 @@ func UngroupedCommands(root *cobra.Command) []string {
 		if cmd.Hidden || !cmd.IsAvailableCommand() {
 			continue
 		}
+		// A GroupID that is already set came from the spec's x-cli-help-section.
+		if cmd.GroupID != "" {
+			continue
+		}
 		name := cmd.Name()
 		if _, mapped := commandGroup[name]; mapped || deliberateUtilities[name] {
 			continue
@@ -158,21 +187,58 @@ func UngroupedCommands(root *cobra.Command) []string {
 	return out
 }
 
-// applyCommandGroups defaults unmapped commands to Utilities: cobra panics at Execute time on an unregistered GroupID, and an empty GroupID exiles the command to an "Additional Commands" trailer.
+// applyCommandGroups assigns every top-level command a registered group. A
+// GroupID already on the command came from the spec's x-cli-help-section and
+// wins; otherwise the hand-written commandGroup map decides, and anything left
+// defaults to Utilities (cobra panics at Execute time on an unregistered
+// GroupID, and an empty one exiles the command to an "Additional Commands"
+// trailer).
 func applyCommandGroups(root *cobra.Command) {
-	for _, g := range helpGroups {
-		if !root.ContainsGroup(g.ID) {
-			root.AddGroup(g)
-		}
-	}
+	RegisterHelpGroups(root)
 	for _, cmd := range root.Commands() {
+		if cmd.GroupID != "" {
+			if !root.ContainsGroup(cmd.GroupID) {
+				// Only reachable if something set a GroupID without registering it.
+				cmd.GroupID = groupUtilities
+			}
+			continue
+		}
 		if id, ok := commandGroup[cmd.Name()]; ok {
 			cmd.GroupID = id
 			continue
 		}
 		cmd.GroupID = groupUtilities
 	}
+	for _, cmd := range root.Commands() {
+		joinSectionedSiblings(cmd)
+	}
 	// cobra creates help and completion in ExecuteC, after this walk, so they can only be grouped through these setters.
 	root.SetHelpCommandGroupID(groupUtilities)
 	root.SetCompletionCommandGroupID(groupUtilities)
+}
+
+// joinSectionedSiblings handles subcommands under a generated group. Bartolo
+// stamps the operation's section on every generated leaf, so the group holds a
+// heading ("Managed agents:") while the subcommands we attach by hand (traces
+// conversation, ...) have none and would be split off under "Additional
+// Commands". Giving them the group the generated siblings use keeps one list.
+// When the spec carries no sections the group has no headings and nothing
+// changes.
+func joinSectionedSiblings(parent *cobra.Command) {
+	for _, child := range parent.Commands() {
+		joinSectionedSiblings(child)
+	}
+	groups := parent.Groups()
+	if len(groups) == 0 {
+		return
+	}
+	target := groups[0].ID
+	if parent.GroupID != "" && parent.ContainsGroup(parent.GroupID) {
+		target = parent.GroupID
+	}
+	for _, child := range parent.Commands() {
+		if child.GroupID == "" {
+			child.GroupID = target
+		}
+	}
 }
