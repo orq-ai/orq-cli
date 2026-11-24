@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+**Changed:** the embedded orq skills move to assistant-plugins v5.2.0 (was v5.0.0), with orq-trace 0.6.1. Added: `orq-build-benchmark`, `orq-trace-format`.
+
 ## [12.12.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.12.0) — 2026-11-23
 
 **Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
