@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -67,6 +68,9 @@ type agentSpec struct {
 	mcpPresent func(path string) bool
 	// removeMCP is writeMCP's inverse; required whenever writeMCP is set.
 	removeMCP func(path string) (bool, error)
+	// mcpReplaces reports whether writeMCP would overwrite an orq-workspace entry that
+	// differs from the one it writes, such as a hand-added one with headers. Optional.
+	mcpReplaces func(path, url string) bool
 	// mcpLogin names the one manual step an entry leaves behind. The entry carries no
 	// credential, so the agent logs in to the server itself; one string per spec means
 	// connect and doctor cannot drift when an agent renames its subcommand.
@@ -210,11 +214,12 @@ func agentRegistry() []agentSpec {
 			detect: detectAny(".cursor"),
 			// No provider config: whether Cursor's model calls can go through the gateway is not decided, so only mcp and skills are wired.
 			// Cursor reads .cursor/mcp.json in the project and in the home directory.
-			mcpConfig:  projectOrGlobalPath(filepath.Join(".cursor", "mcp.json"), filepath.Join(".cursor", "mcp.json")),
-			writeMCP:   writeMCPJSON("mcpServers", cursorMCPEntry),
-			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
-			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
-			mcpLogin:   "open Cursor Settings > Tools & MCP and connect " + launch.MCPServerName + ", or run 'agent mcp login " + launch.MCPServerName + "'",
+			mcpConfig:   projectOrGlobalPath(filepath.Join(".cursor", "mcp.json"), filepath.Join(".cursor", "mcp.json")),
+			writeMCP:    writeMCPJSON("mcpServers", cursorMCPEntry),
+			mcpReplaces: replacesMCPJSON("mcpServers", cursorMCPEntry),
+			mcpPresent:  jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:   func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			mcpLogin:    "enable and connect " + launch.MCPServerName + " in Cursor under Customize > MCPs (Cursor Settings > Tools & MCP in older versions), or run 'agent mcp login " + launch.MCPServerName + "'",
 		},
 	}
 }
@@ -800,6 +805,9 @@ func readJSONConfig(path string) (map[string]any, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err := decoder.Decode(&out); err != nil {
+		if json.Valid(stripJSONC(data)) {
+			return nil, fmt.Errorf("%s has comments or trailing commas — left untouched: orq rewrites the file as plain JSON and would drop them. Remove them and run this again", path)
+		}
 		return nil, fmt.Errorf("%s is not valid JSON — left untouched: %w", path, err)
 	}
 	var trailing any
@@ -817,6 +825,48 @@ func readJSONConfig(path string) (map[string]any, error) {
 }
 
 // writeJSONConfig writes atomically and backs the target up once: some of these files (~/.claude.json) hold the agent's entire user state.
+// stripJSONC drops // and /* */ comments and trailing commas outside strings. It only
+// answers "would this parse without them": the result is never written back.
+func stripJSONC(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	inString := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		switch {
+		case inString:
+			out = append(out, c)
+			if c == '\\' && i+1 < len(data) {
+				i++
+				out = append(out, data[i])
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			inString = true
+			out = append(out, c)
+		case c == '/' && i+1 < len(data) && data[i+1] == '/':
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			out = append(out, '\n')
+		case c == '/' && i+1 < len(data) && data[i+1] == '*':
+			end := bytes.Index(data[i+2:], []byte("*/"))
+			if end < 0 {
+				return out
+			}
+			i += end + 3
+		case c == '}' || c == ']':
+			if trimmed := bytes.TrimRight(out, " \t\r\n"); len(trimmed) > 0 && trimmed[len(trimmed)-1] == ',' {
+				out = trimmed[:len(trimmed)-1]
+			}
+			out = append(out, c)
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func writeJSONConfig(path string, cfg map[string]any) error {
 	return writeJSONConfigMode(path, cfg, 0o600)
 }
@@ -1191,6 +1241,20 @@ func writeMCPJSON(key string, entry func(url string) map[string]any) func(path, 
 		}
 		servers[launch.MCPServerName] = entry(url)
 		return writeJSONConfigMode(path, cfg, mcpFileMode(path))
+	}
+}
+
+// replacesMCPJSON is writeMCPJSON's look-before-you-write: true when the file already holds
+// an orq-workspace entry that is not the one writeMCPJSON would put there.
+func replacesMCPJSON(key string, entry func(url string) map[string]any) func(path, url string) bool {
+	return func(path, url string) bool {
+		cfg, err := readJSONConfig(path)
+		if err != nil {
+			return false
+		}
+		servers, _ := cfg[key].(map[string]any)
+		existing, ok := servers[launch.MCPServerName]
+		return ok && !reflect.DeepEqual(existing, any(entry(url)))
 	}
 }
 
