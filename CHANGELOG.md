@@ -120,6 +120,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [12.14.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.14.0) — 2026-11-24
+
 - **Added:** `orq setup` and `orq connect` now wire Cursor (RES-1808).
   `orq connect cursor` writes the orq MCP server into `~/.cursor/mcp.json`, or
   `.cursor/mcp.json` with `--local`, as a URL and nothing else, and installs the
