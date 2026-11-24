@@ -278,7 +278,8 @@ func NewSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Authenticate and wire up your coding agents",
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
-			`workspace API key, and wires your coding agents to route model calls through the orq AI Gateway.
+			`workspace API key, and wires your coding agents to orq: model calls through the orq AI Gateway
+for the agents that have a provider config, and skills and the orq MCP server for the rest too.
 
 Run it bare for guided setup, with ` + "`-i`" + ` to revisit inferred workspace and API-key choices,
 or fully flagged with ` + "`--no-input`" + ` for CI.

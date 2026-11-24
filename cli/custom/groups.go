@@ -66,6 +66,9 @@ var commandGroup = map[string]string{
 	"decisions":       groupGateway,
 	"websearch":       groupGateway,
 	"hub":             groupGateway,
+	"batches":         groupGateway,
+	"live":            groupGateway,
+	"virtual-models":  groupGateway,
 
 	"traces":     groupObservability,
 	"logs":       groupObservability,

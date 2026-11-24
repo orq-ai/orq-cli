@@ -322,7 +322,7 @@ Capabilities:
             available; without one, exporter settings are saved with a warning.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
-instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
+instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode, Kilo and Cursor).
 
 ` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
 orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
@@ -754,6 +754,7 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			results = append(results, mcpResult{Agent: id, Error: "mcp config path resolved empty"})
 			failed = true
 		default:
+			replaced := spec.mcpReplaces != nil && spec.mcpReplaces(path, url)
 			if werr := spec.writeMCP(path, url); werr != nil {
 				rep.fail("%-8s %-9s %v", id, capMCP, werr)
 				results = append(results, mcpResult{Agent: id, Error: werr.Error()})
@@ -765,6 +766,9 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			// instrumentAgents makes for skills.
 			if !opts.finalScreen {
 				rep.ok("%-8s %-9s %s", id, capMCP, tilde(path))
+			}
+			if replaced {
+				rep.warn("%-8s %-9s replaced the %s entry that was already in %s: its headers and other keys are gone. The file as it was before orq first wrote to it is %s", id, capMCP, launch.MCPServerName, tilde(path), tilde(path+".orq-bak"))
 			}
 			if line := spec.mcpLogin; line != "" {
 				rep.info("%-8s %-9s %s", id, capMCP, line)
@@ -1290,12 +1294,19 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 		return nil
 	}
+	sharedSkills := sharedSkillsWarning(agents, wired)
 	if dryRun {
 		rep.info("dry run — what would be removed, nothing changed")
 		for _, w := range wired {
 			rep.info("%-8s %-9s %s", w.agent, w.capability, tilde(w.path))
 		}
+		if sharedSkills != "" {
+			rep.warn("%s", sharedSkills)
+		}
 		return nil
+	}
+	if sharedSkills != "" {
+		rep.warn("%s", sharedSkills)
 	}
 	previewed := false
 	if !opts.yes && !namedAgents {
@@ -1340,6 +1351,32 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		return errAgentFailed
 	}
 	return nil
+}
+
+// sharedSkillsWarning names the other detected agents that read the shared skills
+// directory when this removal takes it away. Empty when nothing shared is removed or
+// nobody else reads it.
+func sharedSkillsWarning(agents []string, wired []wiredTarget) string {
+	removesShared := false
+	for _, w := range wired {
+		// The shared directory's links carry no agent of their own.
+		if w.capability == capSkills && w.agent == "" {
+			removesShared = true
+		}
+	}
+	if !removesShared {
+		return ""
+	}
+	var others []string
+	for _, id := range detectedAgents() {
+		if skills.SharedReader(id) && !slices.Contains(agents, id) {
+			others = append(others, id)
+		}
+	}
+	if len(others) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%-8s the skills directory is shared: %s %s it too and will lose the orq skills. Run 'orq connect %s skills' afterwards to put them back", capSkills, strings.Join(others, ", "), plural(len(others), "reads", "read"), others[0])
 }
 
 // wiredTarget is one agent's capability and the file holding it. scope is set

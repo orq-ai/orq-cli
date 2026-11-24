@@ -287,7 +287,7 @@ func TestTargets(t *testing.T) {
 	// Every non-claude agent maps to the shared directory and nothing else:
 	// codex and kimi read ~/.agents/skills too, and codex does not dedupe, so
 	// writing ~/.codex/skills as well listed every skill twice.
-	for _, agent := range []string{"codex", "kimi", "opencode", "pi", "omp", "kilo"} {
+	for _, agent := range []string{"codex", "kimi", "opencode", "pi", "omp", "kilo", "cursor"} {
 		if got := dirs(ScopeGlobal, agent); got != "/.agents/skills" {
 			t.Errorf("%s global = %q, want only the shared directory", agent, got)
 		}
@@ -295,7 +295,7 @@ func TestTargets(t *testing.T) {
 			t.Errorf("%s local = %q, want only the shared directory", agent, got)
 		}
 	}
-	if got := dirs(ScopeGlobal, "claude", "codex", "kimi", "opencode", "pi", "omp", "kilo"); got != "/.agents/skills,/.claude/skills" {
+	if got := dirs(ScopeGlobal, "claude", "codex", "kimi", "opencode", "pi", "omp", "kilo", "cursor"); got != "/.agents/skills,/.claude/skills" {
 		t.Errorf("everyone global = %q", got)
 	}
 	if got := dirs(ScopeBoth, "claude", "pi"); got != "/.agents/skills,/.agents/skills,/.claude/skills,/.claude/skills" {

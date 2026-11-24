@@ -120,6 +120,19 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `orq setup` and `orq connect` now wire Cursor (RES-1808).
+  `orq connect cursor` writes the orq MCP server into `~/.cursor/mcp.json`, or
+  `.cursor/mcp.json` with `--local`, as a URL and nothing else, and installs the
+  skills into the shared `.agents/skills` directory, which Cursor reads.
+  `orq connect --status` and `orq disconnect` cover it too. Gateway routing is
+  not wired for Cursor: it receives `mcp` and `skills` only. The skills directory
+  is shared, so a bare `orq disconnect cursor` removes the skills for every agent
+  that reads it; `orq disconnect cursor mcp` drops only the MCP entry. The
+  command names the other detected agents that share the directory, with
+  `--dry-run` too. `orq connect cursor mcp` warns when it replaces an
+  `orq-workspace` entry that was already there, and says so when it refuses a
+  `mcp.json` because of comments or trailing commas.
+
 ## [12.12.0](https://github.com/orq-ai/orq-cli/releases/tag/v12.12.0) — 2026-11-23
 
 **Changed:** profile API keys move to the OS keychain (macOS Keychain, or Linux
