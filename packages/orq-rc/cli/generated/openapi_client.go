@@ -133,6 +133,82 @@ func OpenapiRetrieveResponse(paramResponseId string, params *viper.Viper) (*gent
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramInclude := params.GetString("include")
+	if bartolocli.FlagPassed(params, "include") || paramInclude != "" {
+		req = req.AddQuery("include", fmt.Sprintf("%v", paramInclude))
+	}
+	paramIncludeObfuscation := params.GetBool("include-obfuscation")
+	if bartolocli.FlagPassed(params, "include-obfuscation") || paramIncludeObfuscation != false {
+		req = req.AddQuery("include_obfuscation", fmt.Sprintf("%v", paramIncludeObfuscation))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiListResponseInputItems List response input items
+func OpenapiListResponseInputItems(paramResponseId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "responses list-input-items response-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/router/responses/{response_id}/input_items"
+	if paramResponseId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter response_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{response_id}", neturl.PathEscape(paramResponseId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramAfter := params.GetString("after")
+	if bartolocli.FlagPassed(params, "after") || paramAfter != "" {
+		req = req.AddQuery("after", fmt.Sprintf("%v", paramAfter))
+	}
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramOrder := params.GetString("order")
+	if bartolocli.FlagPassed(params, "order") || paramOrder != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--order", paramOrder, "", []string{"asc", "desc"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramOrder = normalized
+		}
+		req = req.AddQuery("order", fmt.Sprintf("%v", paramOrder))
+	}
+	paramInclude := params.GetString("include")
+	if bartolocli.FlagPassed(params, "include") || paramInclude != "" {
+		req = req.AddQuery("include", fmt.Sprintf("%v", paramInclude))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -2676,6 +2752,10 @@ func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]int
 			paramSortBy = normalized
 		}
 		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
+	}
+	paramIsProfile := params.GetBool("is-profile")
+	if bartolocli.FlagPassed(params, "is-profile") || paramIsProfile != false {
+		req = req.AddQuery("is_profile", fmt.Sprintf("%v", paramIsProfile))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

@@ -31,13 +31,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new budget",
-			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id). Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model / factory_scope / category). A category default applies independently to every entity of that category, including future entities; active individual budgets override the default. Category defaults do not support the one-time period. At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id). Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"agent_deployment\": {\n      \"deployment_id\": \"deployment_id\"\n    },\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_COST\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_DAILY\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"agent_deployment\": {\n      \"deployment_id\": \"deployment_id\"\n    },\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"category\": {\n      \"category\": \"BUDGET_SCOPE_KIND_WORKSPACE\"\n    },\n    \"factory_scope\": {\n      \"factory_id\": \"factory_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -293,6 +293,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp
 		})
+		cmd.Flags().Bool("is-profile", false, "True lists budget profiles, false lists individual/workspace/custom budgets.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -309,17 +310,29 @@ func registerbudgetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " reset-consumption budget-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "reset-consumption budget-id",
 			Short:   "Reset budget consumption",
-			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved. Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `budget-id` — Budget id whose current-period counters should be cleared."),
+			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. For a category default, omit scope_target_id to reset every entity, or supply it to reset only that entity. The budget configuration is preserved. Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `scope_target_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `budget-id` — Budget id whose current-period counters should be cleared."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"scope_target_id\": \"scope_target_id\"\n}") {
+					return nil
+				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "scope_target_id",
+							FlagName:    "scope-target-id",
+							Type:        "string",
+							Description: "Category entity target; omit on reset to reset every entity.",
+						},
+					},
 				)
 				if err != nil {
 					return errors.Wrap(err, "unable to get body")
@@ -341,8 +354,16 @@ func registerbudgetsCommands(root *cobra.Command) {
 		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "scope_target_id",
+					FlagName:    "scope-target-id",
+					Type:        "string",
+					Description: "Category entity target; omit on reset to reset every entity.",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

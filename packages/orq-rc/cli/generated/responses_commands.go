@@ -856,6 +856,58 @@ func registerresponsesCommands(root *cobra.Command) {
 		bartolocli.HelpSection(parent, cmd, "AI Gateway")
 		parent.AddCommand(cmd)
 
+		cmd.Flags().String("include", "", "Additional fields to include. Each listed field is omitted unless requested. Accepts the OpenAI includables: code_interpreter_call.outputs, computer_call_output.output.image_url, file_search_call.results, message.input_image.image_url, message.output_text.logprobs, reasoning.encrypted_content, web_search_call.action.sources and web_search_call.results.")
+		cmd.Flags().Bool("include-obfuscation", false, "Accepted for OpenAI compatibility and ignored.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := responsesCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "list-input-items response-id",
+			Short:   "List response input items",
+			Long:    bartolocli.Markdown("Lists the input items stored for a response, paginated with `after`, `limit` and `order`. Returns the input stored for this response: the full chain for `previous_response_id`, only the new turn for `conversation`, and the compaction item for compacted history. Background responses without stored input return an empty list.\n\n## Arguments\n\n- `response-id` — The ID of the response to retrieve"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiListResponseInputItems(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		bartolocli.HelpSection(parent, cmd, "AI Gateway")
+		parent.AddCommand(cmd)
+
+		cmd.Flags().String("after", "", "Cursor: return items after this item id.")
+		cmd.Flags().Int64("limit", 0, "Maximum number of items to return, 1 to 100.")
+		cmd.Flags().String("order", "", "Sort order by item position. Defaults to desc. (one of: asc, desc)")
+		_ = cmd.RegisterFlagCompletionFunc("order", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"asc", "desc"}, cobra.ShellCompDirectiveNoFileComp
+		})
+		cmd.Flags().String("include", "", "Additional fields to include. Each listed field is omitted unless requested. Accepts the OpenAI includables: code_interpreter_call.outputs, computer_call_output.output.image_url, file_search_call.results, message.input_image.image_url, message.output_text.logprobs, reasoning.encrypted_content, web_search_call.action.sources and web_search_call.results.")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
