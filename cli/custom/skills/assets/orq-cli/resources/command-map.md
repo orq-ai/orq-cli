@@ -369,6 +369,37 @@ Note `orq evals all` (not `list`) is the evaluator listing command, and
 `orq traces create` / `orq traces delete` add and remove **span annotations**,
 not traces.
 
+**Annotation definitions: project, not workspace.** A span annotation
+references a Human Review definition by `key`. The UI marks a definition
+**Legacy** ("workspace-level and will be deprecated soon") when it has no
+`project_id`, so create definitions inside a project. No CLI group or public
+doc covers definitions yet; use the private `/v2/human-evals` route through `orq request`, which reuses the CLI's
+auth:
+
+```sh
+orq request GET /v2/human-evals --workspace <ws> -o json < /dev/null   # project_id null = Legacy
+orq request POST /v2/human-evals --workspace <ws> --from-file def.json --force -o json < /dev/null
+orq request PATCH /v2/human-evals/<id> --workspace <ws> --from-file def.json --force -o json < /dev/null
+```
+
+- `def.json` carries `project_id`. `POST` needs `id` (a 26-char ULID), `type`
+  (`single_select`, `multi_select`, `range`, `boolean`, `text`, `correction`),
+  `display_name` and `description`; `key` defaults to `orq_<10 chars>`
+  *(read from the API proto and handler; `POST` was not run live)*.
+- To fix a Legacy definition, `PATCH` it with `project_id` set rather than
+  recreating it: id and key stay the same, so span values already written stay
+  linked. Send the whole definition as `GET` returns it (`id`, `key`, `type`,
+  `display_name`, `description`, `options`/`config`) plus `project_id`; a body
+  with only the required fields returns `400 Request body failed validation`.
+- A workspace-scoped credential may set any project; a project-scoped API key
+  only its own (403 otherwise) *(read from `assertProjectWithinReach`; the 403
+  was not triggered live)*.
+- `< /dev/null` on every call: see "Escape hatch" below for why.
+
+Verified 2026-11-24 against prod (orquesta-demos): 10 definitions moved into a
+project with `PATCH`, keys unchanged. `GET` re-checked 2026-11-25 on orq
+12.6.11 (API 4.17.11): all 10 carry the `project_id`.
+
 **`evals` details, probed 2026-09-24 on 10.3.1 (API 4.14.20):**
 
 | Claim | Detail |
@@ -626,47 +657,7 @@ earlier; see `orq-shared/resources/trace-queries.md` §5.4.
 
 ## Building app URLs
 
-> **Trace and span routes opened in a browser on 2026-10-13 (RES-1550)**, cold in a
-> new tab against live traces in a research workspace, prod only; staging was not opened.
-> The `whoami` projections were run on 11.0.2 under both a login session and
-> `ORQ_API_KEY`. The experiments route is from 5.1.0 and was not re-probed.
-
-App URLs are workspace-scoped by **key** (the slug), not by id:
-
-```
-<host>/<workspace-key>/traces/(trace:<trace_id>)                    # a trace
-<host>/<workspace-key>/traces/(trace:<trace_id>//span:<span_id>)    # one span in it
-<host>/<workspace-key>/experiments/<experiment-id>                  # unverified, 5.1.0
-```
-
-```sh
-# workspace_key: the guarded snippet in SKILL.md, "Which workspace am I really reading?".
-host="${ORQ_UI_BASE_URL:-$(orq auth whoami -o json -j 'urls.api_base_url || server' --raw 2>/dev/null)}"
-case "$host" in
-  ''|null) echo "no orq host; run 'orq auth login' or set ORQ_UI_BASE_URL" >&2; exit 1 ;;
-esac
-host="${host%/}"
-for pair in "workspace_key=${workspace_key:-}" "trace_id=${trace_id:-}"; do
-  case "${pair#*=}" in
-    ''|null) echo "${pair%%=*} is not set; a link built without it opens nothing" >&2; exit 1 ;;
-  esac
-done
-echo "${host}/${workspace_key}/traces/(trace:${trace_id})"
-case "${span_id:-}" in   # span link only when a span_id is set; unset is fine for a trace-only caller
-  ''|null) ;;
-  *) echo "${host}/${workspace_key}/traces/(trace:${trace_id}//span:${span_id})" ;;
-esac
-```
-
-- **No query string is needed.** The app appends `traces_oql`, `traces_range` and `traces_filters` as you click around; a link without them opens the same view.
-- **`trace_id` is the 32-hex id, `span_id` the 16-hex one.** `traces search` rows carry `trace_id`, `span_id` and `root_span_id`; their `id` is a span id and opens nothing as a trace. `traces list-spans <trace_id>` gives the span ids inside a trace.
-- **The host comes from the session**, not a literal `my.orq.ai`: `urls.api_base_url` under a login session, `server` under `ORQ_API_KEY`, which is why the projection has both. That the app is served from the API's host was checked on prod only. Where it differs (staging, self-hosted), `ORQ_UI_BASE_URL` overrides it, the same variable evaluatorq uses for its dashboard links; the CLI itself ignores it.
-- **The key does not survive `ORQ_API_KEY`.** With the env var set, `whoami` reports `active_workspace_key` as `null`, so a key read blindly builds `<host>/null/...`. The SKILL.md snippet rejects that.
-- **The parentheses and `//` are part of the route.** Quote the URL in a shell. In Markdown write `[label](<url>)`; a bare `(…)` destination with nested parentheses is fragile.
-- **The old `traces?query=trace_id:is:<id>` form no longer routes.** Do not emit it.
-- **Ids from an invocation response are unverified.** Only ids read off `traces search` / `list-spans` were opened in the browser. `telemetry.trace_id` / `telemetry.span_id` from a deployment or agent call were not checked against the route; if a link built from them opens nothing, look the trace up with `traces search` and use its `trace_id`.
-
-**"No spans match your search" means the user's project filter, not a bad link.** The Traces page keeps a project selection in the browser, and a link to a trace in another project opens that empty panel (a `traces_filters` project in the URL does not override it). Whenever you hand over a link, tell the user that if it opens empty, switch the Traces project selector to **All projects** and reload.
+Trace, span and experiment links, the workspace key and host they need, and their pitfalls live in the [`orq-trace-format`](../../orq-trace-format/SKILL.md) skill. Show traces to people as those links, never as bare ids.
 
 ### Which host am I actually talking to?
 
